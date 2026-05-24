@@ -6,16 +6,21 @@ and a `bootstrap.sh` that reproduces the whole thing on a fresh Linux box.
 
 ## Run it on an always-on VM (so you can close your laptop)
 
-1. **Provision a small Linux VM** — Ubuntu 24.04, ≥ 2 GB RAM (e.g. Hetzner CPX21,
-   DigitalOcean, Fly Machines). Add your SSH key.
-2. **Bootstrap** (on the VM):
-   ```bash
-   git clone <this-repo-url> ~/.config/agents
-   bash ~/.config/agents/bootstrap.sh
-   exec zsh
-   ```
-3. **Authenticate**: `claude` → `/login`, `codex login`, `gh auth login`, and set
-   `GITHUB_PAT` (for the GitHub MCP).
+**Option A — one command (Hetzner):**
+```bash
+brew install hcloud
+export HCLOUD_TOKEN=...                 # console.hetzner.cloud -> API Tokens
+bash ~/.config/agents/provision.sh     # creates the VM and bootstraps it
+```
+Tunables at the top of `provision.sh`: `VM_TYPE`, `VM_LOCATION`, `VM_USER`, `AGENTS_REPO`
+(US / x86: `VM_TYPE=cpx21 VM_LOCATION=ash`).
+
+**Option B — any provider, by hand:**
+1. Provision Ubuntu 24.04, ≥ 2 GB RAM (Hetzner / DigitalOcean / Fly); add your SSH key.
+2. On the VM: `git clone <repo-url> ~/.config/agents && bash ~/.config/agents/bootstrap.sh`
+
+**Then authenticate** on the VM: `claude` → `/login`, `codex login`, `gh auth login`,
+and set `GITHUB_PAT` (GitHub MCP).
 
 ## Daily workflow
 
