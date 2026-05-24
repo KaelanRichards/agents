@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# swarm — run N tasks in parallel, each in its own jj workspace, with claude or codex.
+# Tool-agnostic Tier-2 orchestration on top of jj workspaces.
+#
+# Usage:
+#   swarm "task one" "task two" ...      # one workspace + agent per task
+#   swarm --agent codex "task" ...       # use Codex instead of Claude
+#   swarm --wait "task" ...              # block until all finish, then summarize
+#   swarm --dry-run "task" ...           # show the plan without launching
+#   printf 'task1\ntask2\n' | swarm      # tasks from stdin (one per line)
+#
+# Each task -> ../<repo>-workspaces/swarm-<n>-<slug>; the agent runs headless there
+# (claude --permission-mode auto / codex exec --full-auto; SWARM_YOLO=1 for full bypass).
+# Review with: jj -R <workspace> log    then merge the good ones.
+set -euo pipefail
+
+AGENT="claude"
+WAIT=0
+DRY=0
+YOLO="${SWARM_YOLO:-0}"
+tasks=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --agent) AGENT="$2"; shift 2 ;;
+    --wait) WAIT=1; shift ;;
+    --dry-run) DRY=1; shift ;;
+    --yolo) YOLO=1; shift ;;
+    -h | --help) sed -n '2,16p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
+    *) tasks+=("$1"); shift ;;
+  esac
+done
+if [ "${#tasks[@]}" -eq 0 ] && [ ! -t 0 ]; then
+  while IFS= read -r line; do
+    if [ -n "$line" ]; then tasks+=("$line"); fi
+  done
+fi
+[ "${#tasks[@]}" -gt 0 ] || { echo "swarm: no tasks given (see --help)" >&2; exit 1; }
+[ "$AGENT" = claude ] || [ "$AGENT" = codex ] || { echo "swarm: --agent must be claude|codex" >&2; exit 1; }
+
+command -v jj >/dev/null || { echo "swarm: jj required" >&2; exit 1; }
+root=$(jj root 2>/dev/null) || { echo "swarm: not in a jj repo (jj git init --colocate)" >&2; exit 1; }
+wsbase="$(dirname "$root")/$(basename "$root")-workspaces"
+logdir="$wsbase/.swarm-logs"
+
+agent_label() {
+  if [ "$AGENT" = codex ]; then
+    if [ "$YOLO" = 1 ]; then echo "codex exec --yolo"; else echo "codex exec --full-auto"; fi
+  else
+    if [ "$YOLO" = 1 ]; then echo "claude -p --dangerously-skip-permissions"; else echo "claude -p --permission-mode auto"; fi
+  fi
+}
+
+run_one() { # $1=workspace  $2=task
+  cd "$1" || return 1
+  case "$AGENT:$YOLO" in
+    codex:1) codex exec --yolo "$2" ;;
+    codex:*) codex exec --full-auto "$2" ;;
+    *:1) claude -p --dangerously-skip-permissions "$2" ;;
+    *) claude -p --permission-mode auto "$2" ;;
+  esac
+}
+
+pids=()
+wss=()
+i=0
+for task in "${tasks[@]}"; do
+  i=$((i + 1))
+  slug=$(printf '%s' "$task" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-24)
+  name="swarm-$i-${slug:-task}"
+  ws="$wsbase/$name"
+  log="$logdir/$name.log"
+  if [ "$DRY" = 1 ]; then
+    printf "DRY %-26s [%s] %s\n" "$name" "$(agent_label)" "$task"
+    continue
+  fi
+  mkdir -p "$wsbase" "$logdir"
+  jj workspace add "$ws" >/dev/null 2>&1 || { echo "swarm: skip $name (exists?)"; continue; }
+  (run_one "$ws" "$task" >"$log" 2>&1) &
+  pids+=("$!")
+  wss+=("$ws")
+  printf "launched %-26s pid=%-7s log=%s\n" "$name" "$!" "$log"
+done
+
+if [ "$DRY" = 1 ]; then exit 0; fi
+echo
+echo "${#wss[@]} ${AGENT} agent(s) running. Review: jj -R <workspace> log"
+if [ "$WAIT" = 1 ]; then
+  echo "waiting for all agents..."
+  for p in "${pids[@]}"; do wait "$p" || true; done
+  echo "== results =="
+  for ws in "${wss[@]}"; do
+    echo "--- ${ws##*/} ---"
+    jj -R "$ws" log -r '@-' --no-graph 2>/dev/null | head -3
+  done
+fi

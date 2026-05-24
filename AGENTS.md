@@ -74,8 +74,9 @@ This is the single source of truth for both agents. Canonical file lives at
   Delegate noisy research to `explorer`; verify changes with `reviewer` before committing.
 - **Skill `spec`** — spec-driven development: for non-trivial work, draft a `SPEC.md` from
   `~/.config/agents/templates/SPEC.md`, confirm it, implement, then verify with `reviewer`.
-- **Parallel work**: `wt new <name>` runs independent tasks in isolated workspaces
-  (jj `workspace` in a jj repo, git worktree otherwise).
+- **Parallel work**: `wt new <name>` for one isolated workspace; **`swarm <task>...`** fans out
+  N tasks across jj workspaces with parallel headless agents (claude/codex), then review each
+  with `jj -R <workspace> log`.
 - **Hooks (active in both tools)**: edits are auto-formatted (ruff/biome/shfmt/rustfmt);
   a Bash guard blocks destructive/security-sensitive commands.
 
