@@ -1,2 +1,4 @@
 .jj/
 *.bak
+.direnv/
+result

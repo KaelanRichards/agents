@@ -56,6 +56,17 @@ bash ~/.config/agents/teardown.sh                # snapshot, then delete (confir
 bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 ```
 
+## Reproducible env (Nix, optional)
+
+A hermetic, pinned alternative to the brew toolbelt — additive, doesn't replace `bootstrap.sh`.
+On a Nix-enabled machine:
+```bash
+nix develop ~/.config/agents        # ad-hoc shell with the pinned toolbelt
+# or, with direnv:  cd ~/.config/agents && direnv allow
+```
+`flake.nix` pins every CLI tool via nixpkgs (the generated `flake.lock` records the exact
+revision). Languages stay mise/uv-managed; `claude`/`codex` install separately (not in nixpkgs).
+
 ## Notes
 - Secrets are **never** committed — only `bearer_token_env_var` *names* live in `mcp.json`.
 - The guard hook is active here too; destructive commands stay blocked.
