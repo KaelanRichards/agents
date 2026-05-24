@@ -61,3 +61,17 @@ jobs:
           mcp-sync list
           test -L "$HOME/.claude/CLAUDE.md" && echo "instruction symlink ok"
           test -f "$HOME/.codex/config.toml" && echo "codex config ok"
+
+  flake:
+    name: nix flake check (linux)
+    # Validates the flake on Linux too. Heavy-ish; weekly or on demand.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - name: flake check + build devShell
+        run: |
+          nix flake check
+          nix develop --command bash -lc 'jj --version && rg --version | head -1 && echo SHELL_OK'

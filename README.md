@@ -66,6 +66,8 @@ nix develop ~/.config/agents        # ad-hoc shell with the pinned toolbelt
 ```
 `flake.nix` pins every CLI tool via nixpkgs (the generated `flake.lock` records the exact
 revision). Languages stay mise/uv-managed; `claude`/`codex` install separately (not in nixpkgs).
+On the VM, `BOOTSTRAP_NIX=1 bash ~/.config/agents/bootstrap.sh` installs Nix alongside brew so
+the flake is available there too.
 
 ## Notes
 - Secrets are **never** committed — only `bearer_token_env_var` *names* live in `mcp.json`.

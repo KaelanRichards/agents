@@ -31,6 +31,15 @@ echo "==> agent CLIs (claude + codex)"
 command -v codex >/dev/null 2>&1 || brew install codex || npm install -g @openai/codex || true
 command -v claude >/dev/null 2>&1 || curl -fsSL https://claude.ai/install.sh | bash || npm install -g @anthropic-ai/claude-code || true
 
+echo "==> optional Nix (set BOOTSTRAP_NIX=1 for the reproducible flake toolbelt)"
+if [ "${BOOTSTRAP_NIX:-0}" = "1" ]; then
+	if ! command -v nix >/dev/null 2>&1; then
+		curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix -o /tmp/nix-installer.sh
+		sh /tmp/nix-installer.sh install --no-confirm
+	fi
+	echo "    Nix ready — pinned toolbelt:  nix develop ~/.config/agents"
+fi
+
 echo "==> link helper scripts + project dir"
 mkdir -p "$HOME/.local/bin" "$HOME/code"
 for s in mcp-sync agents-sync agents-link wt; do
