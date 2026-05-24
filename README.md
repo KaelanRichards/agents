@@ -49,6 +49,13 @@ cd ~/.config/agents && jj git fetch && jj rebase -d main@origin
 mcp-sync && agents-sync     # regenerate Claude + Codex configs
 ```
 
+## Teardown (stop billing)
+
+```bash
+bash ~/.config/agents/teardown.sh                # snapshot, then delete (confirms)
+bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
+```
+
 ## Notes
 - Secrets are **never** committed — only `bearer_token_env_var` *names* live in `mcp.json`.
 - The guard hook is active here too; destructive commands stay blocked.
