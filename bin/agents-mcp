@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# agents-mcp — launch the custom "agents" MCP server (jj / task / config tools).
+# Portable across laptop+VM: the repo always lives at ~/.config/agents.
+# Registered with:  mcp-sync add agents -- agents-mcp
+exec uv run --quiet --script "$HOME/.config/agents/mcp-servers/agents/server.py" "$@"
