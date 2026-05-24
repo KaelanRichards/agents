@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1" # weekly bootstrap smoke test (Mon 09:00 UTC)
+
+jobs:
+  lint:
+    name: lint + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install linters
+        run: sudo apt-get update -y && sudo apt-get install -y shellcheck jq
+
+      - name: bash -n (syntax) + shellcheck (errors)
+        run: |
+          set -e
+          fail=0
+          for f in bin/* hooks/*.sh bootstrap.sh provision.sh teardown.sh; do
+            [ -f "$f" ] || continue
+            echo "::group::$f"
+            bash -n "$f" || fail=1
+            shellcheck -S error -x "$f" || fail=1
+            echo "::endgroup::"
+          done
+          exit $fail
+
+      - name: Validate JSON config
+        run: |
+          set -e
+          jq -e . mcp.json >/dev/null && echo "mcp.json ok"
+          for f in agents/*.json; do jq -e . "$f" >/dev/null && echo "$f ok"; done
+
+  bootstrap-smoke:
+    name: bootstrap on fresh Ubuntu
+    # Heavy (installs Homebrew + the toolbelt). Only weekly or on demand.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Place repo at ~/.config/agents
+        run: |
+          mkdir -p "$HOME/.config"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/.config/agents"
+
+      - name: Run bootstrap (non-auth steps)
+        run: bash "$HOME/.config/agents/bootstrap.sh"
+
+      - name: Verify the setup synced
+        run: |
+          export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          command -v jj && command -v mise && command -v rg
+          mcp-sync list
+          test -L "$HOME/.claude/CLAUDE.md" && echo "instruction symlink ok"
+          test -f "$HOME/.codex/config.toml" && echo "codex config ok"
