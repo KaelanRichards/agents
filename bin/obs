@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# obs — local OpenTelemetry stack for agent observability (cost / tokens / usage).
+# Start the stack, then `eval "$(obs env)"` to point Claude Code at it.
+#
+#   obs up      start collector + Prometheus + Grafana (needs Docker/OrbStack)
+#   obs down    stop the stack
+#   obs open    open Grafana (http://localhost:3000, anonymous admin)
+#   obs env     print the env exports that enable Claude Code telemetry
+set -euo pipefail
+DIR="$HOME/.config/agents/observability"
+
+case "${1:-}" in
+  up)
+    docker compose -f "$DIR/docker-compose.yml" up -d
+    echo "Grafana:    http://localhost:3000  (anonymous admin)"
+    echo "Prometheus: http://localhost:9090"
+    echo "Enable telemetry in your shell:  eval \"\$(obs env)\""
+    echo "Then explore metrics named  claude_code.*  in Grafana."
+    ;;
+  down) docker compose -f "$DIR/docker-compose.yml" down ;;
+  open) open http://localhost:3000 2>/dev/null || xdg-open http://localhost:3000 2>/dev/null || echo "open http://localhost:3000" ;;
+  env)
+    cat <<'ENV'
+export CLAUDE_CODE_ENABLE_TELEMETRY=1
+export OTEL_METRICS_EXPORTER=otlp
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_METRIC_EXPORT_INTERVAL=10000
+ENV
+    ;;
+  *) echo "usage: obs up|down|open|env" >&2; exit 1 ;;
+esac
