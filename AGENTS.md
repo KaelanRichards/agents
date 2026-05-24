@@ -82,6 +82,8 @@ This is the single source of truth for both agents. Canonical file lives at
   with `jj -R <workspace> log`.
 - **Hooks (active in both tools)**: edits are auto-formatted (ruff/biome/shfmt/rustfmt);
   a Bash guard blocks destructive/security-sensitive commands.
+- **Health check**: `agents-doctor` verifies tools, symlinks, MCP parity, config validity, and
+  agent-CLI version drift — run it after changes or on a new machine.
 
 ## Security policy (agents + MCP)
 - **Destructive ops are blocked** by the guard hook (`rm -rf /`, disk wipes, `curl|bash`,

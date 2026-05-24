@@ -21,7 +21,7 @@ jobs:
         run: |
           set -e
           fail=0
-          for f in bin/* hooks/*.sh bootstrap.sh provision.sh teardown.sh; do
+          for f in bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh; do
             [ -f "$f" ] || continue
             echo "::group::$f"
             bash -n "$f" || fail=1
@@ -61,6 +61,8 @@ jobs:
           mcp-sync list
           test -L "$HOME/.claude/CLAUDE.md" && echo "instruction symlink ok"
           test -f "$HOME/.codex/config.toml" && echo "codex config ok"
+          agents-doctor
+          bash "$HOME/.config/agents/tests/sync-roundtrip.sh"
 
   flake:
     name: nix flake check (linux)

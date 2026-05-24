@@ -42,9 +42,9 @@ fi
 
 echo "==> link helper scripts + project dir"
 mkdir -p "$HOME/.local/bin" "$HOME/code"
-for s in mcp-sync agents-sync agents-link wt; do
-	chmod +x "$AH/bin/$s"
-	ln -sf "$AH/bin/$s" "$HOME/.local/bin/$s"
+for s in "$AH"/bin/*; do
+	chmod +x "$s"
+	ln -sf "$s" "$HOME/.local/bin/$(basename "$s")"
 done
 
 echo "==> instruction symlinks (AGENTS.md is the source of truth)"
