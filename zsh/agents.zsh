@@ -38,5 +38,8 @@ alias jf='jj git fetch'
 alias jp='jj git push'
 alias jb='jj bookmark'
 
+# Repeated CI/remote runs vs the same repo? Keep the prompt cached for an hour:
+# export ENABLE_PROMPT_CACHING_1H=1
+
 # GitHub PAT for the GitHub MCP — set this in the VM's environment/secrets.
 # export GITHUB_PAT="..."
