@@ -84,6 +84,8 @@ This is the single source of truth for both agents. Canonical file lives at
   a Bash guard blocks destructive/security-sensitive commands.
 - **Health check**: `agents-doctor` verifies tools, symlinks, MCP parity, config validity, and
   agent-CLI version drift — run it after changes or on a new machine.
+- **Overview**: `agents-status` — read-only single pane (VMs + cost, health, MCP servers,
+  repo/CI + open PRs, tmux sessions).
 
 ## Security policy (agents + MCP)
 - **Destructive ops are blocked** by the guard hook (`rm -rf /`, disk wipes, `curl|bash`,

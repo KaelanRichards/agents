@@ -25,6 +25,7 @@ Then authenticate: `claude` (`/login`), `codex login`, `gh auth login`, and set 
 | `mcp-sync add <n> -- <cmd>` / `add-http <n> <url> [ENV]` | add an MCP server (both tools) |
 | `agents-sync` | regenerate subagents / skills / hooks |
 | `agents-doctor` | full health check |
+| `agents-status` | read-only overview: VMs, health, MCP, CI/PRs, sessions |
 | `swarm "task" ...` | parallel agents across jj workspaces |
 | `wt new <name>` | one isolated workspace |
 | `obs up` | start the observability stack |

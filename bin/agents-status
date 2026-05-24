@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# agents-status — read-only operational overview of the agent environment.
+# Single pane: machines, health, MCP servers, repo/CI, sessions.
+# Composes hcloud / agents-doctor / mcp-sync / gh / tmux. Run: agents-status
+set -uo pipefail
+REPO="${AGENTS_REPO_SLUG:-KaelanRichards/agents}"
+hr() { printf '\n== %s ==\n' "$1"; }
+
+hr "machines (Hetzner)"
+if command -v hcloud >/dev/null 2>&1 && [ -n "${HCLOUD_TOKEN:-}" ]; then
+	hcloud server list 2>/dev/null | sed 's/^/  /' || echo "  (hcloud error)"
+	echo "  est: cax11 ~EUR4/mo · cax21 ~EUR6/mo · cpx21 ~USD7/mo   (tear down: teardown.sh)"
+else
+	echo "  (set HCLOUD_TOKEN to list VMs)"
+fi
+
+hr "health"
+if command -v agents-doctor >/dev/null 2>&1; then
+	agents-doctor 2>/dev/null | tail -1
+else
+	echo "  agents-doctor not on PATH"
+fi
+
+hr "MCP servers"
+if command -v mcp-sync >/dev/null 2>&1; then
+	mcp-sync list 2>/dev/null
+else
+	echo "  mcp-sync not on PATH"
+fi
+
+hr "repo / CI ($REPO)"
+if command -v gh >/dev/null 2>&1; then
+	gh run list --repo "$REPO" -L 3 2>/dev/null | sed 's/^/  /' || echo "  (gh error)"
+	prs=$(gh pr list --repo "$REPO" 2>/dev/null || true)
+	if [ -n "$prs" ]; then
+		echo "  open PRs:"
+		printf '%s\n' "$prs" | sed 's/^/    /'
+	else
+		echo "  open PRs: none"
+	fi
+else
+	echo "  gh not on PATH"
+fi
+
+hr "sessions (local tmux)"
+tmux ls 2>/dev/null | sed 's/^/  /' || echo "  (none)"
+echo
