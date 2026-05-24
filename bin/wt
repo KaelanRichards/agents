@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# wt — parallel workspaces for agents.
+# Uses jj workspaces inside a jj repo (jj-first); falls back to git worktrees otherwise.
+set -euo pipefail
+usage(){ cat <<EOF
+wt — parallel workspaces for agents (jj workspace, or git worktree fallback)
+  wt new <name> [base]   create a workspace/worktree named <name>
+  wt ls                  list workspaces/worktrees
+  wt rm <name>           remove the workspace/worktree for <name>
+  wt path <name>         print its path
+EOF
+}
+cmd="${1:-}"; [ $# -gt 0 ] && shift || true
+
+if jj root >/dev/null 2>&1; then
+  root=$(jj root)
+  base_dir="$(dirname "$root")/$(basename "$root")-workspaces"
+  case "$cmd" in
+    new)  name="${1:?usage: wt new <name>}"; path="$base_dir/$name"
+          mkdir -p "$base_dir"
+          jj workspace add "$path"
+          echo "created jj workspace $path"; echo "cd \"$path\"" ;;
+    ls)   jj workspace list ;;
+    rm)   name="${1:?usage: wt rm <name>}"
+          jj workspace forget "$name" 2>/dev/null || true
+          rm -rf "$base_dir/$name"; echo "removed jj workspace $name" ;;
+    path) name="${1:?usage: wt path <name>}"; echo "$base_dir/$name" ;;
+    ""|-h|--help|help) usage ;;
+    *) echo "unknown: $cmd" >&2; usage; exit 1 ;;
+  esac
+else
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "not in a jj or git repo" >&2; exit 1; }
+  base_dir="$(dirname "$root")/$(basename "$root")-worktrees"
+  case "$cmd" in
+    new)  name="${1:?usage: wt new <name> [base]}"; base="${2:-HEAD}"; path="$base_dir/$name"
+          mkdir -p "$base_dir"
+          git worktree add -b "$name" "$path" "$base"
+          echo "created git worktree $path (branch $name)"; echo "cd \"$path\"" ;;
+    ls)   git worktree list ;;
+    rm)   name="${1:?usage: wt rm <name>}"; git worktree remove "$base_dir/$name" && echo "removed $name" ;;
+    path) name="${1:?usage: wt path <name>}"; echo "$base_dir/$name" ;;
+    ""|-h|--help|help) usage ;;
+    *) echo "unknown: $cmd" >&2; usage; exit 1 ;;
+  esac
+fi

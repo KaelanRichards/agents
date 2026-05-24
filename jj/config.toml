@@ -1,0 +1,16 @@
+#:schema https://docs.jj-vcs.dev/latest/config-schema.json
+
+[user]
+name = "Kaelan Richards"
+email = "kadokaelan@gmail.com"
+
+[ui]
+editor = "zed --wait"
+
+[revset-aliases]
+# nearest bookmark at or below a commit (used by `jj tug`)
+'closest_bookmarks(to)' = 'heads(::to & bookmarks())'
+
+[aliases]
+# advance the nearest bookmark up to the commit before the working copy
+tug = ["bookmark", "move", "--from", "closest_bookmarks(@-)", "--to", "@-"]

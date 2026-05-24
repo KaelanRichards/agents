@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# agents-link — in the current repo, make AGENTS.md the source of truth and
+# symlink CLAUDE.md -> AGENTS.md, so Claude Code and Codex share one project file.
+set -euo pipefail
+
+if [ ! -e AGENTS.md ]; then
+  printf '# Project agent instructions\n\n' > AGENTS.md
+  echo "created AGENTS.md"
+fi
+
+if [ -L CLAUDE.md ] || [ ! -e CLAUDE.md ]; then
+  ln -sf AGENTS.md CLAUDE.md
+  echo "linked CLAUDE.md -> AGENTS.md"
+else
+  echo "CLAUDE.md is a real file; merge its contents into AGENTS.md, delete it, then re-run." >&2
+  exit 1
+fi

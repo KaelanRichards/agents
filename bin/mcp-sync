@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# mcp-sync — one source of truth for MCP servers across Claude Code + Codex CLI.
+#
+# Canonical: ~/.config/agents/mcp.json
+#   { "mcpServers": { "<name>": <def> } }
+#   stdio def: { "type":"stdio", "command":"npx", "args":["-y","pkg"], "env":{"K":"V"} }
+#   http  def: { "type":"http",  "url":"https://host/mcp", "headers":{"K":"V"},
+#               "bearer_token_env_var":"TOKEN_ENV" }   # bearer maps per-tool (see below)
+#
+# Generates from the canonical file:
+#   - Claude: ~/.claude.json        -> top-level "mcpServers" (user scope, all projects)
+#             (bearer_token_env_var -> Authorization: "Bearer ${VAR}" header)
+#   - Codex : ~/.codex/config.toml  -> a managed [mcp_servers.*] block
+#             (bearer_token_env_var -> native bearer_token_env_var key)
+#
+# Usage:
+#   mcp-sync                              regenerate both tool configs from canonical
+#   mcp-sync list                         list canonical servers
+#   mcp-sync add  <name> -- <cmd...>      add a stdio server, then sync
+#   mcp-sync add-http <name> <url> [ENV]  add an http server (optional bearer env var), then sync
+#   mcp-sync remove <name>                remove a server, then sync
+set -euo pipefail
+
+AGENTS_HOME="${AGENTS_HOME:-$HOME/.config/agents}"
+CANON="$AGENTS_HOME/mcp.json"
+CLAUDE_JSON="$HOME/.claude.json"
+CODEX_TOML="$HOME/.codex/config.toml"
+BEGIN="# >>> mcp-sync (managed: edit ~/.config/agents/mcp.json then run mcp-sync) >>>"
+END="# <<< mcp-sync <<<"
+
+command -v jq >/dev/null || { echo "mcp-sync: jq is required" >&2; exit 1; }
+mkdir -p "$AGENTS_HOME" "$HOME/.codex"
+[ -f "$CANON" ] || echo '{"mcpServers":{}}' > "$CANON"
+
+cmd="${1:-sync}"
+if [ $# -gt 0 ]; then shift; fi
+
+case "$cmd" in
+  list)
+    jq -r '.mcpServers // {} | to_entries[] | "  \(.key): \(.value.type // "stdio")  \(.value.command // .value.url // "")"' "$CANON"
+    exit 0 ;;
+  add)
+    name="$1"; shift
+    if [ "${1:-}" = "--" ]; then shift; fi
+    cmdbin="$1"; shift
+    args=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+    t=$(mktemp); jq --arg n "$name" --arg c "$cmdbin" --argjson a "$args" \
+      '.mcpServers[$n] = {type:"stdio", command:$c, args:$a}' "$CANON" > "$t" && mv "$t" "$CANON"
+    echo "added stdio server '$name'" ;;
+  add-http)
+    name="$1"; url="$2"; bearer="${3:-}"
+    if [ -n "$bearer" ]; then
+      t=$(mktemp); jq --arg n "$name" --arg u "$url" --arg b "$bearer" \
+        '.mcpServers[$n] = {type:"http", url:$u, bearer_token_env_var:$b}' "$CANON" > "$t" && mv "$t" "$CANON"
+    else
+      t=$(mktemp); jq --arg n "$name" --arg u "$url" \
+        '.mcpServers[$n] = {type:"http", url:$u}' "$CANON" > "$t" && mv "$t" "$CANON"
+    fi
+    echo "added http server '$name'" ;;
+  remove|rm)
+    name="$1"
+    t=$(mktemp); jq --arg n "$name" 'del(.mcpServers[$n])' "$CANON" > "$t" && mv "$t" "$CANON"
+    echo "removed '$name'" ;;
+  sync) : ;;
+  help|-h|--help)
+    sed -n '2,30p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
+  *) echo "mcp-sync: unknown command '$cmd' (try: mcp-sync help)" >&2; exit 1 ;;
+esac
+
+jq -e . "$CANON" >/dev/null 2>&1 || { echo "ERROR: invalid JSON in $CANON" >&2; exit 1; }
+
+# 1) Claude Code (JSON, user scope) — preserve everything else in ~/.claude.json.
+#    Map bearer_token_env_var -> Authorization header with ${VAR} expansion.
+if [ -f "$CLAUDE_JSON" ]; then
+  cp "$CLAUDE_JSON" "$CLAUDE_JSON.mcp-sync.bak"
+else
+  echo '{}' > "$CLAUDE_JSON"
+fi
+t=$(mktemp)
+jq --slurpfile c "$CANON" '.mcpServers = (($c[0].mcpServers // {}) | map_values(
+    if .bearer_token_env_var then
+      (.headers = ((.headers // {}) + {Authorization: ("Bearer ${" + .bearer_token_env_var + "}")}))
+      | del(.bearer_token_env_var)
+    else . end))' "$CLAUDE_JSON" > "$t" && mv "$t" "$CLAUDE_JSON"
+
+# 2) Codex CLI (TOML) — replace only the managed block, leave the rest untouched.
+[ -f "$CODEX_TOML" ] || touch "$CODEX_TOML"
+t=$(mktemp)
+awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1;next} $0==e{skip=0;next} skip!=1{print}' "$CODEX_TOML" > "$t" && mv "$t" "$CODEX_TOML"
+{
+  echo "$BEGIN"
+  jq -r '
+    .mcpServers // {} | to_entries[] |
+    "[mcp_servers.\(.key)]",
+    (if .value.command then "command = \(.value.command|@json)" else empty end),
+    (if .value.args    then "args = \(.value.args|@json)" else empty end),
+    (if .value.url     then "url = \(.value.url|@json)" else empty end),
+    (if .value.bearer_token_env_var then "bearer_token_env_var = \(.value.bearer_token_env_var|@json)" else empty end),
+    (if (.value.env|type=="object")     then "[mcp_servers.\(.key).env]",          (.value.env|to_entries[]|"\(.key) = \(.value|@json)") else empty end),
+    (if (.value.headers|type=="object") then "[mcp_servers.\(.key).http_headers]",  (.value.headers|to_entries[]|"\(.key) = \(.value|@json)") else empty end),
+    ""
+  ' "$CANON"
+  echo "$END"
+} >> "$CODEX_TOML"
+
+n=$(jq '.mcpServers // {} | length' "$CANON")
+echo "✓ mcp-sync: $n server(s) → Claude (~/.claude.json) + Codex (~/.codex/config.toml)"

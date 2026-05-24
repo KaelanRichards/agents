@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# agents-sync — propagate canonical skills, subagents, and hooks to Claude Code + Codex.
+# Canonical lives under ~/.config/agents/{skills,agents,hooks}. Run after editing any of them.
+set -euo pipefail
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+CODEX_TOML="$HOME/.codex/config.toml"
+HB="# >>> agents-sync hooks (managed: edit ~/.config/agents/hooks then run agents-sync) >>>"
+HE="# <<< agents-sync hooks <<<"
+command -v jq >/dev/null || { echo "agents-sync: jq required" >&2; exit 1; }
+mkdir -p "$AH"/skills "$AH"/agents "$AH"/hooks "$HOME/.claude/skills" "$HOME/.claude/agents" "$HOME/.codex/agents"
+
+# 1) SKILLS — symlink each canonical skill dir into Claude's skills dir
+sc=0
+for d in "$AH"/skills/*/; do
+  [ -d "$d" ] || continue
+  ln -sfn "${d%/}" "$HOME/.claude/skills/$(basename "$d")"; sc=$((sc+1))
+done
+echo "skills: $sc linked into ~/.claude/skills"
+
+# 2) SUBAGENTS — generate Claude .md + Codex .toml from canonical JSON
+ac=0
+for f in "$AH"/agents/*.json; do
+  [ -e "$f" ] || continue
+  name=$(jq -r '.name' "$f")
+  {
+    echo "---"
+    echo "name: $name"
+    echo "description: $(jq -r '.description' "$f")"
+    tools=$(jq -r '(.tools // []) | join(", ")' "$f")
+    [ -n "$tools" ] && echo "tools: $tools"
+    echo "---"
+    echo
+    jq -r '.instructions' "$f"
+  } > "$HOME/.claude/agents/$name.md"
+  {
+    printf 'name = %s\n' "$(jq '.name' "$f")"
+    printf 'description = %s\n' "$(jq '.description' "$f")"
+    printf 'developer_instructions = %s\n' "$(jq '.instructions' "$f")"
+  } > "$HOME/.codex/agents/$name.toml"
+  ac=$((ac+1))
+done
+echo "subagents: $ac generated for Claude (~/.claude/agents) + Codex (~/.codex/agents)"
+
+# 3) HOOKS — Claude (settings.json) + Codex (config.toml managed block)
+fmt="$AH/hooks/format-file.sh"; guard="$AH/hooks/guard-bash.sh"
+chmod +x "$fmt" "$guard" 2>/dev/null || true
+# Claude (preserve everything else; agents-sync owns the .hooks key)
+[ -f "$CLAUDE_SETTINGS" ] || echo '{}' > "$CLAUDE_SETTINGS"
+cp "$CLAUDE_SETTINGS" "$CLAUDE_SETTINGS.agents-sync.bak"
+t=$(mktemp)
+jq --arg fmt "$fmt" --arg guard "$guard" '.hooks = {
+  "PreToolUse":  [ {"matcher":"Bash",                "hooks":[{"type":"command","command":$guard}]} ],
+  "PostToolUse": [ {"matcher":"Edit|Write|MultiEdit","hooks":[{"type":"command","command":$fmt}]} ]
+}' "$CLAUDE_SETTINGS" > "$t" && mv "$t" "$CLAUDE_SETTINGS"
+# Codex managed [[hooks.*]] block
+[ -f "$CODEX_TOML" ] || touch "$CODEX_TOML"
+cp "$CODEX_TOML" "$CODEX_TOML.agents-sync.bak"
+t=$(mktemp); awk -v b="$HB" -v e="$HE" '$0==b{s=1;next} $0==e{s=0;next} s!=1{print}' "$CODEX_TOML" > "$t" && mv "$t" "$CODEX_TOML"
+{
+  echo "$HB"
+  echo '[[hooks.PreToolUse]]'
+  echo 'matcher = "^Bash$"'
+  echo '[[hooks.PreToolUse.hooks]]'
+  echo 'type = "command"'
+  printf 'command = %s\n' "$(printf '%s' "$guard" | jq -R .)"
+  echo ''
+  echo '[[hooks.PostToolUse]]'
+  echo 'matcher = "^apply_patch$"'
+  echo '[[hooks.PostToolUse.hooks]]'
+  echo 'type = "command"'
+  printf 'command = %s\n' "$(printf '%s' "$fmt" | jq -R .)"
+  echo "$HE"
+} >> "$CODEX_TOML"
+# Validate Codex TOML; roll back if broken (a parse error would disable codex entirely)
+if command -v yq >/dev/null && ! yq -p toml "$CODEX_TOML" >/dev/null 2>&1; then
+  echo "ERROR: generated Codex TOML is invalid — restoring backup" >&2
+  mv "$CODEX_TOML.agents-sync.bak" "$CODEX_TOML"
+  exit 1
+fi
+echo "hooks: wired into Claude (settings.json) + Codex (config.toml)"
+echo "✓ agents-sync complete"
