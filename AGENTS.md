@@ -74,6 +74,8 @@ This is the single source of truth for both agents. Canonical file lives at
   Delegate noisy research to `explorer`; verify changes with `reviewer` before committing.
 - **Skill `spec`** — spec-driven development: for non-trivial work, draft a `SPEC.md` from
   `~/.config/agents/templates/SPEC.md`, confirm it, implement, then verify with `reviewer`.
+- **Skill `qa`** — pre-commit verify loop: tests + `gitleaks` + lint + `reviewer` vs `SPEC.md`
+  → one gap report. CI counterpart: `templates/eval.yml` (PR eval gate).
 - **Parallel work**: `wt new <name>` for one isolated workspace; **`swarm <task>...`** fans out
   N tasks across jj workspaces with parallel headless agents (claude/codex), then review each
   with `jj -R <workspace> log`.

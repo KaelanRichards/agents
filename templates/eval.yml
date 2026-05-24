@@ -1,0 +1,21 @@
+# Copy to <project>/.github/workflows/eval.yml — runs agent/LLM evals on PRs and
+# posts pass/fail per scorer. Requires an eval suite (e.g. DeepEval pytest tests under
+# tests/evals/) and ANTHROPIC_API_KEY in the repo's Actions secrets.
+name: evals
+on:
+  pull_request:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install eval deps
+        run: pip install deepeval pytest
+      - name: Run evals (regression gate)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: pytest tests/evals -q --tb=short
