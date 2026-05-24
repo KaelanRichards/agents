@@ -63,6 +63,7 @@ jobs:
           test -f "$HOME/.codex/config.toml" && echo "codex config ok"
           agents-doctor
           bash "$HOME/.config/agents/tests/sync-roundtrip.sh"
+          uv run --script "$HOME/.config/agents/tests/dash_smoke.py"
 
   flake:
     name: nix flake check (linux)

@@ -86,6 +86,8 @@ This is the single source of truth for both agents. Canonical file lives at
   agent-CLI version drift — run it after changes or on a new machine.
 - **Overview**: `agents-status` — read-only single pane (VMs + cost, health, MCP servers,
   repo/CI + open PRs, tmux sessions).
+- **Interactive dashboard**: `dash` — live Textual TUI with panels + action keys
+  (`r` refresh · `s` sync · `d` doctor · `g` grafana · `q` quit).
 
 ## Security policy (agents + MCP)
 - **Destructive ops are blocked** by the guard hook (`rm -rf /`, disk wipes, `curl|bash`,

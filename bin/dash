@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# dash — interactive TUI control center for the agent environment (Textual; single-file via uv).
+exec uv run --quiet --script "$HOME/.config/agents/tui/dash.py" "$@"
