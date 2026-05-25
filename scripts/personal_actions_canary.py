@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import hmac
+import importlib.util
 import json
 import sys
 import time
@@ -18,6 +19,7 @@ from uuid import uuid4
 SECRETS_DIR = Path.home() / ".config" / "agents-secrets"
 PERSONAL_ENV = SECRETS_DIR / "personal-actions.env"
 ADMIN_ENV = SECRETS_DIR / "windmill-admin.env"
+SERVER = Path.home() / ".config" / "agents" / "mcp-servers" / "personal-actions" / "server.py"
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -99,6 +101,23 @@ def slack_self_target() -> str:
     return str(auth["user_id"])
 
 
+def local_gmail_draft(email: str, stamp: str) -> None:
+    spec = importlib.util.spec_from_file_location("personal_actions_server", SERVER)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load {SERVER}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    response = json.loads(
+        mod.personal_gmail_create_draft(
+            to=email,
+            subject=f"Personal actions canary draft - {stamp}",
+            body="Canary draft from the shared personal-actions backend.",
+        )
+    )
+    if response.get("status") != "ok":
+        raise RuntimeError(f"Gmail draft canary failed: {response}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--yes", action="store_true", help="perform real sends/posts/calendar writes")
@@ -159,17 +178,7 @@ def main() -> int:
     results["calendar_update"] = "ok"
     env = load_env(PERSONAL_ENV)
     if env.get("PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN"):
-        personal_dispatch(
-            "gmail_create_draft",
-            {
-                "to": args.email,
-                "subject": f"Personal actions canary draft - {stamp}",
-                "body": "Canary draft from the shared personal-actions backend.",
-                "cc": [],
-                "bcc": [],
-                "html": False,
-            },
-        )
+        local_gmail_draft(args.email, stamp)
         results["gmail_draft"] = "ok"
     else:
         results["gmail_draft"] = "skipped_missing_compose_auth"
