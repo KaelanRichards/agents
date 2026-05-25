@@ -75,11 +75,14 @@ def provider_pairs(env: dict[str, str]) -> dict[str, tuple[str, str]]:
     providers: dict[str, tuple[str, str]] = {}
     gmail = pair(env, "WINDMILL_GMAIL_OAUTH_CLIENT_ID", "WINDMILL_GMAIL_OAUTH_CLIENT_SECRET") or google
     gcal = pair(env, "WINDMILL_GCAL_OAUTH_CLIENT_ID", "WINDMILL_GCAL_OAUTH_CLIENT_SECRET") or google
+    gdrive = pair(env, "WINDMILL_GDRIVE_OAUTH_CLIENT_ID", "WINDMILL_GDRIVE_OAUTH_CLIENT_SECRET") or google
     slack = pair(env, "WINDMILL_SLACK_OAUTH_CLIENT_ID", "WINDMILL_SLACK_OAUTH_CLIENT_SECRET")
     if gmail:
         providers["gmail"] = gmail
     if gcal:
         providers["gcal"] = gcal
+    if gdrive:
+        providers["gdrive"] = gdrive
     if slack:
         providers["slack"] = slack
     return providers
@@ -134,7 +137,7 @@ def configure(args: argparse.Namespace) -> int:
     configured = sorted(providers)
     print(f"Configured Windmill OAuth clients: {', '.join(configured)}")
     print(f"OAuth API visibility: {redact_connects(connects, configured)}")
-    print("Next: open Resources -> Add resource and connect u/admin/slack, u/admin/gmail, u/admin/gcal.")
+    print("Next: open Resources -> Add resource and connect u/admin/slack, u/admin/gmail, u/admin/gcal, u/admin/gdrive.")
     return 0
 
 

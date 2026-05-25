@@ -114,7 +114,7 @@ if command -v hermes >/dev/null 2>&1; then
 		ok "personal actions default to dry-run"
 	fi
 	if [ -f "$HOME/.hermes/config.yaml" ]; then
-		for tool in personal_slack_send_message personal_gmail_create_draft personal_gmail_send_email personal_gmail_trash_email personal_calendar_create_event personal_calendar_update_event; do
+		for tool in personal_slack_send_message personal_slack_search_messages personal_gmail_search_messages personal_gmail_get_message personal_gmail_create_draft personal_gmail_send_email personal_gmail_trash_email personal_calendar_list_events personal_calendar_create_event personal_calendar_update_event personal_drive_search_files; do
 			grep -qF -- "- $tool" "$HOME/.hermes/config.yaml" && ok "hermes personal action tool: $tool" || bad "hermes missing personal action tool: $tool"
 		done
 	fi

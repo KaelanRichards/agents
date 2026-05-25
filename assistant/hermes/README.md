@@ -15,17 +15,22 @@ This writes `~/.hermes/config.yaml` with:
 - the shared local `personal_actions` MCP facade
 - context files from `AGENTS.md` and `assistant/`
 
-## Enable Slack/Gmail/Calendar Writes
+## Enable Slack/Gmail/Calendar/Drive Actions
 
 Hermes, Claude, and Codex all use the same `personal-actions-mcp` facade. It exposes only these
 actions:
 
 - Slack: send message
+- Slack: search messages
+- Gmail: search messages
+- Gmail: get one exact message id
 - Gmail: create draft
 - Gmail: send email
 - Gmail: move one exact message id to Trash
+- Google Calendar: list events
 - Google Calendar: create event
 - Google Calendar: update event
+- Google Drive: search files
 
 The facade defaults to dry-run. To route live actions through a constrained automation endpoint,
 set:
@@ -41,8 +46,8 @@ Use `assistant/personal-actions-webhook.md` for the required request contract an
 validation step. Run `personal-actions-check` before the first live write.
 
 For local Gmail send and Calendar create only, `PERSONAL_ACTIONS_PROVIDER=google_workspace_cli`
-can call Hermes' bundled Google Workspace helper. Draft creation, Slack send, and Calendar update
-still require the webhook provider.
+can call Hermes' bundled Google Workspace helper. Most actions require the webhook provider or the
+local Gmail OAuth helpers.
 
 Restart Hermes or run `/reload-mcp` in Hermes after changing the config or environment.
 

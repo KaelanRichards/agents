@@ -18,8 +18,10 @@ STABLE_ALIASES = {
     "slack": ("slack", "u/admin/slack"),
     "gmail": ("gmail", "u/admin/gmail"),
     "gcal": ("gcal", "u/admin/gcal"),
+    "gdrive": ("gdrive", "u/admin/gdrive"),
     "work_gmail": ("gmail", "u/admin/work_gmail"),
     "work_gcal": ("gcal", "u/admin/work_gcal"),
+    "work_gdrive": ("gdrive", "u/admin/work_gdrive"),
 }
 
 
@@ -84,9 +86,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--personal-gmail-source", default="")
     parser.add_argument("--personal-gcal-source", default="")
+    parser.add_argument("--personal-gdrive-source", default="")
     parser.add_argument("--work-gmail-source", default="")
     parser.add_argument("--work-gcal-source", default="")
-    parser.add_argument("--include-work", action="store_true", help="also create u/admin/work_gmail and u/admin/work_gcal")
+    parser.add_argument("--work-gdrive-source", default="")
+    parser.add_argument(
+        "--include-work",
+        action="store_true",
+        help="also create u/admin/work_gmail, u/admin/work_gcal, and u/admin/work_gdrive",
+    )
     args = parser.parse_args()
     admin = load_env(ADMIN_ENV)
     base_url = admin.get("WINDMILL_BASE_URL", os.environ.get("WINDMILL_BASE_URL", "http://localhost:8790")).rstrip("/")
@@ -100,14 +108,17 @@ def main() -> int:
     explicit = {
         "gmail": args.personal_gmail_source,
         "gcal": args.personal_gcal_source,
+        "gdrive": args.personal_gdrive_source,
         "work_gmail": args.work_gmail_source,
         "work_gcal": args.work_gcal_source,
+        "work_gdrive": args.work_gdrive_source,
     }
     linked = 0
     aliases = dict(STABLE_ALIASES)
     if not args.include_work:
         aliases.pop("work_gmail")
         aliases.pop("work_gcal")
+        aliases.pop("work_gdrive")
     for name, (resource_type, dest) in aliases.items():
         src = source_for(resources, resource_type, dest, explicit.get(name, ""), name.startswith("work_"))
         if not src:

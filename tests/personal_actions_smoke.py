@@ -72,6 +72,38 @@ def main() -> None:
             assert trash_response["action"] == "gmail_trash_email"
             assert trash_response["status"] == "dry_run"
 
+            gmail_search_response = json.loads(
+                mod.personal_gmail_search_messages(query='from:kaelan@vizcom.com newer_than:7d', account="work")
+            )
+            assert gmail_search_response["action"] == "gmail_search_messages"
+            assert gmail_search_response["status"] == "dry_run"
+
+            gmail_get_response = json.loads(
+                mod.personal_gmail_get_message(message_id="gmail-message-id", account="work")
+            )
+            assert gmail_get_response["action"] == "gmail_get_message"
+            assert gmail_get_response["status"] == "dry_run"
+
+            calendar_response = json.loads(
+                mod.personal_calendar_list_events(
+                    time_min="2026-05-25T00:00:00-07:00",
+                    time_max="2026-05-26T00:00:00-07:00",
+                    account="work",
+                )
+            )
+            assert calendar_response["action"] == "calendar_list_events"
+            assert calendar_response["status"] == "dry_run"
+
+            slack_search_response = json.loads(mod.personal_slack_search_messages(query="from:me"))
+            assert slack_search_response["action"] == "slack_search_messages"
+            assert slack_search_response["status"] == "dry_run"
+
+            drive_response = json.loads(
+                mod.personal_drive_search_files(query="name contains 'roadmap' and trashed = false", account="work")
+            )
+            assert drive_response["action"] == "drive_search_files"
+            assert drive_response["status"] == "dry_run"
+
             print("personal-actions smoke OK")
         finally:
             os.environ.clear()

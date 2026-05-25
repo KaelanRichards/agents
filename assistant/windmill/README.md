@@ -1,6 +1,6 @@
 # Windmill Backend for Personal Actions
 
-Windmill is the preferred open-source backend for live Slack, Gmail, and Calendar writes. Claude,
+Windmill is the preferred open-source backend for live Slack, Gmail, Calendar, and Drive actions. Claude,
 Codex, and Hermes still talk only to `personal-actions-mcp`; Windmill receives the single webhook
 behind that facade.
 
@@ -14,7 +14,7 @@ personal-actions-mcp
 Windmill webhook
         |
         v
-Slack / Gmail / Calendar resources
+Slack / Gmail / Calendar / Drive resources
 ```
 
 ## Start
@@ -46,9 +46,10 @@ proven.
 Self-hosted Windmill does not show Slack/Gmail/GCal under "OAuth APIs" until OAuth client
 configuration exists at the instance level. Create provider credentials first:
 
-- Google OAuth web client with both APIs enabled:
+- Google OAuth web client with the needed APIs enabled:
   - `http://localhost:8790/oauth/callback/gmail`
   - `http://localhost:8790/oauth/callback/gcal`
+  - `http://localhost:8790/oauth/callback/gdrive`
   - `http://127.0.0.1:8765/callback`
   - `http://127.0.0.1:8766/callback`
   - `http://127.0.0.1:8767/callback`
@@ -67,17 +68,20 @@ windmill-oauth-configure
 
 Then create OAuth resources:
 
-   - Slack resource, for `chat.postMessage`.
-   - Gmail or Google Workspace resource, for draft/send.
-   - Google Calendar resource, for event create/update.
+   - Slack resource, for send/search.
+   - Gmail or Google Workspace resource, for search/read/send.
+   - Google Calendar resource, for list/create/update.
+   - Google Drive resource, for file search.
 
 The handler defaults expect these resource paths:
 
 - `u/admin/slack`
 - `u/admin/gmail`
 - `u/admin/gcal`
+- `u/admin/gdrive`
 - `u/admin/work_gmail`
 - `u/admin/work_gcal`
+- `u/admin/work_gdrive`
 
 If you use different paths, edit the script defaults in Windmill.
 
@@ -94,11 +98,13 @@ After connecting a second Gmail/GCal account, link the work aliases:
 windmill-link-personal-resources --include-work
 ```
 
-Current first-pass support:
+Current support:
 
-- Slack send is live; for self-tests, send to the user's own Slack user id/DM only.
-- Gmail send is live after enabling the Gmail API in the Google Cloud project.
-- Calendar create/update is live after enabling the Google Calendar API.
+- Slack send/search is live when the Slack resource has the needed scopes. For self-tests, send to
+  the user's own Slack user id/DM only.
+- Gmail search/read/send is live after enabling the Gmail API in the Google Cloud project.
+- Calendar list/create/update is live after enabling the Google Calendar API.
+- Drive search is live after enabling the Google Drive API and connecting a `gdrive` resource.
 - Gmail draft uses a local compose-scope token because Windmill CE's built-in `gmail` OAuth grants
   `gmail.send`. To enable draft creation, add `http://127.0.0.1:8765/callback` to the Google OAuth
   client's authorized redirect URIs, then run:

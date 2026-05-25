@@ -27,11 +27,16 @@ REQUIRED_MCP = {
 
 PERSONAL_ACTION_TOOLS = {
     "personal_slack_send_message",
+    "personal_slack_search_messages",
+    "personal_gmail_search_messages",
+    "personal_gmail_get_message",
     "personal_gmail_create_draft",
     "personal_gmail_send_email",
     "personal_gmail_trash_email",
+    "personal_calendar_list_events",
     "personal_calendar_create_event",
     "personal_calendar_update_event",
+    "personal_drive_search_files",
 }
 
 

@@ -8,8 +8,11 @@ type OAuthResource = { token?: string; access_token?: string };
 const ALLOWED: Record<string, string[]> = {
   health_check: [],
   slack_send_message: ["channel", "text", "thread_ts"],
+  slack_search_messages: ["query", "max_results"],
   gmail_create_draft: ["account", "to", "subject", "body", "cc", "bcc", "html"],
   gmail_send_email: ["account", "to", "subject", "body", "cc", "bcc", "html"],
+  gmail_search_messages: ["account", "query", "max_results"],
+  gmail_get_message: ["account", "message_id", "format", "metadata_headers"],
   calendar_create_event: [
     "account",
     "calendar_id",
@@ -31,6 +34,8 @@ const ALLOWED: Record<string, string[]> = {
     "location",
     "attendees",
   ],
+  calendar_list_events: ["account", "calendar_id", "time_min", "time_max", "query", "max_results"],
+  drive_search_files: ["account", "query", "max_results"],
 };
 
 function header(metadata: Metadata | undefined, name: string): string {
@@ -60,6 +65,15 @@ function stringList(payload: Payload, key: string): string[] {
 
 function boolValue(payload: Payload, key: string): boolean {
   return payload[key] === true;
+}
+
+function boundedInt(payload: Payload, key: string, fallback: number, minimum: number, maximum: number): number {
+  const raw = payload[key];
+  const parsed = typeof raw === "number" ? Math.floor(raw) : Number.parseInt(String(raw ?? fallback), 10);
+  if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${key} must be between ${minimum} and ${maximum}`);
+  }
+  return parsed;
 }
 
 function accountValue(payload: Payload): "personal" | "work" {
@@ -150,6 +164,22 @@ async function slackSend(slack: OAuthResource, payload: Payload) {
   return body;
 }
 
+async function slackSearch(slack: OAuthResource, payload: Payload) {
+  const params = new URLSearchParams({
+    query: requireString(payload, "query"),
+    count: String(boundedInt(payload, "max_results", 10, 1, 25)),
+    sort: "timestamp",
+    sort_dir: "desc",
+  });
+  const response = await fetch(`https://slack.com/api/search.messages?${params.toString()}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token(slack)}` },
+  });
+  const body = await response.json();
+  if (!response.ok || body.ok !== true) throw new Error(`Slack search failed: ${JSON.stringify(body)}`);
+  return body;
+}
+
 async function gmailDraft(gmail: OAuthResource, payload: Payload) {
   const raw = base64Url(
     mimeMessage(
@@ -198,6 +228,42 @@ async function gmailSend(gmail: OAuthResource, payload: Payload) {
   return body;
 }
 
+async function gmailSearch(gmail: OAuthResource, payload: Payload) {
+  const params = new URLSearchParams({
+    q: requireString(payload, "query"),
+    maxResults: String(boundedInt(payload, "max_results", 10, 1, 25)),
+  });
+  const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?${params.toString()}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token(gmail)}` },
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(`Gmail search failed: ${JSON.stringify(body)}`);
+  return body;
+}
+
+async function gmailGetMessage(gmail: OAuthResource, payload: Payload) {
+  const messageId = encodeURIComponent(requireString(payload, "message_id"));
+  const format = optionalString(payload, "format") || "metadata";
+  if (!["minimal", "metadata", "full", "raw"].includes(format)) {
+    throw new Error("format must be minimal, metadata, full, or raw");
+  }
+  const params = new URLSearchParams({ format });
+  for (const header of optionalString(payload, "metadata_headers").split(",").map((value) => value.trim()).filter(Boolean)) {
+    params.append("metadataHeaders", header);
+  }
+  const response = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?${params.toString()}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token(gmail)}` },
+    },
+  );
+  const body = await response.json();
+  if (!response.ok) throw new Error(`Gmail get message failed: ${JSON.stringify(body)}`);
+  return body;
+}
+
 async function calendarCreate(gcal: OAuthResource, payload: Payload) {
   const calendarId = encodeURIComponent(requireString(payload, "calendar_id"));
   const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`, {
@@ -217,6 +283,46 @@ async function calendarCreate(gcal: OAuthResource, payload: Payload) {
   });
   const body = await response.json();
   if (!response.ok) throw new Error(`Calendar create failed: ${JSON.stringify(body)}`);
+  return body;
+}
+
+async function calendarList(gcal: OAuthResource, payload: Payload) {
+  const calendarId = encodeURIComponent(requireString(payload, "calendar_id"));
+  const params = new URLSearchParams({
+    timeMin: requireString(payload, "time_min"),
+    timeMax: requireString(payload, "time_max"),
+    maxResults: String(boundedInt(payload, "max_results", 20, 1, 100)),
+    singleEvents: "true",
+    orderBy: "startTime",
+  });
+  const query = optionalString(payload, "query");
+  if (query) params.set("q", query);
+  const response = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events?${params.toString()}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token(gcal)}` },
+    },
+  );
+  const body = await response.json();
+  if (!response.ok) throw new Error(`Calendar list failed: ${JSON.stringify(body)}`);
+  return body;
+}
+
+async function driveSearch(drive: OAuthResource, payload: Payload) {
+  const params = new URLSearchParams({
+    q: requireString(payload, "query"),
+    pageSize: String(boundedInt(payload, "max_results", 10, 1, 50)),
+    fields: "files(id,name,mimeType,webViewLink,modifiedTime,owners(displayName,emailAddress)),nextPageToken",
+    orderBy: "recency desc",
+    spaces: "drive",
+  });
+  const response = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${token(drive)}` },
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(`Drive search failed: ${JSON.stringify(body)}`);
   return body;
 }
 
@@ -255,6 +361,8 @@ export async function main(
   work_gmail_resource_path = "u/admin/work_gmail",
   calendar_resource_path = "u/admin/gcal",
   work_calendar_resource_path = "u/admin/work_gcal",
+  drive_resource_path = "u/admin/gdrive",
+  work_drive_resource_path = "u/admin/work_gdrive",
   WEBHOOK__METADATA__?: Metadata,
 ) {
   if (raw_string) {
@@ -273,6 +381,9 @@ export async function main(
   if (action === "slack_send_message") {
     return { ok: true, action, result: await slackSend(await wmill.getResource(slack_resource_path), payload) };
   }
+  if (action === "slack_search_messages") {
+    return { ok: true, action, result: await slackSearch(await wmill.getResource(slack_resource_path), payload) };
+  }
   if (action === "gmail_create_draft") {
     const path = accountPath(payload, gmail_resource_path, work_gmail_resource_path);
     return { ok: true, action, result: await gmailDraft(await wmill.getResource(path), payload) };
@@ -281,6 +392,14 @@ export async function main(
     const path = accountPath(payload, gmail_resource_path, work_gmail_resource_path);
     return { ok: true, action, result: await gmailSend(await wmill.getResource(path), payload) };
   }
+  if (action === "gmail_search_messages") {
+    const path = accountPath(payload, gmail_resource_path, work_gmail_resource_path);
+    return { ok: true, action, result: await gmailSearch(await wmill.getResource(path), payload) };
+  }
+  if (action === "gmail_get_message") {
+    const path = accountPath(payload, gmail_resource_path, work_gmail_resource_path);
+    return { ok: true, action, result: await gmailGetMessage(await wmill.getResource(path), payload) };
+  }
   if (action === "calendar_create_event") {
     const path = accountPath(payload, calendar_resource_path, work_calendar_resource_path);
     return { ok: true, action, result: await calendarCreate(await wmill.getResource(path), payload) };
@@ -288,6 +407,14 @@ export async function main(
   if (action === "calendar_update_event") {
     const path = accountPath(payload, calendar_resource_path, work_calendar_resource_path);
     return { ok: true, action, result: await calendarUpdate(await wmill.getResource(path), payload) };
+  }
+  if (action === "calendar_list_events") {
+    const path = accountPath(payload, calendar_resource_path, work_calendar_resource_path);
+    return { ok: true, action, result: await calendarList(await wmill.getResource(path), payload) };
+  }
+  if (action === "drive_search_files") {
+    const path = accountPath(payload, drive_resource_path, work_drive_resource_path);
+    return { ok: true, action, result: await driveSearch(await wmill.getResource(path), payload) };
   }
   throw new Error(`unhandled action: ${action}`);
 }

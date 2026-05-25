@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["mcp>=1.2"]
 # ///
-"""personal-actions — narrow shared MCP facade for Slack/Gmail/Calendar writes."""
+"""personal-actions — narrow shared MCP facade for Slack/Gmail/Calendar actions."""
 
 from __future__ import annotations
 
@@ -152,6 +152,16 @@ def _split_csv(value: str = "") -> list[str]:
     return [part.strip() for part in (value or "").split(",") if part.strip()]
 
 
+def _bounded_int(name: str, value: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise PersonalActionError(f"{name} must be an integer") from exc
+    if parsed < minimum or parsed > maximum:
+        raise PersonalActionError(f"{name} must be between {minimum} and {maximum}")
+    return parsed
+
+
 def _account(value: str = "personal") -> str:
     value = (value or "personal").strip().lower()
     if value not in {"personal", "work"}:
@@ -187,6 +197,16 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
 
         if action == "gmail_trash_email":
             result = _gmail_trash_email_local(payload)
+            _audit(action, payload, "ok", result)
+            return _json_response(action, "ok", payload, result)
+
+        if action == "gmail_search_messages" and _gmail_modify_configured_for(str(payload.get("account", "personal"))):
+            result = _gmail_search_messages_local(payload)
+            _audit(action, payload, "ok", result)
+            return _json_response(action, "ok", payload, result)
+
+        if action == "gmail_get_message" and _gmail_modify_configured_for(str(payload.get("account", "personal"))):
+            result = _gmail_get_message_local(payload)
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
 
@@ -404,6 +424,54 @@ def _gmail_trash_email_local(payload: dict[str, Any]) -> dict[str, Any]:
         raise PersonalActionError(f"Gmail trash failed: {_redact_text(text)}") from exc
 
 
+def _google_get_json(url: str, token: str, label: str) -> dict[str, Any]:
+    req = urllib.request.Request(url, method="GET", headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            return {"status_code": resp.status, "body": json.loads(resp.read().decode("utf-8", errors="replace"))}
+    except urllib.error.HTTPError as exc:
+        text = exc.read(20_000).decode("utf-8", errors="replace")
+        raise PersonalActionError(f"{label} failed: {_redact_text(text)}") from exc
+
+
+def _gmail_search_messages_local(payload: dict[str, Any]) -> dict[str, Any]:
+    account = _account(str(payload.get("account", "personal")))
+    if not _gmail_modify_configured_for(account):
+        raise PersonalActionError(
+            f"Gmail modify OAuth is not configured for account '{account}'; run personal-actions-google-modify-auth"
+        )
+    query = urllib.parse.urlencode(
+        {
+            "q": str(payload.get("query", "")).strip(),
+            "maxResults": int(payload.get("max_results", 10)),
+        }
+    )
+    return _google_get_json(
+        f"https://gmail.googleapis.com/gmail/v1/users/me/messages?{query}",
+        _gmail_modify_access_token(account),
+        "Gmail search",
+    )
+
+
+def _gmail_get_message_local(payload: dict[str, Any]) -> dict[str, Any]:
+    account = _account(str(payload.get("account", "personal")))
+    if not _gmail_modify_configured_for(account):
+        raise PersonalActionError(
+            f"Gmail modify OAuth is not configured for account '{account}'; run personal-actions-google-modify-auth"
+        )
+    message_id = urllib.parse.quote(str(payload["message_id"]).strip(), safe="")
+    params = {
+        "format": str(payload.get("format", "metadata")).strip(),
+        "metadataHeaders": str(payload.get("metadata_headers", "")).strip(),
+    }
+    query = urllib.parse.urlencode({key: value for key, value in params.items() if value})
+    return _google_get_json(
+        f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}?{query}",
+        _gmail_modify_access_token(account),
+        "Gmail get message",
+    )
+
+
 def _google_api_cmd() -> list[str]:
     script = _hermes_home() / "skills" / "productivity" / "google-workspace" / "scripts" / "google_api.py"
     if not script.exists():
@@ -516,6 +584,37 @@ def personal_gmail_trash_email(message_id: str, account: str = "personal") -> st
 
 
 @mcp.tool()
+def personal_gmail_search_messages(query: str, max_results: int = 10, account: str = "personal") -> str:
+    """Search Gmail messages by Gmail query syntax and return message ids/thread ids."""
+    payload = {
+        "account": _account(account),
+        "query": _require("query", query),
+        "max_results": _bounded_int("max_results", max_results, 1, 25),
+    }
+    return _dispatch("gmail_search_messages", payload)
+
+
+@mcp.tool()
+def personal_gmail_get_message(
+    message_id: str,
+    format: str = "metadata",
+    metadata_headers: str = "From,To,Cc,Subject,Date",
+    account: str = "personal",
+) -> str:
+    """Get one Gmail message by exact id; defaults to metadata/snippet rather than full body."""
+    fmt = _require("format", format).lower()
+    if fmt not in {"minimal", "metadata", "full", "raw"}:
+        raise PersonalActionError("format must be minimal, metadata, full, or raw")
+    payload = {
+        "account": _account(account),
+        "message_id": _require("message_id", message_id),
+        "format": fmt,
+        "metadata_headers": ",".join(_split_csv(metadata_headers)),
+    }
+    return _dispatch("gmail_get_message", payload)
+
+
+@mcp.tool()
 def personal_calendar_create_event(
     summary: str,
     start: str,
@@ -567,6 +666,48 @@ def personal_calendar_update_event(
     if not any(payload[key] for key in ["summary", "start", "end", "description", "location", "attendees"]):
         raise PersonalActionError("at least one update field is required")
     return _dispatch("calendar_update_event", payload)
+
+
+@mcp.tool()
+def personal_calendar_list_events(
+    time_min: str,
+    time_max: str,
+    calendar_id: str = "primary",
+    query: str = "",
+    max_results: int = 20,
+    account: str = "personal",
+) -> str:
+    """List Google Calendar events in a time window; read-only."""
+    payload = {
+        "account": _account(account),
+        "calendar_id": _require("calendar_id", calendar_id),
+        "time_min": _require("time_min", time_min),
+        "time_max": _require("time_max", time_max),
+        "query": _optional(query),
+        "max_results": _bounded_int("max_results", max_results, 1, 100),
+    }
+    return _dispatch("calendar_list_events", payload)
+
+
+@mcp.tool()
+def personal_slack_search_messages(query: str, max_results: int = 10) -> str:
+    """Search Slack messages with Slack search syntax; read-only and scope-dependent."""
+    payload = {
+        "query": _require("query", query),
+        "max_results": _bounded_int("max_results", max_results, 1, 25),
+    }
+    return _dispatch("slack_search_messages", payload)
+
+
+@mcp.tool()
+def personal_drive_search_files(query: str, max_results: int = 10, account: str = "personal") -> str:
+    """Search Google Drive files using Drive query syntax; read-only and scope-dependent."""
+    payload = {
+        "account": _account(account),
+        "query": _require("query", query),
+        "max_results": _bounded_int("max_results", max_results, 1, 50),
+    }
+    return _dispatch("drive_search_files", payload)
 
 
 if __name__ == "__main__":
