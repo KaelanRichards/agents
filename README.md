@@ -5,6 +5,10 @@ Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md
 for all shells plus `zsh/agents.zsh` for interactive extras), dashboards, observability, CI,
 and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
 
+The shared MCP set includes the official Linear remote MCP server at
+`https://mcp.linear.app/mcp`; authenticate it from each client with that client's MCP login flow
+when first used.
+
 ## Provision an always-on VM (so you can close your laptop)
 
 **Option A — one command (Hetzner):**

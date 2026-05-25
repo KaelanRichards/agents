@@ -47,6 +47,10 @@
       "type": "stdio",
       "command": "/Users/kaelan/.config/agents/bin/personal-actions-mcp",
       "args": []
+    },
+    "linear": {
+      "type": "http",
+      "url": "https://mcp.linear.app/mcp"
     }
   }
 }
