@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# windmill-oauth-configure — apply local Windmill OAuth client settings from secrets.
+set -euo pipefail
+exec python3 "$HOME/.config/agents/scripts/windmill_oauth_configure.py" "$@"

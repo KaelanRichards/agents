@@ -11,7 +11,9 @@ def main() -> None:
     compose = ROOT / "stacks" / "windmill" / "docker-compose.yml"
     env_example = ROOT / "stacks" / "windmill" / ".env.example"
     handler = ROOT / "assistant" / "windmill" / "personal_actions_handler.ts"
-    for path in [compose, env_example, handler]:
+    oauth_example = ROOT / "assistant" / "windmill" / "oauth.env.example"
+    oauth_configure = ROOT / "scripts" / "windmill_oauth_configure.py"
+    for path in [compose, env_example, handler, oauth_example, oauth_configure]:
         assert path.exists(), f"missing {path}"
 
     compose_text = compose.read_text(encoding="utf-8")
@@ -34,6 +36,10 @@ def main() -> None:
     bootstrap = (ROOT / "scripts" / "windmill_bootstrap.py").read_text(encoding="utf-8")
     assert "jobs/run_wait_result/h" in bootstrap
     assert '"tag": "deno"' in bootstrap
+    oauth_text = oauth_configure.read_text(encoding="utf-8")
+    assert "/api/settings/instance_config" in oauth_text
+    assert "GOOGLE_OAUTH_CLIENT_ID" in oauth_text
+    assert "WINDMILL_SLACK_OAUTH_CLIENT_ID" in oauth_text
     print("windmill stack smoke OK")
 
 

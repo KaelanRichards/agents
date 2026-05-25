@@ -21,7 +21,7 @@ fi
 
 # hands-off agent modes (guard hook + sandbox still apply)
 alias yc='claude --permission-mode auto'
-alias yx='codex --full-auto'
+alias yx='codex --ask-for-approval never --sandbox workspace-write'
 
 # jj (Jujutsu) shortcuts
 alias j='jj'

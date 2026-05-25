@@ -43,7 +43,25 @@ proven.
 
 ## OAuth Resources
 
-Create OAuth resources:
+Self-hosted Windmill does not show Slack/Gmail/GCal under "OAuth APIs" until OAuth client
+configuration exists at the instance level. Create provider credentials first:
+
+- Google OAuth web client with both APIs enabled:
+  - `http://localhost:8790/oauth/callback/gmail`
+  - `http://localhost:8790/oauth/callback/gcal`
+- Slack app OAuth client/secret, or use Windmill's Slack CLI path with a pre-minted `xoxb-...`
+  bot token.
+
+Store the OAuth client values outside the repo:
+
+```bash
+cp ~/.config/agents/assistant/windmill/oauth.env.example \
+  ~/.config/agents-secrets/windmill-oauth.env
+zed ~/.config/agents-secrets/windmill-oauth.env
+windmill-oauth-configure
+```
+
+Then create OAuth resources:
 
    - Slack resource, for `chat.postMessage`.
    - Gmail or Google Workspace resource, for draft/send.
@@ -56,6 +74,17 @@ The handler defaults expect these resource paths:
 - `u/admin/gcal`
 
 If you use different paths, edit the script defaults in Windmill.
+
+The Windmill UI may generate names like `u/admin/charismatic_gmail`. Create stable aliases at
+the paths above so Claude, Codex, and Hermes keep using the same resource contract.
+
+Current first-pass support:
+
+- Slack send is live; for self-tests, send to the user's own Slack user id/DM only.
+- Gmail send is live after enabling the Gmail API in the Google Cloud project.
+- Calendar create/update is live after enabling the Google Calendar API.
+- Gmail draft is not live through Windmill's built-in `gmail` OAuth because that connector grants
+  `gmail.send`; drafts require a compose/draft-capable scope.
 
 ## Verify
 
