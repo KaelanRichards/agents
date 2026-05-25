@@ -25,6 +25,8 @@ brew bundle --file="$AH/Brewfile"
 
 echo "==> languages: mise (node/pnpm/python) + rust"
 mise use -g node@lts pnpm@latest python@3.12
+# auto-read per-repo .nvmrc / .node-version / .python-version on cd
+mise settings set idiomatic_version_file_enable_tools "node,python" 2>/dev/null || true
 [ -f "$HOME/.cargo/env" ] || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
 
 echo "==> agent CLIs (claude + codex)"
@@ -56,7 +58,11 @@ mkdir -p "$HOME/.config/tmux" "$HOME/.config/zellij"
 ln -sf "$AH/tmux/tmux.conf" "$HOME/.config/tmux/tmux.conf"
 ln -sf "$AH/zellij/config.kdl" "$HOME/.config/zellij/config.kdl"
 
-echo "==> zsh"
+echo "==> zsh (env for ALL shells via ~/.zshenv; interactive via ~/.zshrc)"
+# ~/.zshenv is read by every zsh incl. non-interactive agent shells -> toolchain on PATH
+[ -f "$HOME/.zshenv" ] || touch "$HOME/.zshenv"
+grep -q 'agents/zsh/agents.env.zsh' "$HOME/.zshenv" ||
+	echo '[ -f "$HOME/.config/agents/zsh/agents.env.zsh" ] && . "$HOME/.config/agents/zsh/agents.env.zsh"' >>"$HOME/.zshenv"
 [ -f "$HOME/.zshrc" ] || touch "$HOME/.zshrc"
 grep -q 'agents/zsh/agents.zsh' "$HOME/.zshrc" ||
 	echo '[ -f "$HOME/.config/agents/zsh/agents.zsh" ] && source "$HOME/.config/agents/zsh/agents.zsh"' >>"$HOME/.zshrc"

@@ -39,6 +39,22 @@ This is the single source of truth for both agents. Canonical file lives at
 - Task runner: if a `justfile` exists, use `just <task>`.
 - Iterate: `watchexec` / `entr` to re-run tests on change; `hyperfine` to benchmark.
 
+## Running a project locally
+- **Toolchain auto-selects per repo**: mise reads `.nvmrc` / `.node-version` / `.python-version`
+  (idiomatic version files enabled), so `cd` into a cloned repo uses its pinned versions; else
+  `mise use <tool>@<ver>`.
+- **Containers via OrbStack**: `orb start` boots the engine, then `docker` / `docker compose`
+  resolve (CLI shim at `~/.orbstack/bin`, on PATH in agent shells). Bring up a repo's service
+  deps with its own `docker compose up -d <svc>`.
+- **JS/TS**: `pnpm install`, then the repo's dev script (`pnpm dev` / `pnpm serve`).
+- **Startup gotcha**: some apps `throw` on a missing env var at *import* time; if that module is
+  loaded via a dynamic `import()`, the failure is a swallowed rejection — the server "starts" but
+  routes never mount (port open, requests 404). Put placeholders in a gitignored `.env.local`
+  (never commit secrets) and verify routes actually respond, not just that the port is open.
+- **Shell env**: PATH/toolchain for all shells lives in `zsh/agents.env.zsh` (via `~/.zshenv`);
+  interactive extras in `zsh/agents.zsh` (via `~/.zshrc`). Claude Code snapshots the shell per
+  session, so restart a session to pick up shell-env changes.
+
 ## Version control — jj-first
 - **Use Jujutsu (`jj`) as the primary VCS.** Repos are **colocated** (default in jj ≥ 0.39;
   `jj git init --colocate` in an existing repo, or `jj git clone <url>`), so `git`, `gh`,

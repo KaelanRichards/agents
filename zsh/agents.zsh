@@ -1,17 +1,13 @@
-# agents.zsh — cross-platform shell env (source this from ~/.zshrc).
-# Mirrors the laptop dev environment so the remote VM behaves identically.
+# agents.zsh — interactive shell setup (prompt, completions, aliases). Source from ~/.zshrc.
+#
+# Env/PATH (brew, ~/.local/bin, mise shims, cargo, OrbStack) lives in agents.env.zsh and is
+# loaded for ALL shells via ~/.zshenv. We source it here too (idempotent) so this file still
+# works if ~/.zshenv isn't wired yet.
+[ -f "$HOME/.config/agents/zsh/agents.env.zsh" ] && . "$HOME/.config/agents/zsh/agents.env.zsh"
 
-# Homebrew (Linux or macOS)
-for _b in /home/linuxbrew/.linuxbrew/bin/brew /opt/homebrew/bin/brew; do
-  [ -x "$_b" ] && eval "$("$_b" shellenv)" && break
-done
-unset _b
-
-export PATH="$HOME/.local/bin:$PATH"
-# mise shims so node/npx/python resolve in non-interactive / agent-spawned shells
-[ -d "$HOME/.local/share/mise/shims" ] && export PATH="$HOME/.local/share/mise/shims:$PATH"
+# mise: interactive activation adds a precmd hook for auto version-switching on `cd`
+# (non-interactive shells rely on the shims from agents.env.zsh instead).
 command -v mise     >/dev/null && eval "$(mise activate zsh)"
-[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
 command -v starship >/dev/null && eval "$(starship init zsh)"
 command -v fzf      >/dev/null && source <(fzf --zsh) 2>/dev/null
 
@@ -40,6 +36,5 @@ alias jb='jj bookmark'
 
 # Repeated CI/remote runs vs the same repo? Keep the prompt cached for an hour:
 # export ENABLE_PROMPT_CACHING_1H=1
-
-# GitHub PAT for the GitHub MCP — set this in the VM's environment/secrets.
+# GitHub PAT for the GitHub MCP — set this in the VM's environment/secrets:
 # export GITHUB_PAT="..."

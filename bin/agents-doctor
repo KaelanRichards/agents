@@ -73,6 +73,28 @@ else
 fi
 rm -f "$cur"
 
+echo "== container runtime (local dev) =="
+if command -v docker >/dev/null 2>&1; then
+	if docker info >/dev/null 2>&1; then ok "docker present + daemon running"
+	else warn "docker on PATH but daemon not running (OrbStack: 'orb start')"; fi
+elif command -v orb >/dev/null 2>&1; then
+	warn "OrbStack installed but 'docker' not on PATH (run 'orb start')"
+else
+	warn "no container runtime (docker/OrbStack) — needed to run local service deps"
+fi
+
+echo "== agent shell PATH (non-interactive zsh) =="
+# the agent Bash tool runs commands in a non-interactive shell; it must resolve the toolchain
+# without a manual `eval "$(brew shellenv)"`. This catches a missing/broken ~/.zshenv wiring.
+if command -v zsh >/dev/null 2>&1; then
+	miss=""
+	for t in node rg jq; do zsh -c "command -v $t" >/dev/null 2>&1 || miss="$miss $t"; done
+	[ -z "$miss" ] && ok "non-interactive zsh resolves toolchain (node/rg/jq)" ||
+		bad "non-interactive zsh missing:$miss — wire ~/.zshenv -> agents.env.zsh (run bootstrap)"
+else
+	warn "zsh not installed — agent shell PATH check skipped"
+fi
+
 echo
 [ "$ERR" -gt 0 ] && {
 	echo "FAILED: $ERR error(s), $WARN warning(s)"
