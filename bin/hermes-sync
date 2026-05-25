@@ -16,11 +16,7 @@ cat > "$config" <<EOF
 #
 # Personal actions are served by the local personal-actions-mcp facade.
 # It defaults to dry-run unless a live provider is configured, for example:
-#   export PERSONAL_ACTIONS_PROVIDER=webhook
-#   export PERSONAL_ACTIONS_WEBHOOK_URL='https://...'
-#   export PERSONAL_ACTIONS_WEBHOOK_TOKEN='...'
-#   export PERSONAL_ACTIONS_WEBHOOK_HMAC_SECRET='...'
-#   export PERSONAL_ACTIONS_DRY_RUN=0
+#   personal-actions-configure --url 'https://...' --live
 #
 # The facade exposes only:
 #   Slack send message

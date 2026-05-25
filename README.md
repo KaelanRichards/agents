@@ -117,7 +117,8 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - Personal-assistant writes are controlled by `assistant/policy.md` and the shared
   `personal-actions-mcp` facade. It defaults to dry-run unless `PERSONAL_ACTIONS_DRY_RUN=0`,
   `PERSONAL_ACTIONS_PROVIDER`, and the provider credentials are configured. Use
-  `assistant/personal-actions-webhook.md` for the backend contract and `personal-actions-check`
+  `personal-actions-configure` to write the local gitignored env file, see
+  `assistant/personal-actions-webhook.md` for the backend contract, and run `personal-actions-check`
   for a non-mutating reachability test.
 - The PreToolUse guard hook is active here too; destructive commands stay blocked.
 - Tools: see `Brewfile`. Languages via `mise` + `rustup`. VCS is jj-first (colocated on the laptop).

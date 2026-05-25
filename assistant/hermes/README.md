@@ -30,11 +30,7 @@ The facade defaults to dry-run. To route live actions through a constrained auto
 set:
 
 ```bash
-export PERSONAL_ACTIONS_PROVIDER=webhook
-export PERSONAL_ACTIONS_WEBHOOK_URL="https://..."
-export PERSONAL_ACTIONS_WEBHOOK_TOKEN="..."
-export PERSONAL_ACTIONS_WEBHOOK_HMAC_SECRET="..."
-export PERSONAL_ACTIONS_DRY_RUN=0
+personal-actions-configure --url "https://..." --live
 hermes-sync
 ```
 

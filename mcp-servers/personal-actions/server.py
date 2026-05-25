@@ -39,6 +39,28 @@ class PersonalActionError(ValueError):
     """Expected user/configuration error."""
 
 
+def _load_env_file() -> None:
+    configured = os.environ.get("PERSONAL_ACTIONS_ENV_FILE", "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+    else:
+        path = Path.home() / ".config" / "agents-secrets" / "personal-actions.env"
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_env_file()
+
+
 def _agents_home() -> Path:
     return Path(os.environ.get("AGENTS_HOME", str(Path.home() / ".config/agents"))).expanduser()
 

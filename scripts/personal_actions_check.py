@@ -10,7 +10,27 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from uuid import uuid4
+
+
+def load_env_file() -> None:
+    configured = os.environ.get("PERSONAL_ACTIONS_ENV_FILE", "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+    else:
+        path = Path.home() / ".config" / "agents-secrets" / "personal-actions.env"
+    if not path.exists():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 def fail(message: str) -> int:
@@ -19,6 +39,7 @@ def fail(message: str) -> int:
 
 
 def main() -> int:
+    load_env_file()
     url = os.environ.get("PERSONAL_ACTIONS_WEBHOOK_URL", "").strip()
     if not url:
         return fail("PERSONAL_ACTIONS_WEBHOOK_URL is not set")
