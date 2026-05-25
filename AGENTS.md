@@ -130,7 +130,8 @@ This is the single source of truth for both agents. Canonical file lives at
   by default. `run_task` and `sync_config` require `AGENTS_MCP_ALLOW_MUTATION=1`.
 - **Hermes personal assistant**: Hermes config is generated with `hermes-sync`; policy and memory
   live under `~/.config/agents/assistant`. Slack send, Gmail draft/send, and Calendar create/update
-  are allowed only through the constrained `HERMES_PERSONAL_ACTIONS_MCP_URL` endpoint.
+  are allowed only through the shared constrained `personal-actions-mcp` facade, which defaults to
+  dry-run unless a live provider is explicitly configured.
 - **Least privilege & human-in-the-loop**: don't widen filesystem/MCP scope unnecessarily;
   get explicit confirmation before destructive or outward-facing actions.
 

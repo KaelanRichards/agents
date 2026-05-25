@@ -92,10 +92,15 @@ if command -v hermes >/dev/null 2>&1; then
 	else
 		warn "hermes agents_readonly MCP missing (run hermes-sync)"
 	fi
-	if [ -n "${HERMES_PERSONAL_ACTIONS_MCP_URL:-}" ]; then
-		ok "Hermes personal action endpoint env present"
+	if hermes mcp list 2>/dev/null | grep -q "personal_actions"; then
+		ok "hermes personal_actions MCP configured"
 	else
-		warn "Hermes personal action endpoint not set (set HERMES_PERSONAL_ACTIONS_MCP_URL for Slack/Gmail/Calendar writes)"
+		warn "hermes personal_actions MCP missing (run hermes-sync)"
+	fi
+	if [ "${PERSONAL_ACTIONS_DRY_RUN:-1}" = "0" ] || [ -n "${PERSONAL_ACTIONS_WEBHOOK_URL:-}" ]; then
+		ok "personal actions live provider env present"
+	else
+		ok "personal actions default to dry-run"
 	fi
 else
 	warn "Hermes not installed"

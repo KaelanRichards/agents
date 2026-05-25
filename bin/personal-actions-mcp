@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# personal-actions-mcp — narrow Slack/Gmail/Calendar write facade for Claude, Codex, and Hermes.
+exec uv run --quiet --script "$HOME/.config/agents/mcp-servers/personal-actions/server.py" "$@"

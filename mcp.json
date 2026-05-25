@@ -42,6 +42,11 @@
       "type": "stdio",
       "command": "agents-mcp",
       "args": []
+    },
+    "personal-actions": {
+      "type": "stdio",
+      "command": "/Users/kaelan/.config/agents/bin/personal-actions-mcp",
+      "args": []
     }
   }
 }

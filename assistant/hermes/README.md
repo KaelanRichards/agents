@@ -12,12 +12,13 @@ hermes-sync
 This writes `~/.hermes/config.yaml` with:
 
 - read-only `agents` MCP tools
-- a disabled `personal_actions` MCP endpoint until configured
+- the shared local `personal_actions` MCP facade
 - context files from `AGENTS.md` and `assistant/`
 
 ## Enable Slack/Gmail/Calendar Writes
 
-Create a constrained remote MCP endpoint with only these actions:
+Hermes, Claude, and Codex all use the same `personal-actions-mcp` facade. It exposes only these
+actions:
 
 - Slack: send message
 - Gmail: create draft
@@ -25,17 +26,25 @@ Create a constrained remote MCP endpoint with only these actions:
 - Google Calendar: create event
 - Google Calendar: update event
 
-Recommended providers are Zapier MCP or Pipedream MCP because they handle OAuth and app-specific
-scopes outside this repo. Do not use an all-actions endpoint.
-
-Then set:
+The facade defaults to dry-run. To route live actions through a constrained automation endpoint,
+set:
 
 ```bash
-export HERMES_PERSONAL_ACTIONS_MCP_URL="https://..."
+export PERSONAL_ACTIONS_PROVIDER=webhook
+export PERSONAL_ACTIONS_WEBHOOK_URL="https://..."
+export PERSONAL_ACTIONS_WEBHOOK_TOKEN="..."
+export PERSONAL_ACTIONS_DRY_RUN=0
 hermes-sync
 ```
 
-Restart Hermes or run `/reload-mcp` in Hermes.
+Recommended webhook backends are Zapier or Pipedream because they handle OAuth and app-specific
+scopes outside this repo. Do not use an all-actions endpoint.
+
+For local Gmail send and Calendar create only, `PERSONAL_ACTIONS_PROVIDER=google_workspace_cli`
+can call Hermes' bundled Google Workspace helper. Draft creation, Slack send, and Calendar update
+still require the webhook provider.
+
+Restart Hermes or run `/reload-mcp` in Hermes after changing the config or environment.
 
 ## Use
 
@@ -43,8 +52,9 @@ Restart Hermes or run `/reload-mcp` in Hermes.
 hermes
 ```
 
-Ask Hermes to list available MCP tools after sync. It should see `agents_readonly` and, once the
-URL is configured, the constrained personal action tools.
+Ask Hermes to list available MCP tools after sync. It should see `agents_readonly` and the five
+constrained personal action tools. With no live provider configured, calls return dry-run responses
+and write redacted audit logs under `assistant/logs/personal-actions/`.
 
 ## Boundary
 

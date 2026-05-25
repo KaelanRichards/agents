@@ -30,6 +30,7 @@ test:
     for f in agents/*.json; do jq -e . "$f" >/dev/null; done
     ruff check .
     bash tests/sync-roundtrip.sh
+    uv run --script tests/personal_actions_smoke.py
     uv run --script tests/dash_smoke.py
 
 secrets:
