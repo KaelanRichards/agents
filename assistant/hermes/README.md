@@ -45,6 +45,18 @@ still require the webhook provider.
 
 Restart Hermes or run `/reload-mcp` in Hermes after changing the config or environment.
 
+Live canaries are available through:
+
+```bash
+personal-actions-canary --yes
+```
+
+Gmail draft creation requires the separate compose-scope local OAuth setup:
+
+```bash
+personal-actions-google-compose-auth
+```
+
 ## Use
 
 ```bash

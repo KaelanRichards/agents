@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -172,6 +173,11 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
             _audit(action, payload, "dry_run", result)
             return _json_response(action, "dry_run", payload, result)
 
+        if action == "gmail_create_draft" and _gmail_compose_configured():
+            result = _gmail_create_draft_local(payload)
+            _audit(action, payload, "ok", result)
+            return _json_response(action, "ok", payload, result)
+
         provider = _provider()
         if provider == "webhook":
             result = _dispatch_webhook(action, payload)
@@ -240,6 +246,93 @@ def _parse_json_or_text(text: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         return text
+
+
+def _gmail_compose_configured() -> bool:
+    return all(
+        os.environ.get(name, "").strip()
+        for name in [
+            "PERSONAL_GMAIL_COMPOSE_CLIENT_ID",
+            "PERSONAL_GMAIL_COMPOSE_CLIENT_SECRET",
+            "PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN",
+        ]
+    )
+
+
+def _gmail_compose_access_token() -> str:
+    body = urllib.parse.urlencode(
+        {
+            "client_id": os.environ["PERSONAL_GMAIL_COMPOSE_CLIENT_ID"].strip(),
+            "client_secret": os.environ["PERSONAL_GMAIL_COMPOSE_CLIENT_SECRET"].strip(),
+            "refresh_token": os.environ["PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN"].strip(),
+            "grant_type": "refresh_token",
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        "https://oauth2.googleapis.com/token",
+        data=body,
+        method="POST",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        text = exc.read(20_000).decode("utf-8", errors="replace")
+        raise PersonalActionError(f"Gmail compose token refresh failed: {_redact_text(text)}") from exc
+    token = str(data.get("access_token", "")).strip()
+    if not token:
+        raise PersonalActionError("Gmail compose token refresh returned no access_token")
+    return token
+
+
+def _mime_message(to: str, subject: str, body: str, cc: list[str], bcc: list[str], html: bool) -> str:
+    lines = [
+        f"To: {to}",
+        f"Subject: {subject}",
+        f"Content-Type: {'text/html' if html else 'text/plain'}; charset=\"UTF-8\"",
+        "",
+        body,
+    ]
+    if cc:
+        lines.insert(1, f"Cc: {', '.join(cc)}")
+    if bcc:
+        lines.insert(2 if cc else 1, f"Bcc: {', '.join(bcc)}")
+    return "\r\n".join(lines)
+
+
+def _base64_url(value: str) -> str:
+    import base64
+
+    return base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _gmail_create_draft_local(payload: dict[str, Any]) -> dict[str, Any]:
+    raw = _base64_url(
+        _mime_message(
+            payload["to"],
+            payload["subject"],
+            payload["body"],
+            payload.get("cc", []),
+            payload.get("bcc", []),
+            bool(payload.get("html")),
+        )
+    )
+    req = urllib.request.Request(
+        "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+        data=json.dumps({"message": {"raw": raw}}, separators=(",", ":")).encode("utf-8"),
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {_gmail_compose_access_token()}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            return {"status_code": resp.status, "body": json.loads(resp.read().decode("utf-8", errors="replace"))}
+    except urllib.error.HTTPError as exc:
+        text = exc.read(20_000).decode("utf-8", errors="replace")
+        raise PersonalActionError(f"Gmail draft failed: {_redact_text(text)}") from exc
 
 
 def _google_api_cmd() -> list[str]:

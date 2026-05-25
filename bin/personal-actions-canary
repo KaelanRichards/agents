@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# personal-actions-canary — run live personal-actions canaries with explicit opt-in.
+set -euo pipefail
+exec python3 "$HOME/.config/agents/scripts/personal_actions_canary.py" "$@"

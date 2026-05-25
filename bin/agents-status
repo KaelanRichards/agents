@@ -28,6 +28,43 @@ else
 	echo "  mcp-sync not on PATH"
 fi
 
+hr "personal actions"
+pa_env="$HOME/.config/agents-secrets/personal-actions.env"
+wm_env="$HOME/.config/agents-secrets/windmill-admin.env"
+if [ -f "$pa_env" ]; then
+	dry_run="$(awk -F= '$1=="PERSONAL_ACTIONS_DRY_RUN"{print $2}' "$pa_env" | tail -1)"
+	provider="$(awk -F= '$1=="PERSONAL_ACTIONS_PROVIDER"{print $2}' "$pa_env" | tail -1)"
+	compose="$(awk -F= '$1=="PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN"{print "configured"}' "$pa_env" | tail -1)"
+	echo "  provider: ${provider:-webhook}"
+	echo "  mode: $([ "$dry_run" = "0" ] && echo live || echo dry-run)"
+	echo "  gmail drafts: ${compose:-needs personal-actions-google-compose-auth}"
+else
+	echo "  missing $pa_env"
+fi
+if command -v personal-actions-check >/dev/null 2>&1; then
+	pa_health="$(personal-actions-check 2>/dev/null | tail -1 || true)"
+	if [ -n "$pa_health" ]; then
+		printf '  health: %s\n' "$pa_health"
+	else
+		echo "  health: failed"
+	fi
+fi
+if [ -f "$wm_env" ]; then
+	(
+		set -a
+		# shellcheck disable=SC1090
+		. "$wm_env"
+		set +a
+		token="$(curl -fsS "$WINDMILL_BASE_URL/api/auth/login" -H "Content-Type: application/json" \
+			--data "{\"email\":\"$WINDMILL_ADMIN_EMAIL\",\"password\":\"$WINDMILL_ADMIN_PASSWORD\"}" 2>/dev/null || true)"
+		if [ -n "$token" ]; then
+			curl -fsS "$WINDMILL_BASE_URL/api/w/$WINDMILL_WORKSPACE/resources/list" \
+				-H "Authorization: Bearer $token" 2>/dev/null |
+				jq -r '.[] | select(.path=="u/admin/slack" or .path=="u/admin/gmail" or .path=="u/admin/gcal" or .path=="u/admin/gmail_compose") | "  resource: " + .path + " (" + .resource_type + ")"' 2>/dev/null
+		fi
+	)
+fi
+
 hr "repo / CI ($REPO)"
 if command -v gh >/dev/null 2>&1; then
 	gh run list --repo "$REPO" -L 3 2>/dev/null | sed 's/^/  /' || echo "  (gh error)"

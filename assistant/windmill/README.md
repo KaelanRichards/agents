@@ -78,13 +78,22 @@ If you use different paths, edit the script defaults in Windmill.
 The Windmill UI may generate names like `u/admin/charismatic_gmail`. Create stable aliases at
 the paths above so Claude, Codex, and Hermes keep using the same resource contract.
 
+```bash
+windmill-link-personal-resources
+```
+
 Current first-pass support:
 
 - Slack send is live; for self-tests, send to the user's own Slack user id/DM only.
 - Gmail send is live after enabling the Gmail API in the Google Cloud project.
 - Calendar create/update is live after enabling the Google Calendar API.
-- Gmail draft is not live through Windmill's built-in `gmail` OAuth because that connector grants
-  `gmail.send`; drafts require a compose/draft-capable scope.
+- Gmail draft uses a local compose-scope token because Windmill CE's built-in `gmail` OAuth grants
+  `gmail.send`. To enable draft creation, add `http://127.0.0.1:8765/callback` to the Google OAuth
+  client's authorized redirect URIs, then run:
+
+```bash
+personal-actions-google-compose-auth
+```
 
 ## Verify
 
@@ -102,6 +111,12 @@ After OAuth resources are connected, set `PERSONAL_ACTIONS_DRY_RUN=0` in
 3. Slack message to a private test channel.
 4. Gmail send to yourself.
 5. Calendar update on the test event.
+
+Or run the live canary helper:
+
+```bash
+personal-actions-canary --yes
+```
 
 ## Operations
 

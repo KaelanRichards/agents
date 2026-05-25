@@ -13,7 +13,10 @@ def main() -> None:
     handler = ROOT / "assistant" / "windmill" / "personal_actions_handler.ts"
     oauth_example = ROOT / "assistant" / "windmill" / "oauth.env.example"
     oauth_configure = ROOT / "scripts" / "windmill_oauth_configure.py"
-    for path in [compose, env_example, handler, oauth_example, oauth_configure]:
+    link_resources = ROOT / "scripts" / "windmill_link_personal_resources.py"
+    canary = ROOT / "scripts" / "personal_actions_canary.py"
+    compose_auth = ROOT / "scripts" / "personal_actions_google_compose_auth.py"
+    for path in [compose, env_example, handler, oauth_example, oauth_configure, link_resources, canary, compose_auth]:
         assert path.exists(), f"missing {path}"
 
     compose_text = compose.read_text(encoding="utf-8")
@@ -40,6 +43,9 @@ def main() -> None:
     assert "/api/settings/instance_config" in oauth_text
     assert "GOOGLE_OAUTH_CLIENT_ID" in oauth_text
     assert "WINDMILL_SLACK_OAUTH_CLIENT_ID" in oauth_text
+    assert "gmail_compose" in link_resources.read_text(encoding="utf-8")
+    assert "PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN" in compose_auth.read_text(encoding="utf-8")
+    assert "slack_self_target" in canary.read_text(encoding="utf-8")
     print("windmill stack smoke OK")
 
 

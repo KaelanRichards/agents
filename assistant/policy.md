@@ -20,8 +20,13 @@ and MCP server listing.
 - Never use broad filesystem, terminal, browser, payment, password-manager, or purchasing tools
   from Hermes without an explicit follow-up change to this policy.
 - Confirm ambiguous recipients, channels, calendars, dates, or times before taking action.
-- For Gmail sends, include recipients, subject, and final body in the assistant response before
-  sending unless the user explicitly says to send immediately.
+- Draft creation may happen without a second confirmation when the user asks for a draft.
+- For Gmail sends and Slack posts, include recipients/channel, subject when applicable, and final
+  body in the assistant response before sending unless the user explicitly says to send/post
+  immediately.
+- Slack canaries must target the user's own Slack user id or self-DM only.
+- Calendar creates/updates require explicit confirmation unless the user labels the request as a
+  test/canary.
 - For Calendar updates, identify the target event before updating it.
 - Log material actions to `assistant/logs/YYYY-MM-DD.md` when practical.
 

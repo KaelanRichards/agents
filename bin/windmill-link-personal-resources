@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# windmill-link-personal-resources — create stable resource aliases for personal-actions.
+set -euo pipefail
+exec python3 "$HOME/.config/agents/scripts/windmill_link_personal_resources.py" "$@"

@@ -132,6 +132,10 @@ This is the single source of truth for both agents. Canonical file lives at
   live under `~/.config/agents/assistant`. Slack send, Gmail draft/send, and Calendar create/update
   are allowed only through the shared constrained `personal-actions-mcp` facade, which defaults to
   dry-run unless a live provider is explicitly configured.
+- **Personal action confirmation**: draft creation may happen when requested, but Gmail sends,
+  Slack posts, and Calendar creates/updates require explicit confirmation unless the user clearly
+  labels the action as a test/canary or says to send/post/create immediately. Slack canaries must
+  target the user's own Slack user id or self-DM only.
 - **Least privilege & human-in-the-loop**: don't widen filesystem/MCP scope unnecessarily;
   get explicit confirmation before destructive or outward-facing actions.
 

@@ -68,6 +68,16 @@ The server is registered once in `~/.config/agents/mcp.json`, propagated to Clau
   - Document provider choices: webhook-first, optional Google Workspace local fallback.
   - Document env vars.
   - Document first live tests: Gmail draft to self, calendar test event, Slack test message.
+- [x] T6 — Live operations hardening — files: `bin/personal-actions-canary`, `bin/windmill-link-personal-resources`, `bin/agents-status`, `assistant/policy.md`
+  - Add an explicit live canary command for Slack self-message, Gmail send, Calendar create/update,
+    and optional Gmail draft.
+  - Add stable Windmill resource alias automation.
+  - Surface personal-actions live/dry-run/provider/resource status in `agents-status`.
+  - Document confirmation rules for outward-facing actions.
+- [x] T7 — Gmail draft compose path — files: `mcp-servers/personal-actions/server.py`, `bin/personal-actions-google-compose-auth`
+  - Add an optional local Gmail compose OAuth path for draft creation.
+  - Keep send/calendar/slack routed through the constrained Windmill webhook.
+  - Store refresh tokens outside the repo in `~/.config/agents-secrets/personal-actions.env`.
 
 ## Verification
 - `mcp-sync`

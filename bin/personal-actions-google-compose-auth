@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# personal-actions-google-compose-auth — authorize Gmail compose scope for draft creation.
+set -euo pipefail
+exec python3 "$HOME/.config/agents/scripts/personal_actions_google_compose_auth.py" "$@"
