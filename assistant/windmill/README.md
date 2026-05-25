@@ -72,6 +72,8 @@ The handler defaults expect these resource paths:
 - `u/admin/slack`
 - `u/admin/gmail`
 - `u/admin/gcal`
+- `u/admin/work_gmail`
+- `u/admin/work_gcal`
 
 If you use different paths, edit the script defaults in Windmill.
 
@@ -80,6 +82,12 @@ the paths above so Claude, Codex, and Hermes keep using the same resource contra
 
 ```bash
 windmill-link-personal-resources
+```
+
+After connecting a second Gmail/GCal account, link the work aliases:
+
+```bash
+windmill-link-personal-resources --include-work
 ```
 
 Current first-pass support:
@@ -93,6 +101,12 @@ Current first-pass support:
 
 ```bash
 personal-actions-google-compose-auth
+```
+
+For the work account, also add `http://127.0.0.1:8766/callback` to the Google OAuth client and run:
+
+```bash
+personal-actions-google-compose-auth --account work
 ```
 
 ## Verify
@@ -116,6 +130,7 @@ Or run the live canary helper:
 
 ```bash
 personal-actions-canary --yes
+personal-actions-canary --yes --account work --email kaelan@vizcom.com
 ```
 
 ## Operations

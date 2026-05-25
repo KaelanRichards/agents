@@ -87,8 +87,10 @@ def exchange_code(client_id: str, client_secret: str, code: str, redirect_uri: s
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--account", choices=["personal", "work"], default="personal")
+    parser.add_argument("--port", type=int)
     args = parser.parse_args()
+    port = args.port or (8766 if args.account == "work" else 8765)
     oauth = load_env(OAUTH_ENV)
     client_id = oauth.get("GOOGLE_OAUTH_CLIENT_ID", "")
     client_secret = oauth.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
@@ -96,9 +98,9 @@ def main() -> int:
         print(f"missing GOOGLE_OAUTH_CLIENT_ID/SECRET in {OAUTH_ENV}", file=sys.stderr)
         return 1
 
-    redirect_uri = f"http://127.0.0.1:{args.port}/callback"
+    redirect_uri = f"http://127.0.0.1:{port}/callback"
     state = secrets.token_urlsafe(24)
-    server = CallbackServer(("127.0.0.1", args.port), Callback)
+    server = CallbackServer(("127.0.0.1", port), Callback)
     thread = threading.Thread(target=server.handle_request, daemon=True)
     thread.start()
     params = urllib.parse.urlencode(
@@ -125,15 +127,16 @@ def main() -> int:
     if not refresh:
         print("Google did not return a refresh_token; revoke app access and retry with prompt=consent", file=sys.stderr)
         return 1
+    prefix = "PERSONAL_WORK_GMAIL_COMPOSE" if args.account == "work" else "PERSONAL_GMAIL_COMPOSE"
     write_env(
         PERSONAL_ENV,
         {
-            "PERSONAL_GMAIL_COMPOSE_CLIENT_ID": client_id,
-            "PERSONAL_GMAIL_COMPOSE_CLIENT_SECRET": client_secret,
-            "PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN": refresh,
+            f"{prefix}_CLIENT_ID": client_id,
+            f"{prefix}_CLIENT_SECRET": client_secret,
+            f"{prefix}_REFRESH_TOKEN": refresh,
         },
     )
-    print(f"Stored Gmail compose refresh token in {PERSONAL_ENV}")
+    print(f"Stored {args.account} Gmail compose refresh token in {PERSONAL_ENV}")
     return 0
 
 

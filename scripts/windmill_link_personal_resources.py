@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import argparse
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,11 +14,12 @@ from pathlib import Path
 SECRETS_DIR = Path.home() / ".config" / "agents-secrets"
 ADMIN_ENV = SECRETS_DIR / "windmill-admin.env"
 
-ALIASES = {
-    "slack": "u/admin/slack",
-    "gmail": "u/admin/gmail",
-    "gcal": "u/admin/gcal",
-    "gmail_compose": "u/admin/gmail_compose",
+STABLE_ALIASES = {
+    "slack": ("slack", "u/admin/slack"),
+    "gmail": ("gmail", "u/admin/gmail"),
+    "gcal": ("gcal", "u/admin/gcal"),
+    "work_gmail": ("gmail", "u/admin/work_gmail"),
+    "work_gcal": ("gcal", "u/admin/work_gcal"),
 }
 
 
@@ -53,7 +55,40 @@ def request(method: str, base_url: str, path: str, token: str | None = None, bod
         raise ApiError(f"{method} {path} failed: HTTP {exc.code}: {text}") from exc
 
 
+def source_for(
+    resources: list[dict[str, str]],
+    resource_type: str,
+    dest: str,
+    explicit: str,
+    work: bool,
+) -> str:
+    if explicit:
+        return explicit
+    stable_paths = {alias for _, alias in STABLE_ALIASES.values()}
+    candidates = [
+        resource["path"]
+        for resource in resources
+        if resource.get("resource_type") == resource_type and resource.get("path") not in stable_paths
+    ]
+    if not candidates:
+        existing = [resource["path"] for resource in resources if resource.get("path") == dest]
+        return existing[0] if existing else ""
+    if work:
+        existing = [resource["path"] for resource in resources if resource.get("path") == dest]
+        if existing:
+            return existing[0]
+        return candidates[-1] if len(candidates) > 1 else ""
+    return candidates[0]
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--personal-gmail-source", default="")
+    parser.add_argument("--personal-gcal-source", default="")
+    parser.add_argument("--work-gmail-source", default="")
+    parser.add_argument("--work-gcal-source", default="")
+    parser.add_argument("--include-work", action="store_true", help="also create u/admin/work_gmail and u/admin/work_gcal")
+    args = parser.parse_args()
     admin = load_env(ADMIN_ENV)
     base_url = admin.get("WINDMILL_BASE_URL", os.environ.get("WINDMILL_BASE_URL", "http://localhost:8790")).rstrip("/")
     workspace = admin.get("WINDMILL_WORKSPACE", os.environ.get("WINDMILL_WORKSPACE", "personal"))
@@ -63,19 +98,21 @@ def main() -> int:
         raise ApiError(f"missing WINDMILL_ADMIN_PASSWORD in {ADMIN_ENV}")
     token = request("POST", base_url, "/api/auth/login", body={"email": email, "password": password}).strip()
     resources = json.loads(request("GET", base_url, f"/api/w/{workspace}/resources/list", token=token))
-    by_type = {
-        resource["resource_type"]: resource["path"]
-        for resource in resources
-        if resource.get("resource_type") in ALIASES and resource.get("path") not in set(ALIASES.values())
+    explicit = {
+        "gmail": args.personal_gmail_source,
+        "gcal": args.personal_gcal_source,
+        "work_gmail": args.work_gmail_source,
+        "work_gcal": args.work_gcal_source,
     }
-    for resource in resources:
-        if resource.get("path") in set(ALIASES.values()):
-            by_type.setdefault(resource["resource_type"], resource["path"])
     linked = 0
-    for resource_type, dest in ALIASES.items():
-        src = by_type.get(resource_type)
+    aliases = dict(STABLE_ALIASES)
+    if not args.include_work:
+        aliases.pop("work_gmail")
+        aliases.pop("work_gcal")
+    for name, (resource_type, dest) in aliases.items():
+        src = source_for(resources, resource_type, dest, explicit.get(name, ""), name.startswith("work_"))
         if not src:
-            print(f"missing {resource_type}: connect a {resource_type} resource first")
+            print(f"missing {name}: connect a {resource_type} resource first")
             continue
         encoded = urllib.parse.quote(src, safe="")
         value = json.loads(request("GET", base_url, f"/api/w/{workspace}/resources/get_value/{encoded}", token=token))

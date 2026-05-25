@@ -35,9 +35,11 @@ if [ -f "$pa_env" ]; then
 	dry_run="$(awk -F= '$1=="PERSONAL_ACTIONS_DRY_RUN"{print $2}' "$pa_env" | tail -1)"
 	provider="$(awk -F= '$1=="PERSONAL_ACTIONS_PROVIDER"{print $2}' "$pa_env" | tail -1)"
 	compose="$(awk -F= '$1=="PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN"{print "configured"}' "$pa_env" | tail -1)"
+	work_compose="$(awk -F= '$1=="PERSONAL_WORK_GMAIL_COMPOSE_REFRESH_TOKEN"{print "configured"}' "$pa_env" | tail -1)"
 	echo "  provider: ${provider:-webhook}"
 	echo "  mode: $([ "$dry_run" = "0" ] && echo live || echo dry-run)"
-	echo "  gmail drafts: ${compose:-needs personal-actions-google-compose-auth}"
+	echo "  gmail drafts personal: ${compose:-needs personal-actions-google-compose-auth}"
+	echo "  gmail drafts work: ${work_compose:-needs personal-actions-google-compose-auth --account work}"
 else
 	echo "  missing $pa_env"
 fi
@@ -60,7 +62,7 @@ if [ -f "$wm_env" ]; then
 		if [ -n "$token" ]; then
 			curl -fsS "$WINDMILL_BASE_URL/api/w/$WINDMILL_WORKSPACE/resources/list" \
 				-H "Authorization: Bearer $token" 2>/dev/null |
-				jq -r '.[] | select(.path=="u/admin/slack" or .path=="u/admin/gmail" or .path=="u/admin/gcal" or .path=="u/admin/gmail_compose") | "  resource: " + .path + " (" + .resource_type + ")"' 2>/dev/null
+				jq -r '.[] | select(.path=="u/admin/slack" or .path=="u/admin/gmail" or .path=="u/admin/gcal" or .path=="u/admin/work_gmail" or .path=="u/admin/work_gcal") | "  resource: " + .path + " (" + .resource_type + ")"' 2>/dev/null
 		fi
 	)
 fi

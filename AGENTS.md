@@ -135,7 +135,8 @@ This is the single source of truth for both agents. Canonical file lives at
 - **Personal action confirmation**: draft creation may happen when requested, but Gmail sends,
   Slack posts, and Calendar creates/updates require explicit confirmation unless the user clearly
   labels the action as a test/canary or says to send/post/create immediately. Slack canaries must
-  target the user's own Slack user id or self-DM only.
+  target the user's own Slack user id or self-DM only. Gmail/Calendar default to the personal
+  account; use `account=work` only when the user asks for `kaelan@vizcom.com`, Vizcom, or work.
 - **Least privilege & human-in-the-loop**: don't widen filesystem/MCP scope unnecessarily;
   get explicit confirmation before destructive or outward-facing actions.
 

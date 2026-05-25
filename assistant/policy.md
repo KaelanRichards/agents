@@ -24,6 +24,8 @@ and MCP server listing.
 - For Gmail sends and Slack posts, include recipients/channel, subject when applicable, and final
   body in the assistant response before sending unless the user explicitly says to send/post
   immediately.
+- Gmail and Calendar actions default to the personal Google account. Use `account=work` only when
+  the user asks to use `kaelan@vizcom.com`, Vizcom, or work email/calendar.
 - Slack canaries must target the user's own Slack user id or self-DM only.
 - Calendar creates/updates require explicit confirmation unless the user labels the request as a
   test/canary.

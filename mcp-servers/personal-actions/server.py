@@ -152,6 +152,13 @@ def _split_csv(value: str = "") -> list[str]:
     return [part.strip() for part in (value or "").split(",") if part.strip()]
 
 
+def _account(value: str = "personal") -> str:
+    value = (value or "personal").strip().lower()
+    if value not in {"personal", "work"}:
+        raise PersonalActionError("account must be 'personal' or 'work'")
+    return value
+
+
 def _json_response(action: str, status: str, payload: dict[str, Any], result: dict[str, Any] | None = None) -> str:
     return json.dumps(
         {
@@ -173,7 +180,7 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
             _audit(action, payload, "dry_run", result)
             return _json_response(action, "dry_run", payload, result)
 
-        if action == "gmail_create_draft" and _gmail_compose_configured():
+        if action == "gmail_create_draft" and _gmail_compose_configured_for(str(payload.get("account", "personal"))):
             result = _gmail_create_draft_local(payload)
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
@@ -249,22 +256,28 @@ def _parse_json_or_text(text: str) -> Any:
 
 
 def _gmail_compose_configured() -> bool:
+    return _gmail_compose_configured_for("personal")
+
+
+def _gmail_compose_configured_for(account: str) -> bool:
+    prefix = "PERSONAL_WORK_GMAIL_COMPOSE" if account == "work" else "PERSONAL_GMAIL_COMPOSE"
     return all(
         os.environ.get(name, "").strip()
         for name in [
-            "PERSONAL_GMAIL_COMPOSE_CLIENT_ID",
-            "PERSONAL_GMAIL_COMPOSE_CLIENT_SECRET",
-            "PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN",
+            f"{prefix}_CLIENT_ID",
+            f"{prefix}_CLIENT_SECRET",
+            f"{prefix}_REFRESH_TOKEN",
         ]
     )
 
 
-def _gmail_compose_access_token() -> str:
+def _gmail_compose_access_token(account: str) -> str:
+    prefix = "PERSONAL_WORK_GMAIL_COMPOSE" if account == "work" else "PERSONAL_GMAIL_COMPOSE"
     body = urllib.parse.urlencode(
         {
-            "client_id": os.environ["PERSONAL_GMAIL_COMPOSE_CLIENT_ID"].strip(),
-            "client_secret": os.environ["PERSONAL_GMAIL_COMPOSE_CLIENT_SECRET"].strip(),
-            "refresh_token": os.environ["PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN"].strip(),
+            "client_id": os.environ[f"{prefix}_CLIENT_ID"].strip(),
+            "client_secret": os.environ[f"{prefix}_CLIENT_SECRET"].strip(),
+            "refresh_token": os.environ[f"{prefix}_REFRESH_TOKEN"].strip(),
             "grant_type": "refresh_token",
         }
     ).encode("utf-8")
@@ -308,6 +321,9 @@ def _base64_url(value: str) -> str:
 
 
 def _gmail_create_draft_local(payload: dict[str, Any]) -> dict[str, Any]:
+    account = _account(str(payload.get("account", "personal")))
+    if not _gmail_compose_configured_for(account):
+        raise PersonalActionError(f"Gmail compose OAuth is not configured for account '{account}'")
     raw = _base64_url(
         _mime_message(
             payload["to"],
@@ -323,7 +339,7 @@ def _gmail_create_draft_local(payload: dict[str, Any]) -> dict[str, Any]:
         data=json.dumps({"message": {"raw": raw}}, separators=(",", ":")).encode("utf-8"),
         method="POST",
         headers={
-            "Authorization": f"Bearer {_gmail_compose_access_token()}",
+            "Authorization": f"Bearer {_gmail_compose_access_token(account)}",
             "Content-Type": "application/json",
         },
     )
@@ -391,9 +407,18 @@ def personal_slack_send_message(channel: str, text: str, thread_ts: str = "") ->
 
 
 @mcp.tool()
-def personal_gmail_create_draft(to: str, subject: str, body: str, cc: str = "", bcc: str = "", html: bool = False) -> str:
+def personal_gmail_create_draft(
+    to: str,
+    subject: str,
+    body: str,
+    cc: str = "",
+    bcc: str = "",
+    html: bool = False,
+    account: str = "personal",
+) -> str:
     """Create a Gmail draft with explicit recipients, subject, and body."""
     payload = {
+        "account": _account(account),
         "to": _require("to", to),
         "subject": _require("subject", subject),
         "body": _require("body", body),
@@ -405,9 +430,18 @@ def personal_gmail_create_draft(to: str, subject: str, body: str, cc: str = "", 
 
 
 @mcp.tool()
-def personal_gmail_send_email(to: str, subject: str, body: str, cc: str = "", bcc: str = "", html: bool = False) -> str:
+def personal_gmail_send_email(
+    to: str,
+    subject: str,
+    body: str,
+    cc: str = "",
+    bcc: str = "",
+    html: bool = False,
+    account: str = "personal",
+) -> str:
     """Send a Gmail email with explicit recipients, subject, and body."""
     payload = {
+        "account": _account(account),
         "to": _require("to", to),
         "subject": _require("subject", subject),
         "body": _require("body", body),
@@ -427,9 +461,11 @@ def personal_calendar_create_event(
     description: str = "",
     location: str = "",
     attendees: str = "",
+    account: str = "personal",
 ) -> str:
     """Create one Google Calendar event with ISO-8601 start and end times."""
     payload = {
+        "account": _account(account),
         "calendar_id": _require("calendar_id", calendar_id),
         "summary": _require("summary", summary),
         "start": _require("start", start),
@@ -451,9 +487,11 @@ def personal_calendar_update_event(
     description: str = "",
     location: str = "",
     attendees: str = "",
+    account: str = "personal",
 ) -> str:
     """Update one Google Calendar event by event id."""
     payload = {
+        "account": _account(account),
         "calendar_id": _require("calendar_id", calendar_id),
         "event_id": _require("event_id", event_id),
         "summary": _optional(summary),

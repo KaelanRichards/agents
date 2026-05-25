@@ -58,6 +58,16 @@ def main() -> None:
             assert headers["X-Personal-Actions-Signature"].startswith("v1=")
             assert abs(int(headers["X-Personal-Actions-Timestamp"]) - int(time.time())) < 5
 
+            work_response = json.loads(
+                mod.personal_gmail_send_email(
+                    to="kaelan@vizcom.com",
+                    subject="Work account smoke",
+                    body="body",
+                    account="work",
+                )
+            )
+            assert work_response["status"] == "dry_run"
+
             print("personal-actions smoke OK")
         finally:
             os.environ.clear()

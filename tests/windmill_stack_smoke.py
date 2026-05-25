@@ -39,12 +39,18 @@ def main() -> None:
     bootstrap = (ROOT / "scripts" / "windmill_bootstrap.py").read_text(encoding="utf-8")
     assert "jobs/run_wait_result/h" in bootstrap
     assert '"tag": "deno"' in bootstrap
+    assert "u/admin/work_gmail" in handler_text
+    assert "u/admin/work_gcal" in handler_text
     oauth_text = oauth_configure.read_text(encoding="utf-8")
     assert "/api/settings/instance_config" in oauth_text
     assert "GOOGLE_OAUTH_CLIENT_ID" in oauth_text
     assert "WINDMILL_SLACK_OAUTH_CLIENT_ID" in oauth_text
-    assert "gmail_compose" in link_resources.read_text(encoding="utf-8")
-    assert "PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN" in compose_auth.read_text(encoding="utf-8")
+    link_text = link_resources.read_text(encoding="utf-8")
+    assert "work_gmail" in link_text
+    assert "work_gcal" in link_text
+    compose_text = compose_auth.read_text(encoding="utf-8")
+    assert "PERSONAL_GMAIL_COMPOSE" in compose_text
+    assert "PERSONAL_WORK_GMAIL_COMPOSE" in compose_text
     assert "slack_self_target" in canary.read_text(encoding="utf-8")
     print("windmill stack smoke OK")
 

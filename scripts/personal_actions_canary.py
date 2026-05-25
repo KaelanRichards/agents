@@ -101,7 +101,7 @@ def slack_self_target() -> str:
     return str(auth["user_id"])
 
 
-def local_gmail_draft(email: str, stamp: str) -> None:
+def local_gmail_draft(email: str, stamp: str, account: str) -> None:
     spec = importlib.util.spec_from_file_location("personal_actions_server", SERVER)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load {SERVER}")
@@ -112,6 +112,7 @@ def local_gmail_draft(email: str, stamp: str) -> None:
             to=email,
             subject=f"Personal actions canary draft - {stamp}",
             body="Canary draft from the shared personal-actions backend.",
+            account=account,
         )
     )
     if response.get("status") != "ok":
@@ -122,6 +123,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--yes", action="store_true", help="perform real sends/posts/calendar writes")
     parser.add_argument("--email", default="kadokaelan@gmail.com")
+    parser.add_argument("--account", choices=["personal", "work"], default="personal")
     args = parser.parse_args()
     if not args.yes:
         print("Refusing to run live canaries without --yes")
@@ -139,6 +141,7 @@ def main() -> int:
     personal_dispatch(
         "gmail_send_email",
         {
+            "account": args.account,
             "to": args.email,
             "subject": f"Personal actions canary send - {stamp}",
             "body": "Canary send from the shared personal-actions backend.",
@@ -151,6 +154,7 @@ def main() -> int:
     created = personal_dispatch(
         "calendar_create_event",
         {
+            "account": args.account,
             "calendar_id": "primary",
             "summary": f"Personal actions canary - {stamp}",
             "start": start.isoformat().replace("+00:00", "Z"),
@@ -165,6 +169,7 @@ def main() -> int:
     personal_dispatch(
         "calendar_update_event",
         {
+            "account": args.account,
             "calendar_id": "primary",
             "event_id": event_id,
             "summary": f"Personal actions canary updated - {stamp}",
@@ -177,8 +182,9 @@ def main() -> int:
     )
     results["calendar_update"] = "ok"
     env = load_env(PERSONAL_ENV)
-    if env.get("PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN"):
-        local_gmail_draft(args.email, stamp)
+    compose_key = "PERSONAL_WORK_GMAIL_COMPOSE_REFRESH_TOKEN" if args.account == "work" else "PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN"
+    if env.get(compose_key):
+        local_gmail_draft(args.email, stamp, args.account)
         results["gmail_draft"] = "ok"
     else:
         results["gmail_draft"] = "skipped_missing_compose_auth"

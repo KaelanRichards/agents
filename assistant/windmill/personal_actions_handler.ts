@@ -8,9 +8,10 @@ type OAuthResource = { token?: string; access_token?: string };
 const ALLOWED: Record<string, string[]> = {
   health_check: [],
   slack_send_message: ["channel", "text", "thread_ts"],
-  gmail_create_draft: ["to", "subject", "body", "cc", "bcc", "html"],
-  gmail_send_email: ["to", "subject", "body", "cc", "bcc", "html"],
+  gmail_create_draft: ["account", "to", "subject", "body", "cc", "bcc", "html"],
+  gmail_send_email: ["account", "to", "subject", "body", "cc", "bcc", "html"],
   calendar_create_event: [
+    "account",
     "calendar_id",
     "summary",
     "start",
@@ -20,6 +21,7 @@ const ALLOWED: Record<string, string[]> = {
     "attendees",
   ],
   calendar_update_event: [
+    "account",
     "calendar_id",
     "event_id",
     "summary",
@@ -58,6 +60,16 @@ function stringList(payload: Payload, key: string): string[] {
 
 function boolValue(payload: Payload, key: string): boolean {
   return payload[key] === true;
+}
+
+function accountValue(payload: Payload): "personal" | "work" {
+  const value = optionalString(payload, "account") || "personal";
+  if (value !== "personal" && value !== "work") throw new Error("account must be personal or work");
+  return value;
+}
+
+function accountPath(payload: Payload, personalPath: string, workPath: string): string {
+  return accountValue(payload) === "work" ? workPath : personalPath;
 }
 
 function base64Url(value: string): string {
@@ -240,7 +252,9 @@ export async function main(
   payload: Payload = {},
   slack_resource_path = "u/admin/slack",
   gmail_resource_path = "u/admin/gmail",
+  work_gmail_resource_path = "u/admin/work_gmail",
   calendar_resource_path = "u/admin/gcal",
+  work_calendar_resource_path = "u/admin/work_gcal",
   WEBHOOK__METADATA__?: Metadata,
 ) {
   if (raw_string) {
@@ -260,16 +274,20 @@ export async function main(
     return { ok: true, action, result: await slackSend(await wmill.getResource(slack_resource_path), payload) };
   }
   if (action === "gmail_create_draft") {
-    return { ok: true, action, result: await gmailDraft(await wmill.getResource(gmail_resource_path), payload) };
+    const path = accountPath(payload, gmail_resource_path, work_gmail_resource_path);
+    return { ok: true, action, result: await gmailDraft(await wmill.getResource(path), payload) };
   }
   if (action === "gmail_send_email") {
-    return { ok: true, action, result: await gmailSend(await wmill.getResource(gmail_resource_path), payload) };
+    const path = accountPath(payload, gmail_resource_path, work_gmail_resource_path);
+    return { ok: true, action, result: await gmailSend(await wmill.getResource(path), payload) };
   }
   if (action === "calendar_create_event") {
-    return { ok: true, action, result: await calendarCreate(await wmill.getResource(calendar_resource_path), payload) };
+    const path = accountPath(payload, calendar_resource_path, work_calendar_resource_path);
+    return { ok: true, action, result: await calendarCreate(await wmill.getResource(path), payload) };
   }
   if (action === "calendar_update_event") {
-    return { ok: true, action, result: await calendarUpdate(await wmill.getResource(calendar_resource_path), payload) };
+    const path = accountPath(payload, calendar_resource_path, work_calendar_resource_path);
+    return { ok: true, action, result: await calendarUpdate(await wmill.getResource(path), payload) };
   }
   throw new Error(`unhandled action: ${action}`);
 }
