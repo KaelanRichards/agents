@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# personal-actions-check — verify the configured personal-actions webhook without a write.
+set -euo pipefail
+exec python3 "$HOME/.config/agents/scripts/personal_actions_check.py" "$@"

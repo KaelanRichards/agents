@@ -33,12 +33,15 @@ set:
 export PERSONAL_ACTIONS_PROVIDER=webhook
 export PERSONAL_ACTIONS_WEBHOOK_URL="https://..."
 export PERSONAL_ACTIONS_WEBHOOK_TOKEN="..."
+export PERSONAL_ACTIONS_WEBHOOK_HMAC_SECRET="..."
 export PERSONAL_ACTIONS_DRY_RUN=0
 hermes-sync
 ```
 
 Recommended webhook backends are Zapier or Pipedream because they handle OAuth and app-specific
 scopes outside this repo. Do not use an all-actions endpoint.
+Use `assistant/personal-actions-webhook.md` for the required request contract and Pipedream
+validation step. Run `personal-actions-check` before the first live write.
 
 For local Gmail send and Calendar create only, `PERSONAL_ACTIONS_PROVIDER=google_workspace_cli`
 can call Hermes' bundled Google Workspace helper. Draft creation, Slack send, and Calendar update

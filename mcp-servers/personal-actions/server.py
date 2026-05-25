@@ -7,15 +7,19 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import hmac
 import os
 import re
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from mcp.server.fastmcp import FastMCP
 
@@ -174,11 +178,8 @@ def _dispatch_webhook(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     if not url.startswith("https://") and not _truthy(os.environ.get("PERSONAL_ACTIONS_ALLOW_HTTP")):
         raise PersonalActionError("webhook URL must be https:// unless PERSONAL_ACTIONS_ALLOW_HTTP=1")
 
-    body = json.dumps({"action": action, "payload": payload}).encode("utf-8")
-    headers = {"Content-Type": "application/json", "User-Agent": "personal-actions-mcp/1"}
-    token = os.environ.get("PERSONAL_ACTIONS_WEBHOOK_TOKEN", "").strip()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    body = json.dumps({"action": action, "payload": payload}, separators=(",", ":")).encode("utf-8")
+    headers = _webhook_headers(body)
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
@@ -189,6 +190,25 @@ def _dispatch_webhook(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         raise PersonalActionError(f"webhook returned HTTP {exc.code}: {_redact_text(text)}") from exc
     except urllib.error.URLError as exc:
         raise PersonalActionError(f"webhook request failed: {exc.reason}") from exc
+
+
+def _webhook_headers(body: bytes) -> dict[str, str]:
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "personal-actions-mcp/1",
+        "X-Personal-Actions-Idempotency-Key": str(uuid4()),
+    }
+    token = os.environ.get("PERSONAL_ACTIONS_WEBHOOK_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    hmac_secret = os.environ.get("PERSONAL_ACTIONS_WEBHOOK_HMAC_SECRET", "").strip()
+    if hmac_secret:
+        timestamp = str(int(time.time()))
+        signed = f"{timestamp}.".encode("utf-8") + body
+        digest = hmac.new(hmac_secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+        headers["X-Personal-Actions-Timestamp"] = timestamp
+        headers["X-Personal-Actions-Signature"] = f"v1={digest}"
+    return headers
 
 
 def _parse_json_or_text(text: str) -> Any:

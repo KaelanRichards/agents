@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import tempfile
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SERVER = ROOT / "mcp-servers" / "personal-actions" / "server.py"
@@ -32,6 +33,7 @@ def main() -> None:
             os.environ["AGENTS_HOME"] = td
             os.environ["PERSONAL_ACTIONS_DRY_RUN"] = "1"
             os.environ["PERSONAL_ACTIONS_WEBHOOK_TOKEN"] = "secret-test-token"
+            os.environ["PERSONAL_ACTIONS_WEBHOOK_HMAC_SECRET"] = "hmac-secret"
 
             response = json.loads(
                 mod.personal_slack_send_message(
@@ -49,6 +51,12 @@ def main() -> None:
             log_text = logs[0].read_text(encoding="utf-8")
             assert "secret-test-token" not in log_text
             assert "[REDACTED]" in log_text
+
+            headers = mod._webhook_headers(b'{"action":"health_check","payload":{}}')
+            assert headers["Authorization"] == "Bearer secret-test-token"
+            assert headers["X-Personal-Actions-Idempotency-Key"]
+            assert headers["X-Personal-Actions-Signature"].startswith("v1=")
+            assert abs(int(headers["X-Personal-Actions-Timestamp"]) - int(time.time())) < 5
 
             print("personal-actions smoke OK")
         finally:

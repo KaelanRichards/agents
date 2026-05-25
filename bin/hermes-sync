@@ -19,6 +19,7 @@ cat > "$config" <<EOF
 #   export PERSONAL_ACTIONS_PROVIDER=webhook
 #   export PERSONAL_ACTIONS_WEBHOOK_URL='https://...'
 #   export PERSONAL_ACTIONS_WEBHOOK_TOKEN='...'
+#   export PERSONAL_ACTIONS_WEBHOOK_HMAC_SECRET='...'
 #   export PERSONAL_ACTIONS_DRY_RUN=0
 #
 # The facade exposes only:
