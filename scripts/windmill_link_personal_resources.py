@@ -64,6 +64,9 @@ def source_for(
 ) -> str:
     if explicit:
         return explicit
+    existing = [resource["path"] for resource in resources if resource.get("path") == dest]
+    if existing:
+        return existing[0]
     stable_paths = {alias for _, alias in STABLE_ALIASES.values()}
     candidates = [
         resource["path"]
@@ -71,12 +74,8 @@ def source_for(
         if resource.get("resource_type") == resource_type and resource.get("path") not in stable_paths
     ]
     if not candidates:
-        existing = [resource["path"] for resource in resources if resource.get("path") == dest]
-        return existing[0] if existing else ""
+        return ""
     if work:
-        existing = [resource["path"] for resource in resources if resource.get("path") == dest]
-        if existing:
-            return existing[0]
         return candidates[-1] if len(candidates) > 1 else ""
     return candidates[0]
 
