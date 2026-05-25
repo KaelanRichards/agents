@@ -81,7 +81,8 @@ This is the single source of truth for both agents. Canonical file lives at
   `context7` (pull up-to-date docs before coding against a library/API), `github`
   (PRs/issues/repos; complements the `gh` CLI), `linear` (Linear issues/projects/comments via
   the official remote MCP server), `datadog` (official Datadog US5 remote MCP server for
-  read-first observability investigation), `bigquery` (local read-only BigQuery facade using
+  read-first observability investigation), `sentry` (official Sentry remote MCP server for
+  read-first app error/performance debugging), `bigquery` (local read-only BigQuery facade using
   `gcloud`/`bq` auth; use `bigquery_execute_sql_readonly` for SQL), `playwright` (drive a real
   browser for web testing/scraping), `filesystem` (file access scoped to `~/code`),
   `sequential-thinking` (structured step-by-step reasoning), and `agents` (this environment's own

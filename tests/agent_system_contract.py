@@ -18,6 +18,7 @@ REQUIRED_MCP = {
     "sequential-thinking",
     "github",
     "datadog",
+    "sentry",
     "bigquery",
     "agents",
     "personal-actions",
@@ -57,6 +58,8 @@ def main() -> None:
     assert servers["linear"]["url"] == "https://mcp.linear.app/mcp"
     assert servers["datadog"]["type"] == "http"
     assert servers["datadog"]["url"] == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+    assert servers["sentry"]["type"] == "http"
+    assert servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
     assert servers["bigquery"]["type"] == "stdio"
     assert servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
     assert servers["bigquery"]["args"] == []
@@ -70,6 +73,7 @@ def main() -> None:
         assert REQUIRED_MCP.issubset(set(codex_servers)), "Codex config missing required MCP servers"
         assert codex_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
         assert codex_servers["datadog"]["url"] == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+        assert codex_servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
         assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
         assert codex_servers["bigquery"]["args"] == []
         assert codex.get("features", {}).get("experimental_use_rmcp_client") is True
@@ -82,6 +86,7 @@ def main() -> None:
         assert REQUIRED_MCP.issubset(set(claude_servers)), "Claude config missing required MCP servers"
         assert claude_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
         assert claude_servers["datadog"]["url"] == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+        assert claude_servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
         assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
 
     hermes_config = HOME / ".hermes" / "config.yaml"
@@ -103,6 +108,7 @@ def main() -> None:
     assert_contains(policy, "permanent Gmail delete endpoint", "personal assistant policy")
     assert_contains(policy, "bulk delete", "personal assistant policy")
     assert_contains(policy, "Datadog MCP", "personal assistant policy")
+    assert_contains(policy, "Sentry MCP", "personal assistant policy")
     assert_contains(policy, "read-only", "personal assistant policy")
 
     oauth_example = read(ROOT / "assistant" / "windmill" / "oauth.env.example")
