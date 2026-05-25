@@ -37,6 +37,12 @@ terminal:
   docker_mount_cwd_to_workspace: false
   lifetime_seconds: 300
 
+model:
+  provider: "openai-codex"
+  name: "gpt-5.3-codex"
+  # Use the user's Codex CLI / ChatGPT subscription for OpenAI-scoped turns.
+  openai_runtime: "codex_app_server"
+
 mcp_servers:
   agents_readonly:
     command: "agents-mcp"
