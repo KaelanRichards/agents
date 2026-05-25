@@ -88,6 +88,8 @@ This is the single source of truth for both agents. Canonical file lives at
   repo/CI + open PRs, tmux sessions).
 - **Interactive dashboard**: `dash` — live Textual TUI with panels + action keys
   (`r` refresh · `s` sync · `d` doctor · `g` grafana · `q` quit).
+- **Web dashboard**: `dashweb` — native HTML UI at `localhost:8787` (cards + Sync/Doctor/Grafana
+  buttons, auto-refresh). Localhost-only; for phone, `ssh -L 8787:localhost:8787 …`.
 
 ## Security policy (agents + MCP)
 - **Destructive ops are blocked** by the guard hook (`rm -rf /`, disk wipes, `curl|bash`,

@@ -36,6 +36,9 @@ jobs:
           jq -e . mcp.json >/dev/null && echo "mcp.json ok"
           for f in agents/*.json; do jq -e . "$f" >/dev/null && echo "$f ok"; done
 
+      - name: Lint Python (ruff)
+        run: pipx run ruff check .
+
   bootstrap-smoke:
     name: bootstrap on fresh Ubuntu
     # Heavy (installs Homebrew + the toolbelt). Only weekly or on demand.

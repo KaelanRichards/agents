@@ -27,6 +27,7 @@ Then authenticate: `claude` (`/login`), `codex login`, `gh auth login`, and set 
 | `agents-doctor` | full health check |
 | `agents-status` | read-only overview: VMs, health, MCP, CI/PRs, sessions |
 | `dash` | interactive TUI dashboard (live panels + action keys) |
+| `dashweb` | native HTML dashboard (localhost:8787; SSH-tunnel for phone) |
 | `swarm "task" ...` | parallel agents across jj workspaces |
 | `wt new <name>` | one isolated workspace |
 | `obs up` | start the observability stack |
