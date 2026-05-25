@@ -44,6 +44,11 @@ if command -v jq >/dev/null 2>&1; then
 	cl=$(jq '.mcpServers // {} | length' "$HOME/.claude.json" 2>/dev/null || echo -1)
 	cx=$(grep -cE '^\[mcp_servers\.[^.]+\]$' "$HOME/.codex/config.toml" 2>/dev/null || echo -1)
 	[ "$c" = "$cl" ] && [ "$c" = "$cx" ] && ok "MCP servers in sync ($c)" || bad "MCP parity mismatch: canonical=$c claude=$cl codex=$cx (run mcp-sync)"
+	required_mcp="context7 playwright filesystem sequential-thinking github agents personal-actions linear"
+	for s in $required_mcp; do
+		jq -e --arg s "$s" '.mcpServers[$s]' "$AH/mcp.json" >/dev/null 2>&1 && ok "MCP required server present: $s" || bad "missing required MCP server: $s"
+	done
+	jq -e '.mcpServers.linear.url == "https://mcp.linear.app/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP URL pinned" || bad "Linear MCP URL mismatch"
 fi
 
 echo "== config validity =="
@@ -51,6 +56,9 @@ jq -e . "$AH/mcp.json" >/dev/null 2>&1 && ok "mcp.json" || bad "mcp.json invalid
 [ -f "$HOME/.claude/settings.json" ] && { jq -e . "$HOME/.claude/settings.json" >/dev/null 2>&1 && ok "claude settings.json" || bad "claude settings.json invalid"; }
 if command -v yq >/dev/null 2>&1 && [ -f "$HOME/.codex/config.toml" ]; then
 	yq -p toml "$HOME/.codex/config.toml" >/dev/null 2>&1 && ok "codex config.toml" || bad "codex config.toml invalid TOML"
+	if grep -qF '[mcp_servers.linear]' "$HOME/.codex/config.toml"; then
+		grep -qF 'experimental_use_rmcp_client = true' "$HOME/.codex/config.toml" && ok "codex remote MCP feature enabled" || bad "codex Linear MCP requires experimental_use_rmcp_client = true"
+	fi
 fi
 command -v jj >/dev/null 2>&1 && { jj config list --user >/dev/null 2>&1 && ok "jj config" || bad "jj config invalid"; }
 
@@ -102,8 +110,32 @@ if command -v hermes >/dev/null 2>&1; then
 	else
 		ok "personal actions default to dry-run"
 	fi
+	if [ -f "$HOME/.hermes/config.yaml" ]; then
+		for tool in personal_slack_send_message personal_gmail_create_draft personal_gmail_send_email personal_gmail_trash_email personal_calendar_create_event personal_calendar_update_event; do
+			grep -qF -- "- $tool" "$HOME/.hermes/config.yaml" && ok "hermes personal action tool: $tool" || bad "hermes missing personal action tool: $tool"
+		done
+	fi
 else
 	warn "Hermes not installed"
+fi
+
+echo "== personal action auth =="
+pa_env="$HOME/.config/agents-secrets/personal-actions.env"
+if [ -f "$pa_env" ]; then
+	for key in PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN PERSONAL_GMAIL_MODIFY_REFRESH_TOKEN PERSONAL_WORK_GMAIL_MODIFY_REFRESH_TOKEN; do
+		if awk -F= -v k="$key" '$1==k && length($2)>0 {found=1} END {exit found?0:1}' "$pa_env"; then
+			ok "$key configured"
+		else
+			warn "$key missing"
+		fi
+	done
+	if awk -F= '$1=="PERSONAL_WORK_GMAIL_COMPOSE_REFRESH_TOKEN" && length($2)>0 {found=1} END {exit found?0:1}' "$pa_env"; then
+		ok "PERSONAL_WORK_GMAIL_COMPOSE_REFRESH_TOKEN configured"
+	else
+		warn "PERSONAL_WORK_GMAIL_COMPOSE_REFRESH_TOKEN missing (run personal-actions-google-compose-auth --account work if work drafts are needed)"
+	fi
+else
+	warn "missing $pa_env"
 fi
 
 echo "== repo sync =="

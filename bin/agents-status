@@ -48,9 +48,14 @@ else
 	echo "  missing $pa_env"
 fi
 if command -v personal-actions-check >/dev/null 2>&1; then
-	pa_health="$(personal-actions-check 2>/dev/null | tail -1 || true)"
-	if [ -n "$pa_health" ]; then
+	set +e
+	pa_output="$(personal-actions-check 2>&1)"
+	pa_status=$?
+	pa_health="$(printf '%s\n' "$pa_output" | tail -1)"
+	if [ "$pa_status" -eq 0 ] && [ -n "$pa_health" ]; then
 		printf '  health: %s\n' "$pa_health"
+	elif [ -n "$pa_health" ]; then
+		printf '  health: failed (%s)\n' "$pa_health"
 	else
 		echo "  health: failed"
 	fi
