@@ -1,8 +1,9 @@
 # agents — portable agent environment (laptop + always-on VM)
 
 Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md`), MCP servers
-(`mcp.json`), subagents/skills/hooks, helper scripts (`bin/`), shell env (`zsh/agents.zsh`),
-dashboards, observability, CI, and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
+(`mcp.json`), subagents/skills/hooks, helper scripts (`bin/`), shell env (`zsh/agents.env.zsh`
+for all shells plus `zsh/agents.zsh` for interactive extras), dashboards, observability, CI,
+and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
 
 ## Provision an always-on VM (so you can close your laptop)
 
@@ -91,6 +92,11 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 ## Maintenance & health
 - **`agents-doctor`** — verify tools, symlinks, MCP parity, configs, and agent-CLI version drift
   (run anytime, or on a new machine).
+- **`just ci-local`** — local verification loop: shell scripts, JSON locks, sync round-trip,
+  dashboard smoke test, `gitleaks`, and `agents-doctor`.
+- **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,
+  then report upstream drift without modifying files. `skills.lock.json` is the source of truth.
+- **`mcp-update`** — report npm drift for pinned stdio MCP packages without modifying `mcp.json`.
 - **`obs up`** — local OpenTelemetry → Prometheus → Grafana stack for agent cost/usage
   (`obs env` prints the env that streams Claude Code telemetry to it).
 - **CI** (`.github/workflows/ci.yml`): lints + validates on every push; weekly it runs the
@@ -100,6 +106,11 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 ## Notes
 - Secrets are **never** committed — only `bearer_token_env_var` *names* live in `mcp.json`;
   tokens live in the macOS keychain (laptop) or `webdash.env` (VM).
+- MCP stdio package versions are pinned in `mcp.json`; use `mcp-update` before intentionally
+  bumping them.
+- The custom `agents` MCP server is read-only by default for task/config mutation. Set
+  `AGENTS_MCP_ALLOW_MUTATION=1` only in sessions where MCP-triggered task runs or config syncs
+  are intentionally allowed.
 - The PreToolUse guard hook is active here too; destructive commands stay blocked.
 - Tools: see `Brewfile`. Languages via `mise` + `rustup`. VCS is jj-first (colocated on the laptop).
 - New machine / full reference: see `ONBOARDING.md`.

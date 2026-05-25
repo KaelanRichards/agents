@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# mcp-update — report npm drift for pinned stdio MCP packages. It does not modify files.
+set -euo pipefail
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+canon="$AH/mcp.json"
+
+command -v jq >/dev/null || { echo "mcp-update: jq required" >&2; exit 1; }
+command -v npm >/dev/null || { echo "mcp-update: npm required" >&2; exit 1; }
+[ -f "$canon" ] || { echo "mcp-update: missing $canon" >&2; exit 1; }
+
+jq -r '.mcpServers | to_entries[] | select(.value.command == "npx") | [.key, (.value.args[] | select(startswith("@")))] | @tsv' "$canon" |
+while IFS=$'\t' read -r name spec; do
+	pkg="${spec%@*}"
+	if [ "$pkg" = "" ]; then
+		pkg="$spec"
+	fi
+	pinned="${spec##*@}"
+	if [ "$pinned" = "$pkg" ]; then
+		pinned="unversioned"
+	fi
+	latest=$(npm view "$pkg" version 2>/dev/null || true)
+	if [ -z "$latest" ]; then
+		printf '%-22s %-50s %s\n' "$name" "$spec" "unable to resolve"
+	elif [ "$pinned" = "$latest" ]; then
+		printf '%-22s %-50s %s\n' "$name" "$spec" "up to date"
+	else
+		printf '%-22s %-50s %s -> %s\n' "$name" "$pkg" "$pinned" "$latest"
+	fi
+done

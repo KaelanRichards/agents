@@ -41,6 +41,10 @@ def _cwd(path: str) -> str:
     return path or os.getcwd()
 
 
+def _mutation_allowed() -> bool:
+    return os.environ.get("AGENTS_MCP_ALLOW_MUTATION") == "1"
+
+
 @mcp.tool()
 def repo_status(path: str = "") -> str:
     """Working-copy status of the repo (jj st, or git status)."""
@@ -88,6 +92,8 @@ def list_tasks(path: str = "") -> str:
 @mcp.tool()
 def run_task(name: str, path: str = "") -> str:
     """Run a project task by name — must be a known justfile recipe or package.json script."""
+    if not _mutation_allowed():
+        return "error: mutating tools disabled; set AGENTS_MCP_ALLOW_MUTATION=1 to run tasks"
     p = Path(_cwd(path))
     if (p / "justfile").exists() or (p / "Justfile").exists():
         if name in _run(["just", "--summary"], cwd=str(p)).split():
@@ -122,6 +128,8 @@ def list_mcp_servers() -> str:
 @mcp.tool()
 def sync_config() -> str:
     """Regenerate Claude + Codex config from the canonical source (mcp-sync && agents-sync)."""
+    if not _mutation_allowed():
+        return "error: mutating tools disabled; set AGENTS_MCP_ALLOW_MUTATION=1 to sync config"
     return _run(["mcp-sync"]) + "\n" + _run(["agents-sync"])
 
 

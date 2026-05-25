@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# skills-update — report upstream drift for vendored skills. It does not modify files.
+set -euo pipefail
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+lock="$AH/skills.lock.json"
+
+command -v jq >/dev/null || { echo "skills-update: jq required" >&2; exit 1; }
+command -v git >/dev/null || { echo "skills-update: git required" >&2; exit 1; }
+[ -f "$lock" ] || { echo "skills-update: missing $lock" >&2; exit 1; }
+
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+jq -r '.skills | to_entries[] | select(.value.source != "local") | [.value.source, .value.ref, .value.commit] | @tsv' "$lock" |
+	sort -u > "$tmp"
+
+while IFS=$'\t' read -r source ref locked; do
+	remote="https://github.com/$source.git"
+	current=$(git ls-remote "$remote" "refs/heads/$ref" | awk '{print $1}')
+	if [ -z "$current" ]; then
+		printf '%-30s %-8s %s\n' "$source" "$ref" "unable to resolve"
+	elif [ "$current" = "$locked" ]; then
+		printf '%-30s %-8s %s\n' "$source" "$ref" "up to date"
+	else
+		printf '%-30s %-8s %s -> %s\n' "$source" "$ref" "${locked:0:12}" "${current:0:12}"
+	fi
+done < "$tmp"

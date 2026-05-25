@@ -57,6 +57,37 @@ echo "== hooks =="
 if [ -f "$HOME/.claude/settings.json" ]; then
 	jq -e '.hooks.PreToolUse and .hooks.PostToolUse' "$HOME/.claude/settings.json" >/dev/null 2>&1 && ok "claude hooks wired" || warn "claude hooks not wired (run agents-sync)"
 fi
+if [ -f "$HOME/.codex/config.toml" ]; then
+	if grep -qF '[[hooks.PreToolUse]]' "$HOME/.codex/config.toml" && grep -qF '[[hooks.PostToolUse]]' "$HOME/.codex/config.toml"; then
+		ok "codex hooks wired"
+	else
+		warn "codex hooks not wired (run agents-sync)"
+	fi
+fi
+
+echo "== skill sync =="
+canonical_skills=$(find "$AH/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+claude_skills=$(find "$HOME/.claude/skills" -mindepth 1 -maxdepth 1 -type l 2>/dev/null | wc -l | tr -d ' ')
+codex_skills=$(find "$HOME/.codex/skills" -mindepth 1 -maxdepth 1 -type l 2>/dev/null | wc -l | tr -d ' ')
+if [ "$canonical_skills" = "$claude_skills" ] && [ "$canonical_skills" = "$codex_skills" ]; then
+	ok "canonical skills linked to Claude + Codex ($canonical_skills)"
+else
+	bad "skill count mismatch: canonical=$canonical_skills claude=$claude_skills codex=$codex_skills (run agents-sync)"
+fi
+broken_skills=$(find "$HOME/.claude/skills" "$HOME/.codex/skills" -mindepth 1 -maxdepth 1 -type l ! -exec test -e {} \; -print 2>/dev/null | wc -l | tr -d ' ')
+[ "$broken_skills" = "0" ] && ok "no broken skill links" || bad "broken skill symlinks: $broken_skills"
+if [ -f "$AH/skills.lock.json" ]; then
+	lock_skills=$(jq '.skills | length' "$AH/skills.lock.json" 2>/dev/null || echo -1)
+	[ "$lock_skills" = "$canonical_skills" ] && ok "skills.lock.json covers all canonical skills" || bad "skills.lock.json count mismatch: lock=$lock_skills canonical=$canonical_skills"
+else
+	bad "missing skills.lock.json"
+fi
+
+echo "== repo sync =="
+if command -v jj >/dev/null 2>&1 && jj -R "$AH" root >/dev/null 2>&1; then
+	current_bookmarks=$(jj -R "$AH" log -r @ --no-graph -T 'bookmarks.join(" ")' 2>/dev/null || true)
+	[ -n "$current_bookmarks" ] && ok "current config change has bookmark(s): $current_bookmarks" || warn "current config change has no bookmark"
+fi
 
 echo "== agent-CLI version drift =="
 vfile="$AH/.doctor-versions"

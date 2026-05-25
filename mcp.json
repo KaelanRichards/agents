@@ -5,7 +5,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@upstash/context7-mcp"
+        "@upstash/context7-mcp@3.0.0"
       ]
     },
     "playwright": {
@@ -13,7 +13,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@playwright/mcp@latest"
+        "@playwright/mcp@0.0.75"
       ]
     },
     "filesystem": {
@@ -21,7 +21,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-filesystem",
+        "@modelcontextprotocol/server-filesystem@2026.1.14",
         "/Users/kaelan/code"
       ]
     },
@@ -30,7 +30,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-sequential-thinking"
+        "@modelcontextprotocol/server-sequential-thinking@2025.12.18"
       ]
     },
     "github": {
@@ -41,9 +41,7 @@
     "agents": {
       "type": "stdio",
       "command": "agents-mcp",
-      "args": [
-        ""
-      ]
+      "args": []
     }
   }
 }

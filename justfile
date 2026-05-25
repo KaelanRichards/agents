@@ -1,0 +1,40 @@
+set shell := ["bash", "-cu"]
+
+default:
+    just --list
+
+sync:
+    mcp-sync
+    agents-sync
+
+doctor:
+    agents-doctor
+
+audit:
+    skills-audit
+
+skills-update:
+    skills-update
+
+mcp-update:
+    mcp-update
+
+test:
+    shellcheck -S error -x bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh
+    actionlint
+    jq -e . mcp.json >/dev/null
+    jq -e . skills.lock.json >/dev/null
+    for f in agents/*.json; do jq -e . "$f" >/dev/null; done
+    ruff check .
+    bash tests/sync-roundtrip.sh
+    uv run --script tests/dash_smoke.py
+
+secrets:
+    gitleaks detect --source . --no-git --redact --verbose
+
+ci-local: test secrets doctor
+
+push-agent-config:
+    jj describe -m "Update shared agent environment"
+    jj bookmark set agent-skills -r @
+    jj git push --bookmark agent-skills

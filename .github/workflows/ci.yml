@@ -30,10 +30,16 @@ jobs:
           done
           exit $fail
 
+      - name: actionlint
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@latest
+          actionlint
+
       - name: Validate JSON config
         run: |
           set -e
           jq -e . mcp.json >/dev/null && echo "mcp.json ok"
+          jq -e . skills.lock.json >/dev/null && echo "skills.lock.json ok"
           for f in agents/*.json; do jq -e . "$f" >/dev/null && echo "$f ok"; done
 
       - name: Lint Python (ruff)

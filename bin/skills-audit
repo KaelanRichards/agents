@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# skills-audit — summarize installed shared skills, provenance, and executable surface.
+set -euo pipefail
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+lock="$AH/skills.lock.json"
+
+command -v jq >/dev/null || { echo "skills-audit: jq required" >&2; exit 1; }
+[ -f "$lock" ] || { echo "skills-audit: missing $lock" >&2; exit 1; }
+
+printf '%-36s %-30s %-12s %s\n' "skill" "source" "scripts" "commit"
+jq -r '.skills | keys[]' "$lock" | while IFS= read -r name; do
+	source=$(jq -r --arg n "$name" '.skills[$n].source' "$lock")
+	commit=$(jq -r --arg n "$name" '.skills[$n].commit // "local"' "$lock")
+	dir="$AH/skills/$name"
+	if [ -d "$dir" ]; then
+		scripts=$(find "$dir" -type f \( -name '*.sh' -o -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.ps1' -o -name '*.swift' \) 2>/dev/null | wc -l | tr -d ' ')
+	else
+		scripts="missing"
+	fi
+	printf '%-36s %-30s %-12s %.12s\n' "$name" "$source" "$scripts" "$commit"
+done

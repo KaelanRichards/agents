@@ -8,15 +8,16 @@ CODEX_TOML="$HOME/.codex/config.toml"
 HB="# >>> agents-sync hooks (managed: edit ~/.config/agents/hooks then run agents-sync) >>>"
 HE="# <<< agents-sync hooks <<<"
 command -v jq >/dev/null || { echo "agents-sync: jq required" >&2; exit 1; }
-mkdir -p "$AH"/skills "$AH"/agents "$AH"/hooks "$HOME/.claude/skills" "$HOME/.claude/agents" "$HOME/.codex/agents"
+mkdir -p "$AH"/skills "$AH"/agents "$AH"/hooks "$HOME/.claude/skills" "$HOME/.claude/agents" "$HOME/.codex/skills" "$HOME/.codex/agents"
 
-# 1) SKILLS — symlink each canonical skill dir into Claude's skills dir
+# 1) SKILLS — symlink each canonical skill dir into Claude's and Codex's skills dirs
 sc=0
 for d in "$AH"/skills/*/; do
   [ -d "$d" ] || continue
   ln -sfn "${d%/}" "$HOME/.claude/skills/$(basename "$d")"; sc=$((sc+1))
+  ln -sfn "${d%/}" "$HOME/.codex/skills/$(basename "$d")"
 done
-echo "skills: $sc linked into ~/.claude/skills"
+echo "skills: $sc linked into ~/.claude/skills + ~/.codex/skills"
 
 # 2) SUBAGENTS — generate Claude .md + Codex .toml from canonical JSON
 ac=0

@@ -22,8 +22,9 @@ if jj root >/dev/null 2>&1; then
           echo "created jj workspace $path"; echo "cd \"$path\"" ;;
     ls)   jj workspace list ;;
     rm)   name="${1:?usage: wt rm <name>}"
+          case "$name" in */*|.*|"") echo "invalid workspace name: $name" >&2; exit 1 ;; esac
           jj workspace forget "$name" 2>/dev/null || true
-          rm -rf "$base_dir/$name"; echo "removed jj workspace $name" ;;
+          rm -rf -- "${base_dir:?}/$name"; echo "removed jj workspace $name" ;;
     path) name="${1:?usage: wt path <name>}"; echo "$base_dir/$name" ;;
     ""|-h|--help|help) usage ;;
     *) echo "unknown: $cmd" >&2; usage; exit 1 ;;
@@ -37,7 +38,9 @@ else
           git worktree add -b "$name" "$path" "$base"
           echo "created git worktree $path (branch $name)"; echo "cd \"$path\"" ;;
     ls)   git worktree list ;;
-    rm)   name="${1:?usage: wt rm <name>}"; git worktree remove "$base_dir/$name" && echo "removed $name" ;;
+    rm)   name="${1:?usage: wt rm <name>}"
+          case "$name" in */*|.*|"") echo "invalid worktree name: $name" >&2; exit 1 ;; esac
+          git worktree remove "${base_dir:?}/$name" && echo "removed $name" ;;
     path) name="${1:?usage: wt path <name>}"; echo "$base_dir/$name" ;;
     ""|-h|--help|help) usage ;;
     *) echo "unknown: $cmd" >&2; usage; exit 1 ;;
