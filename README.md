@@ -5,10 +5,12 @@ Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md
 for all shells plus `zsh/agents.zsh` for interactive extras), dashboards, observability, CI,
 and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
 
-The shared MCP set includes the official Linear remote MCP server (`https://mcp.linear.app/mcp`)
-and a local read-only BigQuery facade (`bigquery-mcp`) that uses the machine's existing
-`gcloud`/`bq` auth. The active BigQuery project is `vizcom-web`; it needs the BigQuery API enabled
-and MCP Tool User, BigQuery Job User, and BigQuery Data Viewer for the signed-in identity.
+The shared MCP set includes the official Linear remote MCP server (`https://mcp.linear.app/mcp`),
+the official Datadog US5 remote MCP server, and a local read-only BigQuery facade (`bigquery-mcp`)
+that uses the machine's existing `gcloud`/`bq` auth. The Datadog endpoint is pinned to
+`https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery`.
+The active BigQuery project is `vizcom-web`; it needs the BigQuery API enabled and MCP Tool User,
+BigQuery Job User, and BigQuery Data Viewer for the signed-in identity.
 
 ## Provision an always-on VM (so you can close your laptop)
 

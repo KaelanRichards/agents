@@ -56,6 +56,10 @@
       "type": "stdio",
       "command": "/Users/kaelan/.config/agents/bin/bigquery-mcp",
       "args": []
+    },
+    "datadog": {
+      "type": "http",
+      "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
     }
   }
 }

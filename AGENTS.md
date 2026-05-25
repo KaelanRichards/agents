@@ -80,11 +80,12 @@ This is the single source of truth for both agents. Canonical file lives at
 - **Available MCP servers** (run `mcp-sync list` for the live set) — use when relevant:
   `context7` (pull up-to-date docs before coding against a library/API), `github`
   (PRs/issues/repos; complements the `gh` CLI), `linear` (Linear issues/projects/comments via
-  the official remote MCP server), `bigquery` (local read-only BigQuery facade using `gcloud`/`bq`
-  auth; use `bigquery_execute_sql_readonly` for SQL), `playwright` (drive a real browser for web
-  testing/scraping), `filesystem` (file access scoped to `~/code`), `sequential-thinking`
-  (structured step-by-step reasoning), and `agents` (this environment's own tools:
-  repo status/log/diff, project task discovery+run, MCP list, config sync).
+  the official remote MCP server), `datadog` (official Datadog US5 remote MCP server for
+  read-first observability investigation), `bigquery` (local read-only BigQuery facade using
+  `gcloud`/`bq` auth; use `bigquery_execute_sql_readonly` for SQL), `playwright` (drive a real
+  browser for web testing/scraping), `filesystem` (file access scoped to `~/code`),
+  `sequential-thinking` (structured step-by-step reasoning), and `agents` (this environment's own
+  tools: repo status/log/diff, project task discovery+run, MCP list, config sync).
 
 ## Subagents, skills & hooks (synced across both tools)
 - Canonical sources live in `~/.config/agents/{agents,skills,hooks}`; run **`agents-sync`**

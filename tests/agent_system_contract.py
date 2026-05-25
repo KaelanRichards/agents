@@ -17,6 +17,7 @@ REQUIRED_MCP = {
     "filesystem",
     "sequential-thinking",
     "github",
+    "datadog",
     "bigquery",
     "agents",
     "personal-actions",
@@ -54,6 +55,8 @@ def main() -> None:
 
     assert servers["linear"]["type"] == "http"
     assert servers["linear"]["url"] == "https://mcp.linear.app/mcp"
+    assert servers["datadog"]["type"] == "http"
+    assert servers["datadog"]["url"] == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
     assert servers["bigquery"]["type"] == "stdio"
     assert servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
     assert servers["bigquery"]["args"] == []
@@ -66,6 +69,7 @@ def main() -> None:
         codex_servers = codex.get("mcp_servers", {})
         assert REQUIRED_MCP.issubset(set(codex_servers)), "Codex config missing required MCP servers"
         assert codex_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
+        assert codex_servers["datadog"]["url"] == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
         assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
         assert codex_servers["bigquery"]["args"] == []
         assert codex.get("features", {}).get("experimental_use_rmcp_client") is True
@@ -77,6 +81,7 @@ def main() -> None:
         claude_servers = claude.get("mcpServers", {})
         assert REQUIRED_MCP.issubset(set(claude_servers)), "Claude config missing required MCP servers"
         assert claude_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
+        assert claude_servers["datadog"]["url"] == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
         assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
 
     hermes_config = HOME / ".hermes" / "config.yaml"
@@ -97,6 +102,8 @@ def main() -> None:
     assert_contains(policy, "exact Gmail message id", "personal assistant policy")
     assert_contains(policy, "permanent Gmail delete endpoint", "personal assistant policy")
     assert_contains(policy, "bulk delete", "personal assistant policy")
+    assert_contains(policy, "Datadog MCP", "personal assistant policy")
+    assert_contains(policy, "read-only", "personal assistant policy")
 
     oauth_example = read(ROOT / "assistant" / "windmill" / "oauth.env.example")
     for port in ["8765", "8766", "8767", "8768"]:
