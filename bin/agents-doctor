@@ -44,11 +44,12 @@ if command -v jq >/dev/null 2>&1; then
 	cl=$(jq '.mcpServers // {} | length' "$HOME/.claude.json" 2>/dev/null || echo -1)
 	cx=$(grep -cE '^\[mcp_servers\.[^.]+\]$' "$HOME/.codex/config.toml" 2>/dev/null || echo -1)
 	[ "$c" = "$cl" ] && [ "$c" = "$cx" ] && ok "MCP servers in sync ($c)" || bad "MCP parity mismatch: canonical=$c claude=$cl codex=$cx (run mcp-sync)"
-	required_mcp="context7 playwright filesystem sequential-thinking github agents personal-actions linear"
+	required_mcp="context7 playwright filesystem sequential-thinking github bigquery agents personal-actions linear"
 	for s in $required_mcp; do
 		jq -e --arg s "$s" '.mcpServers[$s]' "$AH/mcp.json" >/dev/null 2>&1 && ok "MCP required server present: $s" || bad "missing required MCP server: $s"
 	done
 	jq -e '.mcpServers.linear.url == "https://mcp.linear.app/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP URL pinned" || bad "Linear MCP URL mismatch"
+	jq -e '.mcpServers.bigquery.url == "https://bigquery.googleapis.com/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "BigQuery MCP URL pinned" || bad "BigQuery MCP URL mismatch"
 fi
 
 echo "== config validity =="

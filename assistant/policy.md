@@ -15,6 +15,16 @@ Hermes may use the configured personal action MCP endpoint for:
 Hermes may also use the read-only `agents` MCP tools for repo status, logs, diffs, task discovery,
 and MCP server listing.
 
+## BigQuery MCP
+
+- Prefer read-only BigQuery MCP tools, especially `execute_sql_readonly`, for analysis.
+- Require explicit confirmation before using any write-capable BigQuery SQL tool such as
+  `execute_sql`.
+- Tell the user the Google Cloud project, dataset/table targets, and likely cost/blast radius
+  before running BigQuery SQL.
+- Do not run DDL, DML, table deletion, dataset deletion, export, or scheduled-query changes unless
+  the user explicitly asks for that exact mutation.
+
 ## Boundaries
 
 - Never permanently delete Slack messages, Gmail messages/drafts, or calendar events.

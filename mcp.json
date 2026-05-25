@@ -51,6 +51,10 @@
     "linear": {
       "type": "http",
       "url": "https://mcp.linear.app/mcp"
+    },
+    "bigquery": {
+      "type": "http",
+      "url": "https://bigquery.googleapis.com/mcp"
     }
   }
 }

@@ -17,6 +17,7 @@ REQUIRED_MCP = {
     "filesystem",
     "sequential-thinking",
     "github",
+    "bigquery",
     "agents",
     "personal-actions",
     "linear",
@@ -53,6 +54,8 @@ def main() -> None:
 
     assert servers["linear"]["type"] == "http"
     assert servers["linear"]["url"] == "https://mcp.linear.app/mcp"
+    assert servers["bigquery"]["type"] == "http"
+    assert servers["bigquery"]["url"] == "https://bigquery.googleapis.com/mcp"
     assert servers["github"]["bearer_token_env_var"] == "GITHUB_PAT"
     assert servers["personal-actions"]["command"].endswith("/bin/personal-actions-mcp")
 
