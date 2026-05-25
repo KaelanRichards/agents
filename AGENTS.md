@@ -88,8 +88,10 @@ This is the single source of truth for both agents. Canonical file lives at
   repo/CI + open PRs, tmux sessions).
 - **Interactive dashboard**: `dash` — live Textual TUI with panels + action keys
   (`r` refresh · `s` sync · `d` doctor · `g` grafana · `q` quit).
-- **Web dashboard**: `dashweb` — native HTML UI at `localhost:8787` (cards + Sync/Doctor/Grafana
-  buttons, auto-refresh). Localhost-only; for phone, `ssh -L 8787:localhost:8787 …`.
+- **Web dashboard**: `dashweb` — live HTML control center at `localhost:8787`: SSE cards,
+  streamed action logs, embedded Grafana + `ttyd` terminal, real cost; controls for
+  sync/doctor/provision/teardown/reboot and MCP add/remove. Localhost-only; serve over a
+  Tailscale tailnet with `WEBDASH_HOST`+`WEBDASH_TOKEN` (never bind 0.0.0.0 without a token).
 
 ## Security policy (agents + MCP)
 - **Destructive ops are blocked** by the guard hook (`rm -rf /`, disk wipes, `curl|bash`,

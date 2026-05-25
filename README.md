@@ -69,6 +69,18 @@ revision). Languages stay mise/uv-managed; `claude`/`codex` install separately (
 On the VM, `BOOTSTRAP_NIX=1 bash ~/.config/agents/bootstrap.sh` installs Nix alongside brew so
 the flake is available there too.
 
+## Web dashboard
+
+```bash
+dashweb     # http://localhost:8787 — live SSE cards, control buttons, embedded Grafana + terminal
+```
+- Live status (SSE, no polling), streamed action logs, real cost, and controls
+  (sync / doctor / provision / teardown / reboot, MCP add+remove).
+- **Terminal panel** needs ttyd running:  `ttyd -p 7681 -W zsh`  (localhost only).
+- **Grafana panel** needs the obs stack up (`obs up`); embedding is enabled in its config.
+- **Localhost-only by default** (it runs shell commands). Phone access: SSH-tunnel the port, or
+  serve on your Tailscale tailnet with `WEBDASH_HOST=<tailnet-ip> WEBDASH_TOKEN=<secret> dashweb`.
+
 ## Notes
 - Secrets are **never** committed — only `bearer_token_env_var` *names* live in `mcp.json`.
 - The guard hook is active here too; destructive commands stay blocked.
