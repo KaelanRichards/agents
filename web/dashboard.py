@@ -122,15 +122,19 @@ app = FastAPI(title="agents webdash")
 
 @app.middleware("http")
 async def auth(request: Request, call_next):
-    if TOKEN:
-        tok = (
-            request.query_params.get("token")
-            or request.headers.get("x-token")
-            or request.cookies.get("token")
+    if not TOKEN:
+        return await call_next(request)
+    via_param = request.query_params.get("token") or request.headers.get("x-token")
+    tok = via_param or request.cookies.get("token")
+    if tok != TOKEN:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    response = await call_next(request)
+    # Authenticated via ?token= / header -> set a cookie so the bare URL works next time.
+    if via_param == TOKEN and request.cookies.get("token") != TOKEN:
+        response.set_cookie(
+            "token", TOKEN, max_age=2592000, httponly=True, samesite="lax", secure=True
         )
-        if tok != TOKEN:
-            return JSONResponse({"error": "unauthorized"}, status_code=401)
-    return await call_next(request)
+    return response
 
 
 @app.get("/api/status")
