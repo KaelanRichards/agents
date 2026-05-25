@@ -1,4 +1,4 @@
-"""Authorize a local Gmail compose refresh token for personal-actions drafts."""
+"""Authorize local Gmail refresh tokens for personal-actions Gmail tools."""
 
 from __future__ import annotations
 
@@ -16,7 +16,22 @@ from pathlib import Path
 SECRETS_DIR = Path.home() / ".config" / "agents-secrets"
 OAUTH_ENV = SECRETS_DIR / "windmill-oauth.env"
 PERSONAL_ENV = SECRETS_DIR / "personal-actions.env"
-SCOPE = "https://www.googleapis.com/auth/gmail.compose"
+CAPABILITIES = {
+    "compose": {
+        "scope": "https://www.googleapis.com/auth/gmail.compose",
+        "personal_port": 8765,
+        "work_port": 8766,
+        "env_kind": "COMPOSE",
+        "label": "Gmail compose",
+    },
+    "modify": {
+        "scope": "https://www.googleapis.com/auth/gmail.modify",
+        "personal_port": 8767,
+        "work_port": 8768,
+        "env_kind": "MODIFY",
+        "label": "Gmail modify",
+    },
+}
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -88,9 +103,11 @@ def exchange_code(client_id: str, client_secret: str, code: str, redirect_uri: s
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--account", choices=["personal", "work"], default="personal")
+    parser.add_argument("--capability", choices=sorted(CAPABILITIES), default="compose")
     parser.add_argument("--port", type=int)
     args = parser.parse_args()
-    port = args.port or (8766 if args.account == "work" else 8765)
+    capability = CAPABILITIES[args.capability]
+    port = args.port or int(capability["work_port"] if args.account == "work" else capability["personal_port"])
     oauth = load_env(OAUTH_ENV)
     client_id = oauth.get("GOOGLE_OAUTH_CLIENT_ID", "")
     client_secret = oauth.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
@@ -108,14 +125,15 @@ def main() -> int:
             "client_id": client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": SCOPE,
+            "scope": capability["scope"],
             "access_type": "offline",
             "prompt": "consent",
             "state": state,
         }
     )
     url = f"https://accounts.google.com/o/oauth2/v2/auth?{params}"
-    print(f"Opening Google OAuth. Add this redirect URI to the OAuth client first if needed: {redirect_uri}")
+    print(f"Opening Google OAuth for {args.account} {capability['label']}.")
+    print(f"Add this redirect URI to the OAuth client first if needed: {redirect_uri}")
     subprocess.run(["open", url], check=False)
     thread.join(timeout=180)
     server.server_close()
@@ -127,7 +145,8 @@ def main() -> int:
     if not refresh:
         print("Google did not return a refresh_token; revoke app access and retry with prompt=consent", file=sys.stderr)
         return 1
-    prefix = "PERSONAL_WORK_GMAIL_COMPOSE" if args.account == "work" else "PERSONAL_GMAIL_COMPOSE"
+    env_kind = str(capability["env_kind"])
+    prefix = f"PERSONAL_WORK_GMAIL_{env_kind}" if args.account == "work" else f"PERSONAL_GMAIL_{env_kind}"
     write_env(
         PERSONAL_ENV,
         {
@@ -136,7 +155,7 @@ def main() -> int:
             f"{prefix}_REFRESH_TOKEN": refresh,
         },
     )
-    print(f"Stored {args.account} Gmail compose refresh token in {PERSONAL_ENV}")
+    print(f"Stored {args.account} {capability['label']} refresh token in {PERSONAL_ENV}")
     return 0
 
 

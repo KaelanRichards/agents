@@ -23,6 +23,7 @@ actions:
 - Slack: send message
 - Gmail: create draft
 - Gmail: send email
+- Gmail: move one exact message id to Trash
 - Google Calendar: create event
 - Google Calendar: update event
 
@@ -57,13 +58,21 @@ Gmail draft creation requires the separate compose-scope local OAuth setup:
 personal-actions-google-compose-auth
 ```
 
+Gmail trash moves require a separate modify-scope local OAuth setup. This is recoverable Trash
+only, not permanent deletion:
+
+```bash
+personal-actions-google-modify-auth
+personal-actions-google-modify-auth --account work
+```
+
 ## Use
 
 ```bash
 hermes
 ```
 
-Ask Hermes to list available MCP tools after sync. It should see `agents_readonly` and the five
+Ask Hermes to list available MCP tools after sync. It should see `agents_readonly` and the
 constrained personal action tools. With no live provider configured, calls return dry-run responses
 and write redacted audit logs under `assistant/logs/personal-actions/`.
 

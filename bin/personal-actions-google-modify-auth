@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# personal-actions-google-modify-auth — authorize Gmail modify scope for recoverable trash moves.
+set -euo pipefail
+exec python3 "$HOME/.config/agents/scripts/personal_actions_google_compose_auth.py" --capability modify "$@"

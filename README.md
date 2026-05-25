@@ -99,7 +99,8 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - **`mcp-update`** — report npm drift for pinned stdio MCP packages without modifying `mcp.json`.
 - **`hermes-sync`** — generate the managed Hermes personal-assistant profile at
   `~/.hermes/config.yaml`. Hermes uses the shared local `personal-actions-mcp` facade for Slack,
-  Gmail, and Calendar writes plus read-only `agents` MCP tools.
+  Gmail, and Calendar writes plus read-only `agents` MCP tools. Gmail trash is recoverable only:
+  one exact message id moved to Trash, never permanent or bulk deletion.
 - **`windmill-up` / `windmill-status` / `windmill-down`** — manage the local open-source Windmill
   backend for live personal actions. See `assistant/windmill/README.md`.
 - **`obs up`** — local OpenTelemetry → Prometheus → Grafana stack for agent cost/usage

@@ -20,7 +20,7 @@ cat > "$config" <<EOF
 #
 # The facade exposes only:
 #   Slack send message
-#   Gmail create draft / send email
+#   Gmail create draft / send email / move exact message id to Trash
 #   Google Calendar create event / update event
 
 terminal:
@@ -61,6 +61,7 @@ mcp_servers:
         - personal_slack_send_message
         - personal_gmail_create_draft
         - personal_gmail_send_email
+        - personal_gmail_trash_email
         - personal_calendar_create_event
         - personal_calendar_update_event
       prompts: false

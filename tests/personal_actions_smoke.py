@@ -68,6 +68,10 @@ def main() -> None:
             )
             assert work_response["status"] == "dry_run"
 
+            trash_response = json.loads(mod.personal_gmail_trash_email(message_id="gmail-message-id", account="work"))
+            assert trash_response["action"] == "gmail_trash_email"
+            assert trash_response["status"] == "dry_run"
+
             print("personal-actions smoke OK")
         finally:
             os.environ.clear()

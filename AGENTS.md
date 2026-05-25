@@ -129,14 +129,16 @@ This is the single source of truth for both agents. Canonical file lives at
 - **Mutating MCP tools**: the custom `agents` MCP server exposes read-only repo/status tools
   by default. `run_task` and `sync_config` require `AGENTS_MCP_ALLOW_MUTATION=1`.
 - **Hermes personal assistant**: Hermes config is generated with `hermes-sync`; policy and memory
-  live under `~/.config/agents/assistant`. Slack send, Gmail draft/send, and Calendar create/update
-  are allowed only through the shared constrained `personal-actions-mcp` facade, which defaults to
-  dry-run unless a live provider is explicitly configured.
+  live under `~/.config/agents/assistant`. Slack send, Gmail draft/send/trash, and Calendar
+  create/update are allowed only through the shared constrained `personal-actions-mcp` facade,
+  which defaults to dry-run unless a live provider is explicitly configured. Gmail trash means
+  moving one exact message id to Trash only; permanent delete and bulk/search delete are forbidden.
 - **Personal action confirmation**: draft creation may happen when requested, but Gmail sends,
-  Slack posts, and Calendar creates/updates require explicit confirmation unless the user clearly
-  labels the action as a test/canary or says to send/post/create immediately. Slack canaries must
-  target the user's own Slack user id or self-DM only. Gmail/Calendar default to the personal
-  account; use `account=work` only when the user asks for `kaelan@vizcom.com`, Vizcom, or work.
+  Gmail trash moves, Slack posts, and Calendar creates/updates require explicit confirmation unless
+  the user clearly labels the action as a test/canary or says to send/post/create immediately.
+  Slack canaries must target the user's own Slack user id or self-DM only. Gmail/Calendar default
+  to the personal account; use `account=work` only when the user asks for `kaelan@vizcom.com`,
+  Vizcom, or work.
 - **Least privilege & human-in-the-loop**: don't widen filesystem/MCP scope unnecessarily;
   get explicit confirmation before destructive or outward-facing actions.
 

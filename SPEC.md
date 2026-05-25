@@ -6,17 +6,18 @@ Claude Code, Codex CLI, and Hermes all see the same narrow personal-assistant wr
 - `personal_slack_send_message`
 - `personal_gmail_create_draft`
 - `personal_gmail_send_email`
+- `personal_gmail_trash_email`
 - `personal_calendar_create_event`
 - `personal_calendar_update_event`
 
 The server is registered once in `~/.config/agents/mcp.json`, propagated to Claude/Codex by `mcp-sync`, and loaded by Hermes through `hermes-sync`. The exposed tools remain stable even if the backend changes from Pipedream to Composio, Zapier, official Slack MCP, or Google Workspace CLI later.
 
 ## Scope
-- **In:** A local stdio MCP facade named `personal-actions` with five allowlisted tools, policy checks, dry-run support, append-only audit logs, and provider adapters behind environment-configured endpoints or local CLIs.
+- **In:** A local stdio MCP facade named `personal-actions` with six allowlisted tools, policy checks, dry-run support, append-only audit logs, and provider adapters behind environment-configured endpoints or local CLIs.
 - **In:** Config sync changes so the same server is available to Claude Code, Codex CLI, and Hermes without separately installing Claude connectors or Codex plugins.
 - **In:** Documentation for setup, env vars, auth/provider choices, and the first live test sequence.
 - **In:** Tests that exercise request validation, dry-run behavior, provider dispatch stubs, audit log redaction, and config sync parity.
-- **Out:** Building a public remote MCP server, running a cloud OAuth app, storing OAuth refresh tokens ourselves, exposing broad Gmail/Slack/Calendar APIs, deletes, Drive access, Slack channel management, or autonomous send without explicit tool-call arguments.
+- **Out:** Building a public remote MCP server, running a cloud OAuth app, exposing broad Gmail/Slack/Calendar APIs, permanent deletes, bulk/search deletes, Drive access, Slack channel management, or autonomous send without explicit tool-call arguments.
 - **Out:** Installing OpenClaw as a runtime. OpenClaw is a reference pattern only.
 
 ## Constraints
@@ -26,14 +27,14 @@ The server is registered once in `~/.config/agents/mcp.json`, propagated to Clau
 - Every mutating tool must validate required fields before provider dispatch and write an audit record after every attempted call.
 - Tool descriptions must be short and explicit about side effects.
 - Implement with the repo's existing FastMCP/Python pattern unless there is a concrete blocker.
-- Prefer provider backends that already handle OAuth/token custody. The local facade should not own Google or Slack OAuth refresh tokens in first pass.
+- Prefer provider backends that already handle OAuth/token custody. Local Gmail refresh tokens are allowed only for narrow compose/modify scopes and must stay outside the repo.
 - Support a `PERSONAL_ACTIONS_DRY_RUN=1` mode that never performs outbound writes.
 - Support a `PERSONAL_ACTIONS_PROVIDER` selector. Initial planned values:
   - `webhook`: POST normalized JSON to an HTTPS endpoint such as Pipedream, Composio, Zapier, or a private gateway.
   - `google_workspace_cli`: optional direct local fallback for Gmail/Calendar only, after Hermes Google Workspace auth is configured.
 - Keep Slack/Gmail/Calendar write permissions narrow:
   - Slack: send one message to a channel/user identifier.
-  - Gmail: create draft or send a specific message.
+  - Gmail: create draft, send a specific message, or move one exact message id to Trash.
   - Calendar: create or update a specific event.
 - Audit logs live under `assistant/logs/personal-actions/YYYY-MM-DD.jsonl` and must redact obvious secrets/tokens.
 
@@ -78,13 +79,17 @@ The server is registered once in `~/.config/agents/mcp.json`, propagated to Clau
   - Add an optional local Gmail compose OAuth path for draft creation.
   - Keep send/calendar/slack routed through the constrained Windmill webhook.
   - Store refresh tokens outside the repo in `~/.config/agents-secrets/personal-actions.env`.
+- [x] T8 — Recoverable Gmail trash path — files: `mcp-servers/personal-actions/server.py`, `bin/personal-actions-google-modify-auth`
+  - Add an optional local Gmail modify OAuth path for moving one exact Gmail message id to Trash.
+  - Do not add permanent delete, search-delete, or bulk delete.
+  - Store refresh tokens outside the repo in `~/.config/agents-secrets/personal-actions.env`.
 
 ## Verification
 - `mcp-sync`
 - `hermes-sync`
 - `agents-doctor`
 - `just ci-local`
-- `hermes mcp list` shows `personal_actions` or `personal-actions` enabled with the five selected tools.
+- `hermes mcp list` shows `personal_actions` or `personal-actions` enabled with the selected tools.
 - `PERSONAL_ACTIONS_DRY_RUN=1 hermes -z "List personal action tools; do not take action."` completes without writes.
 - Dry-run tool calls create audit JSONL entries and never call the configured provider.
 - Claude and Codex configs contain the same canonical `personal-actions` MCP server after `mcp-sync`.

@@ -9,6 +9,7 @@ Hermes may use the configured personal action MCP endpoint for:
 
 - Slack: send messages.
 - Gmail: create drafts and send emails.
+- Gmail: move one exact message id to Trash when explicitly requested.
 - Google Calendar: create events and update events.
 
 Hermes may also use the read-only `agents` MCP tools for repo status, logs, diffs, task discovery,
@@ -16,7 +17,9 @@ and MCP server listing.
 
 ## Boundaries
 
-- Never delete Slack messages, Gmail messages/drafts, or calendar events.
+- Never permanently delete Slack messages, Gmail messages/drafts, or calendar events.
+- Gmail "delete" means move one exact Gmail message id to Trash only. Do not search-and-delete,
+  bulk delete, or call the permanent Gmail delete endpoint.
 - Never use broad filesystem, terminal, browser, payment, password-manager, or purchasing tools
   from Hermes without an explicit follow-up change to this policy.
 - Confirm ambiguous recipients, channels, calendars, dates, or times before taking action.
@@ -24,6 +27,8 @@ and MCP server listing.
 - For Gmail sends and Slack posts, include recipients/channel, subject when applicable, and final
   body in the assistant response before sending unless the user explicitly says to send/post
   immediately.
+- For Gmail trash moves, require explicit confirmation of the exact Gmail message id and account
+  before moving it to Trash.
 - Gmail and Calendar actions default to the personal Google account. Use `account=work` only when
   the user asks to use `kaelan@vizcom.com`, Vizcom, or work email/calendar.
 - Slack canaries must target the user's own Slack user id or self-DM only.

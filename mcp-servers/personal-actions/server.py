@@ -185,6 +185,11 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
 
+        if action == "gmail_trash_email":
+            result = _gmail_trash_email_local(payload)
+            _audit(action, payload, "ok", result)
+            return _json_response(action, "ok", payload, result)
+
         provider = _provider()
         if provider == "webhook":
             result = _dispatch_webhook(action, payload)
@@ -259,8 +264,28 @@ def _gmail_compose_configured() -> bool:
     return _gmail_compose_configured_for("personal")
 
 
+def _gmail_prefix(kind: str, account: str) -> str:
+    if kind not in {"COMPOSE", "MODIFY"}:
+        raise PersonalActionError(f"unsupported Gmail OAuth kind: {kind}")
+    if account == "work":
+        return f"PERSONAL_WORK_GMAIL_{kind}"
+    return f"PERSONAL_GMAIL_{kind}"
+
+
 def _gmail_compose_configured_for(account: str) -> bool:
-    prefix = "PERSONAL_WORK_GMAIL_COMPOSE" if account == "work" else "PERSONAL_GMAIL_COMPOSE"
+    prefix = _gmail_prefix("COMPOSE", account)
+    return all(
+        os.environ.get(name, "").strip()
+        for name in [
+            f"{prefix}_CLIENT_ID",
+            f"{prefix}_CLIENT_SECRET",
+            f"{prefix}_REFRESH_TOKEN",
+        ]
+    )
+
+
+def _gmail_modify_configured_for(account: str) -> bool:
+    prefix = _gmail_prefix("MODIFY", account)
     return all(
         os.environ.get(name, "").strip()
         for name in [
@@ -272,7 +297,14 @@ def _gmail_compose_configured_for(account: str) -> bool:
 
 
 def _gmail_compose_access_token(account: str) -> str:
-    prefix = "PERSONAL_WORK_GMAIL_COMPOSE" if account == "work" else "PERSONAL_GMAIL_COMPOSE"
+    return _gmail_oauth_access_token(_gmail_prefix("COMPOSE", account), "Gmail compose")
+
+
+def _gmail_modify_access_token(account: str) -> str:
+    return _gmail_oauth_access_token(_gmail_prefix("MODIFY", account), "Gmail modify")
+
+
+def _gmail_oauth_access_token(prefix: str, label: str) -> str:
     body = urllib.parse.urlencode(
         {
             "client_id": os.environ[f"{prefix}_CLIENT_ID"].strip(),
@@ -292,10 +324,10 @@ def _gmail_compose_access_token(account: str) -> str:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as exc:
         text = exc.read(20_000).decode("utf-8", errors="replace")
-        raise PersonalActionError(f"Gmail compose token refresh failed: {_redact_text(text)}") from exc
+        raise PersonalActionError(f"{label} token refresh failed: {_redact_text(text)}") from exc
     token = str(data.get("access_token", "")).strip()
     if not token:
-        raise PersonalActionError("Gmail compose token refresh returned no access_token")
+        raise PersonalActionError(f"{label} token refresh returned no access_token")
     return token
 
 
@@ -349,6 +381,27 @@ def _gmail_create_draft_local(payload: dict[str, Any]) -> dict[str, Any]:
     except urllib.error.HTTPError as exc:
         text = exc.read(20_000).decode("utf-8", errors="replace")
         raise PersonalActionError(f"Gmail draft failed: {_redact_text(text)}") from exc
+
+
+def _gmail_trash_email_local(payload: dict[str, Any]) -> dict[str, Any]:
+    account = _account(str(payload.get("account", "personal")))
+    if not _gmail_modify_configured_for(account):
+        raise PersonalActionError(
+            f"Gmail modify OAuth is not configured for account '{account}'; run personal-actions-google-modify-auth"
+        )
+    message_id = urllib.parse.quote(str(payload["message_id"]).strip(), safe="")
+    req = urllib.request.Request(
+        f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/trash",
+        data=b"",
+        method="POST",
+        headers={"Authorization": f"Bearer {_gmail_modify_access_token(account)}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
+            return {"status_code": resp.status, "body": json.loads(resp.read().decode("utf-8", errors="replace"))}
+    except urllib.error.HTTPError as exc:
+        text = exc.read(20_000).decode("utf-8", errors="replace")
+        raise PersonalActionError(f"Gmail trash failed: {_redact_text(text)}") from exc
 
 
 def _google_api_cmd() -> list[str]:
@@ -450,6 +503,16 @@ def personal_gmail_send_email(
         "html": bool(html),
     }
     return _dispatch("gmail_send_email", payload)
+
+
+@mcp.tool()
+def personal_gmail_trash_email(message_id: str, account: str = "personal") -> str:
+    """Move one exact Gmail message id to Trash; does not permanently delete."""
+    payload = {
+        "account": _account(account),
+        "message_id": _require("message_id", message_id),
+    }
+    return _dispatch("gmail_trash_email", payload)
 
 
 @mcp.tool()

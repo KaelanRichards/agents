@@ -36,10 +36,14 @@ if [ -f "$pa_env" ]; then
 	provider="$(awk -F= '$1=="PERSONAL_ACTIONS_PROVIDER"{print $2}' "$pa_env" | tail -1)"
 	compose="$(awk -F= '$1=="PERSONAL_GMAIL_COMPOSE_REFRESH_TOKEN"{print "configured"}' "$pa_env" | tail -1)"
 	work_compose="$(awk -F= '$1=="PERSONAL_WORK_GMAIL_COMPOSE_REFRESH_TOKEN"{print "configured"}' "$pa_env" | tail -1)"
+	modify="$(awk -F= '$1=="PERSONAL_GMAIL_MODIFY_REFRESH_TOKEN"{print "configured"}' "$pa_env" | tail -1)"
+	work_modify="$(awk -F= '$1=="PERSONAL_WORK_GMAIL_MODIFY_REFRESH_TOKEN"{print "configured"}' "$pa_env" | tail -1)"
 	echo "  provider: ${provider:-webhook}"
 	echo "  mode: $([ "$dry_run" = "0" ] && echo live || echo dry-run)"
 	echo "  gmail drafts personal: ${compose:-needs personal-actions-google-compose-auth}"
 	echo "  gmail drafts work: ${work_compose:-needs personal-actions-google-compose-auth --account work}"
+	echo "  gmail trash personal: ${modify:-needs personal-actions-google-modify-auth}"
+	echo "  gmail trash work: ${work_modify:-needs personal-actions-google-modify-auth --account work}"
 else
 	echo "  missing $pa_env"
 fi

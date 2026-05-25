@@ -49,6 +49,10 @@ configuration exists at the instance level. Create provider credentials first:
 - Google OAuth web client with both APIs enabled:
   - `http://localhost:8790/oauth/callback/gmail`
   - `http://localhost:8790/oauth/callback/gcal`
+  - `http://127.0.0.1:8765/callback`
+  - `http://127.0.0.1:8766/callback`
+  - `http://127.0.0.1:8767/callback`
+  - `http://127.0.0.1:8768/callback`
 - Slack app OAuth client/secret, or use Windmill's Slack CLI path with a pre-minted `xoxb-...`
   bot token.
 
@@ -107,6 +111,15 @@ For the work account, also add `http://127.0.0.1:8766/callback` to the Google OA
 
 ```bash
 personal-actions-google-compose-auth --account work
+```
+
+- Gmail trash uses a separate local `gmail.modify` token and moves only one exact message id to
+  Trash. It never calls Gmail's permanent delete endpoint. Add `http://127.0.0.1:8767/callback`
+  and `http://127.0.0.1:8768/callback` to the Google OAuth client, then run:
+
+```bash
+personal-actions-google-modify-auth
+personal-actions-google-modify-auth --account work
 ```
 
 ## Verify

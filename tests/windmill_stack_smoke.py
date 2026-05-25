@@ -49,8 +49,11 @@ def main() -> None:
     assert "work_gmail" in link_text
     assert "work_gcal" in link_text
     compose_text = compose_auth.read_text(encoding="utf-8")
-    assert "PERSONAL_GMAIL_COMPOSE" in compose_text
-    assert "PERSONAL_WORK_GMAIL_COMPOSE" in compose_text
+    assert "PERSONAL_GMAIL_" in compose_text
+    assert "PERSONAL_WORK_GMAIL_" in compose_text
+    assert '"env_kind": "COMPOSE"' in compose_text
+    assert '"env_kind": "MODIFY"' in compose_text
+    assert "gmail.modify" in compose_text
     assert "slack_self_target" in canary.read_text(encoding="utf-8")
     print("windmill stack smoke OK")
 
