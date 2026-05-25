@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# bigquery-mcp — local read-only BigQuery MCP facade using gcloud/bq auth.
+set -euo pipefail
+exec uv run --script "$HOME/.config/agents/mcp-servers/bigquery/server.py" "$@"

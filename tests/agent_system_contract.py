@@ -54,8 +54,9 @@ def main() -> None:
 
     assert servers["linear"]["type"] == "http"
     assert servers["linear"]["url"] == "https://mcp.linear.app/mcp"
-    assert servers["bigquery"]["type"] == "http"
-    assert servers["bigquery"]["url"] == "https://bigquery.googleapis.com/mcp"
+    assert servers["bigquery"]["type"] == "stdio"
+    assert servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
+    assert servers["bigquery"]["args"] == []
     assert servers["github"]["bearer_token_env_var"] == "GITHUB_PAT"
     assert servers["personal-actions"]["command"].endswith("/bin/personal-actions-mcp")
 
@@ -65,6 +66,8 @@ def main() -> None:
         codex_servers = codex.get("mcp_servers", {})
         assert REQUIRED_MCP.issubset(set(codex_servers)), "Codex config missing required MCP servers"
         assert codex_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
+        assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
+        assert codex_servers["bigquery"]["args"] == []
         assert codex.get("features", {}).get("experimental_use_rmcp_client") is True
 
     claude_json = HOME / ".claude.json"
@@ -74,6 +77,7 @@ def main() -> None:
         claude_servers = claude.get("mcpServers", {})
         assert REQUIRED_MCP.issubset(set(claude_servers)), "Claude config missing required MCP servers"
         assert claude_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
+        assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
 
     hermes_config = HOME / ".hermes" / "config.yaml"
     if hermes_config.exists():

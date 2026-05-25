@@ -53,8 +53,9 @@
       "url": "https://mcp.linear.app/mcp"
     },
     "bigquery": {
-      "type": "http",
-      "url": "https://bigquery.googleapis.com/mcp"
+      "type": "stdio",
+      "command": "/Users/kaelan/.config/agents/bin/bigquery-mcp",
+      "args": []
     }
   }
 }

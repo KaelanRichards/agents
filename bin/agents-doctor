@@ -49,7 +49,7 @@ if command -v jq >/dev/null 2>&1; then
 		jq -e --arg s "$s" '.mcpServers[$s]' "$AH/mcp.json" >/dev/null 2>&1 && ok "MCP required server present: $s" || bad "missing required MCP server: $s"
 	done
 	jq -e '.mcpServers.linear.url == "https://mcp.linear.app/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP URL pinned" || bad "Linear MCP URL mismatch"
-	jq -e '.mcpServers.bigquery.url == "https://bigquery.googleapis.com/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "BigQuery MCP URL pinned" || bad "BigQuery MCP URL mismatch"
+	jq -e '.mcpServers.bigquery.command == "/Users/kaelan/.config/agents/bin/bigquery-mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "BigQuery MCP local facade pinned" || bad "BigQuery MCP command mismatch"
 fi
 
 echo "== config validity =="
@@ -137,6 +137,21 @@ if [ -f "$pa_env" ]; then
 	fi
 else
 	warn "missing $pa_env"
+fi
+
+echo "== BigQuery auth =="
+if command -v gcloud >/dev/null 2>&1 && command -v bq >/dev/null 2>&1; then
+	bq_project=$(gcloud config get-value project 2>/dev/null || true)
+	[ "$bq_project" = "vizcom-web" ] && ok "gcloud active project: vizcom-web" || warn "gcloud active project is ${bq_project:-unset}; expected vizcom-web"
+	bq_account=$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null || true)
+	[ -n "$bq_account" ] && ok "gcloud active account: $bq_account" || warn "no active gcloud account"
+	if bq --project_id=vizcom-web query --use_legacy_sql=false --format=prettyjson 'SELECT 1 AS ok' >/dev/null 2>&1; then
+		ok "BigQuery read query works"
+	else
+		warn "BigQuery read query failed; run gcloud auth login and verify vizcom-web IAM"
+	fi
+else
+	warn "gcloud/bq not installed"
 fi
 
 echo "== repo sync =="

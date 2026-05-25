@@ -17,9 +17,9 @@ and MCP server listing.
 
 ## BigQuery MCP
 
-- Prefer read-only BigQuery MCP tools, especially `execute_sql_readonly`, for analysis.
-- Require explicit confirmation before using any write-capable BigQuery SQL tool such as
-  `execute_sql`.
+- Use the local read-only BigQuery MCP facade for analysis. It exposes only read-only tools such as
+  `bigquery_execute_sql_readonly`.
+- Do not add write-capable BigQuery MCP tools without an explicit follow-up change to this policy.
 - Tell the user the Google Cloud project, dataset/table targets, and likely cost/blast radius
   before running BigQuery SQL.
 - Do not run DDL, DML, table deletion, dataset deletion, export, or scheduled-query changes unless
