@@ -146,6 +146,32 @@ This is the single source of truth for both agents. Canonical file lives at
 - **Least privilege & human-in-the-loop**: don't widen filesystem/MCP scope unnecessarily;
   get explicit confirmation before destructive or outward-facing actions.
 
+## Memory
+- **Don't use Claude Code's built-in auto-memory** (`~/.claude/projects/<slug>/memory/` + `MEMORY.md`).
+  It's disabled via `autoMemoryEnabled: false` in `~/.claude/settings.json` — don't re-enable it or
+  write there.
+- **Durable, cross-session memory lives in `~/.config/agents/assistant/memory/`** — reviewable,
+  jj-versioned markdown: `preferences.md` (how the user likes things done), `people.md`
+  (contacts/aliases/Slack IDs/emails), `projects.md` (active projects, repos, operating notes),
+  `decisions.md` (architectural/operating decisions + why).
+- **Per-file format:** `# Title`, then a one-line `> summary` (used to build the index below). For
+  entries that evolve, use *Current truth · Details · Open questions · Timeline*, and **append dated
+  lines to Timeline rather than silently overwriting** so staleness stays visible.
+- **How each tool loads it:** Hermes auto-loads all `assistant/memory/*.md` via `hermes-sync`
+  `context_files`. Claude + Codex read the auto-generated index below and open the specific file on
+  demand. When you learn a durable fact, update the right file (absolute dates, no secrets), then run
+  `hermes-sync` and `agents-sync` (the latter refreshes the index below).
+- **Retrieval:** none needed yet (few small files). Hermes already has SQLite FTS5 search over its
+  own session transcripts. If `assistant/memory/` grows large, add a *rebuildable* FTS5 index
+  (e.g. memweave / Basic Memory) and keep markdown canonical.
+
+<!-- agents-sync:memory-index:start -->
+- `assistant/memory/decisions.md` — Architectural / operating decisions and the reasoning behind them.
+- `assistant/memory/people.md` — Recurring contacts, aliases, Slack user IDs, and preferred email addresses.
+- `assistant/memory/preferences.md` — How Kaelan likes the agents to work (control plane, explicit config, no Claude auto-memory).
+- `assistant/memory/projects.md` — Active projects, repos, channels, and operating notes.
+<!-- agents-sync:memory-index:end -->
+
 ## Context economy
 - Prefer quiet/filtered output so logs don't flood context: `pytest -q`, `ruff check -q`,
   pipe noisy commands through `| tail -n 50` or filter to failures.

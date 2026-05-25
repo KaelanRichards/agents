@@ -11,6 +11,14 @@ if [ -f "$config" ]; then
 	cp "$config" "$config.hermes-sync.bak"
 fi
 
+# Collect curated memory files so new ones flow in automatically (no hardcoding).
+mem_files=""
+for f in "$AH"/assistant/memory/*.md; do
+	[ -e "$f" ] || continue
+	mem_files+="  - \"$f\""$'\n'
+done
+mem_files="${mem_files%$'\n'}"
+
 cat > "$config" <<EOF
 # Managed by hermes-sync. Edit ~/.config/agents/assistant/* or env vars, then rerun hermes-sync.
 #
@@ -76,9 +84,7 @@ mcp_servers:
 context_files:
   - "$AH/AGENTS.md"
   - "$AH/assistant/policy.md"
-  - "$AH/assistant/memory/preferences.md"
-  - "$AH/assistant/memory/people.md"
-  - "$AH/assistant/memory/projects.md"
+$mem_files
 EOF
 
 echo "wrote $config"

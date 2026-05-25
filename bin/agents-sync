@@ -80,4 +80,33 @@ if command -v yq >/dev/null && ! yq -p toml "$CODEX_TOML" >/dev/null 2>&1; then
   exit 1
 fi
 echo "hooks: wired into Claude (settings.json) + Codex (config.toml)"
+
+# 4) MEMORY INDEX — regenerate the compact index in AGENTS.md between managed markers.
+#    Both Claude and Codex always load AGENTS.md (symlinked), so this is the cross-tool
+#    auto-load for assistant/memory/*.md without per-tool session hooks (Codex has no
+#    SessionStart event, and agents-sync owns Claude's .hooks key).
+AGENTS_MD="$AH/AGENTS.md"
+MB="<!-- agents-sync:memory-index:start -->"
+ME="<!-- agents-sync:memory-index:end -->"
+if [ -f "$AGENTS_MD" ] && grep -qF "$MB" "$AGENTS_MD"; then
+  idxf=$(mktemp)
+  for f in "$AH"/assistant/memory/*.md; do
+    [ -e "$f" ] || continue
+    base=$(basename "$f")
+    sum=$(grep -m1 '^> ' "$f" | sed 's/^> *//')
+    [ -n "$sum" ] || sum=$(grep -m1 '^# ' "$f" | sed 's/^# *//')
+    printf -- '- `assistant/memory/%s` — %s\n' "$base" "$sum" >> "$idxf"
+  done
+  t=$(mktemp)
+  awk -v b="$MB" -v e="$ME" -v bf="$idxf" '
+    $0==b { print; while ((getline line < bf) > 0) print line; close(bf); blk=1; next }
+    $0==e { blk=0; print; next }
+    !blk  { print }
+  ' "$AGENTS_MD" > "$t" && mv "$t" "$AGENTS_MD"
+  rm -f "$idxf"
+  echo "memory index: refreshed in AGENTS.md"
+else
+  echo "memory index: markers not found in AGENTS.md — skipped"
+fi
+
 echo "✓ agents-sync complete"
