@@ -1,0 +1,17 @@
+[Unit]
+Description=agents webdash (live control center)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# uv + the tools the dashboard shells out to must be on PATH for the service:
+Environment=PATH=/home/linuxbrew/.linuxbrew/bin:%h/.local/bin:%h/.local/share/mise/shims:/usr/bin:/bin
+Environment=WEBDASH_HOST=127.0.0.1
+# Optional secrets/overrides (HCLOUD_TOKEN, WEBDASH_TOKEN, GRAFANA_URL, …); '-' = optional.
+EnvironmentFile=-%h/.config/agents/webdash.env
+ExecStart=%h/.local/bin/dashweb
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
