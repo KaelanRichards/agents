@@ -54,8 +54,9 @@ configuration exists at the instance level. Create provider credentials first:
   - `http://127.0.0.1:8766/callback`
   - `http://127.0.0.1:8767/callback`
   - `http://127.0.0.1:8768/callback`
-- Slack app OAuth client/secret, or use Windmill's Slack CLI path with a pre-minted `xoxb-...`
-  bot token.
+- Slack app OAuth client/secret, or use Windmill's Slack CLI path with a pre-minted token. Slack
+  search requires a token with Slack search/read permissions such as `search:read`; channel history
+  reads require the relevant conversation history scopes.
 
 Store the OAuth client values outside the repo:
 
