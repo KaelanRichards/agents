@@ -27,10 +27,12 @@ test:
     actionlint
     jq -e . mcp.json >/dev/null
     jq -e . skills.lock.json >/dev/null
+    yq -e . stacks/windmill/docker-compose.yml >/dev/null
     for f in agents/*.json; do jq -e . "$f" >/dev/null; done
     ruff check .
     bash tests/sync-roundtrip.sh
     uv run --script tests/personal_actions_smoke.py
+    uv run --script tests/windmill_stack_smoke.py
     uv run --script tests/dash_smoke.py
 
 secrets:

@@ -6,6 +6,7 @@ AH="${AGENTS_HOME:-$HOME/.config/agents}"
 env_file="${PERSONAL_ACTIONS_ENV_FILE:-$HOME/.config/agents-secrets/personal-actions.env}"
 url=""
 dry_run="1"
+allow_http="${PERSONAL_ACTIONS_ALLOW_HTTP:-0}"
 
 usage() {
 	cat >&2 <<'EOF'
@@ -46,6 +47,9 @@ if [ -n "$url" ] && [[ "$url" != https://* ]] && [ "${PERSONAL_ACTIONS_ALLOW_HTT
 	echo "personal-actions-configure: webhook URL must be https:// unless PERSONAL_ACTIONS_ALLOW_HTTP=1" >&2
 	exit 2
 fi
+if [ -n "$url" ] && [[ "$url" != https://* ]]; then
+	allow_http="1"
+fi
 
 mkdir -p "$(dirname "$env_file")"
 token="$(openssl rand -hex 32)"
@@ -58,6 +62,7 @@ PERSONAL_ACTIONS_WEBHOOK_URL=$url
 PERSONAL_ACTIONS_WEBHOOK_TOKEN=$token
 PERSONAL_ACTIONS_WEBHOOK_HMAC_SECRET=$hmac_secret
 PERSONAL_ACTIONS_DRY_RUN=$dry_run
+PERSONAL_ACTIONS_ALLOW_HTTP=$allow_http
 EOF
 chmod 600 "$env_file"
 

@@ -4,3 +4,4 @@
 result
 .doctor-versions
 assistant/personal-actions.env
+stacks/windmill/.env

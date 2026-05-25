@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# windmill-up — start the local Windmill backend for personal-actions.
+set -euo pipefail
+
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+stack="$AH/stacks/windmill"
+env_file="${WINDMILL_ENV_FILE:-$HOME/.config/agents-secrets/windmill.env}"
+
+if [ ! -f "$env_file" ]; then
+	mkdir -p "$(dirname "$env_file")"
+	cp "$stack/.env.example" "$env_file"
+	password="$(openssl rand -hex 24)"
+	tmp="$(mktemp)"
+	sed "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$password/" "$env_file" >"$tmp"
+	mv "$tmp" "$env_file"
+	chmod 600 "$env_file"
+	echo "created $env_file with a generated Postgres password"
+fi
+
+docker compose --env-file "$env_file" --file "$stack/docker-compose.yml" up -d
+echo "Windmill: http://localhost:$(grep '^WINDMILL_PORT=' "$env_file" | cut -d= -f2)"

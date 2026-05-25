@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# windmill-logs — tail logs from the local Windmill backend.
+set -euo pipefail
+
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+stack="$AH/stacks/windmill"
+env_file="${WINDMILL_ENV_FILE:-$HOME/.config/agents-secrets/windmill.env}"
+
+docker compose --env-file "$env_file" --file "$stack/docker-compose.yml" logs --tail "${1:-120}" -f

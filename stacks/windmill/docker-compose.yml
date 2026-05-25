@@ -1,0 +1,51 @@
+name: agents-windmill
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: windmill
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - windmill_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d windmill"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  windmill_server:
+    image: ${WM_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      BASE_URL: ${BASE_URL}
+      MODE: server
+      RUST_LOG: info
+    ports:
+      - "127.0.0.1:${WINDMILL_PORT:-8790}:8000"
+
+  windmill_worker:
+    image: ${WM_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      windmill_server:
+        condition: service_started
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      MODE: worker
+      WORKER_GROUP: default
+      # OrbStack/Docker Desktop do not allow Windmill's unshare isolation by default.
+      # Keep this localhost-only and use webhook-level auth/HMAC for this personal backend.
+      ENABLE_UNSHARE_PID: "false"
+      RUST_LOG: info
+
+volumes:
+  windmill_postgres:

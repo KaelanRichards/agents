@@ -100,6 +100,8 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - **`hermes-sync`** — generate the managed Hermes personal-assistant profile at
   `~/.hermes/config.yaml`. Hermes uses the shared local `personal-actions-mcp` facade for Slack,
   Gmail, and Calendar writes plus read-only `agents` MCP tools.
+- **`windmill-up` / `windmill-status` / `windmill-down`** — manage the local open-source Windmill
+  backend for live personal actions. See `assistant/windmill/README.md`.
 - **`obs up`** — local OpenTelemetry → Prometheus → Grafana stack for agent cost/usage
   (`obs env` prints the env that streams Claude Code telemetry to it).
 - **CI** (`.github/workflows/ci.yml`): lints + validates on every push; weekly it runs the

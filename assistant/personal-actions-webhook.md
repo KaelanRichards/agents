@@ -1,7 +1,8 @@
 # Personal Actions Webhook Backend
 
 The local `personal-actions-mcp` facade sends one normalized JSON request to the configured webhook.
-Use this contract for Pipedream, Zapier webhooks, Cloudflare Workers, or a private gateway.
+Use this contract for Windmill, Pipedream, Zapier webhooks, Cloudflare Workers, or a private
+gateway. The preferred open-source backend is documented in `assistant/windmill/README.md`.
 
 ## Environment
 

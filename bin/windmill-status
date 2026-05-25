@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# windmill-status — show local Windmill containers and endpoint status.
+set -euo pipefail
+
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+stack="$AH/stacks/windmill"
+env_file="${WINDMILL_ENV_FILE:-$HOME/.config/agents-secrets/windmill.env}"
+
+if [ ! -f "$env_file" ]; then
+	echo "Windmill env file missing: $env_file"
+	echo "Run windmill-up first."
+	exit 1
+fi
+
+docker compose --env-file "$env_file" --file "$stack/docker-compose.yml" ps
+port="$(grep '^WINDMILL_PORT=' "$env_file" | cut -d= -f2)"
+if xh --check-status --timeout 2 "http://localhost:$port" >/dev/null 2>&1; then
+	echo "Windmill reachable: http://localhost:$port"
+else
+	echo "Windmill not reachable yet: http://localhost:$port"
+fi
