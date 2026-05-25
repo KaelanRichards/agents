@@ -22,9 +22,11 @@ Slack / Gmail / Calendar resources
 ```bash
 windmill-up
 windmill-status
+windmill-bootstrap
 ```
 
-Open `http://localhost:8790`. Change the initial admin password immediately.
+Open `http://localhost:8790`. `windmill-bootstrap` rotates the default admin password and stores
+the local credentials in `~/.config/agents-secrets/windmill-admin.env`.
 
 The stack is defined in `stacks/windmill/` and binds only to `127.0.0.1`. Runtime secrets live in
 `~/.config/agents-secrets/windmill.env`, outside the repo. Keep it local until the webhook path is
@@ -32,28 +34,28 @@ proven.
 
 ## Windmill Setup
 
-1. Create OAuth resources:
+`windmill-bootstrap` creates:
+
+- Workspace: `personal`
+- Script: `f/personal_actions/handler`
+- Script webhook URL in `~/.config/agents-secrets/personal-actions.env`
+- Windmill secret variables for the local bearer/HMAC values
+
+## OAuth Resources
+
+Create OAuth resources:
+
    - Slack resource, for `chat.postMessage`.
    - Gmail or Google Workspace resource, for draft/send.
    - Google Calendar resource, for event create/update.
-2. Create a TypeScript script named `personal_actions_handler`.
-3. Paste `assistant/windmill/personal_actions_handler.ts`.
-4. Set these script defaults/arguments:
-   - `hmac_secret`: value from `~/.config/agents-secrets/personal-actions.env`.
-   - `slack_resource_path`: your Slack resource path.
-   - `gmail_resource_path`: your Gmail resource path.
-   - `calendar_resource_path`: your Google Calendar resource path.
-5. Create a webhook-specific token for that script.
-6. Use the synchronous `run_wait_result` webhook URL.
 
-For localhost HTTP, configure the local facade with:
+The handler defaults expect these resource paths:
 
-```bash
-PERSONAL_ACTIONS_ALLOW_HTTP=1 personal-actions-configure --url "http://localhost:8790/api/w/<workspace>/jobs/run_wait_result/..." --live
-```
+- `u/admin/slack`
+- `u/admin/gmail`
+- `u/admin/gcal`
 
-Then edit `~/.config/agents-secrets/personal-actions.env` and replace
-`PERSONAL_ACTIONS_WEBHOOK_TOKEN` with the Windmill webhook-specific token.
+If you use different paths, edit the script defaults in Windmill.
 
 ## Verify
 
@@ -61,7 +63,10 @@ Then edit `~/.config/agents-secrets/personal-actions.env` and replace
 personal-actions-check
 ```
 
-Then run canaries in this order:
+This should return `{"ok": true, "write": false, "action": "health_check"}`.
+
+After OAuth resources are connected, set `PERSONAL_ACTIONS_DRY_RUN=0` in
+`~/.config/agents-secrets/personal-actions.env`. Then run canaries in this order:
 
 1. Gmail draft to yourself.
 2. Calendar event on a test calendar.

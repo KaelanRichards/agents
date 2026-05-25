@@ -30,6 +30,10 @@ def main() -> None:
         assert action in handler_text
     assert "export async function main" in handler_text
     assert "x-personal-actions-signature" in handler_text
+    assert "wmill.getVariable" in handler_text
+    bootstrap = (ROOT / "scripts" / "windmill_bootstrap.py").read_text(encoding="utf-8")
+    assert "jobs/run_wait_result/h" in bootstrap
+    assert '"tag": "deno"' in bootstrap
     print("windmill stack smoke OK")
 
 

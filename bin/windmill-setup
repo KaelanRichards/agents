@@ -8,32 +8,29 @@ Windmill personal-actions setup
 1. Start Windmill:
    windmill-up
 
-2. Open http://localhost:8790 and sign in.
-   Default upstream first-run credentials are usually:
-   admin@windmill.dev / changeme
-   Change the password immediately.
+2. Bootstrap the local workspace, script, webhook, and secrets:
+   windmill-bootstrap
 
-3. In Windmill, create OAuth resources:
+3. Open http://localhost:8790 and sign in.
+   Credentials are stored in:
+   ~/.config/agents-secrets/windmill-admin.env
+
+4. In Windmill, create OAuth resources:
    - Slack resource for sending messages
    - Gmail or Google Workspace resource for draft/send
    - Google Calendar resource for event create/update
 
-4. Create a TypeScript script named personal_actions_handler.
-   Paste:
-   ~/.config/agents/assistant/windmill/personal_actions_handler.ts
+5. Confirm the resource paths match the handler defaults, or edit the script defaults:
+   - u/admin/slack
+   - u/admin/gmail
+   - u/admin/gcal
 
-5. Create a webhook-specific token for that script.
-   Use the synchronous run_wait_result webhook URL.
-
-6. Configure the local facade:
-   PERSONAL_ACTIONS_ALLOW_HTTP=1 personal-actions-configure --url "http://localhost:8790/api/w/<workspace>/jobs/run_wait_result/..." --live
-
-7. Replace PERSONAL_ACTIONS_WEBHOOK_TOKEN in:
-   ~/.config/agents-secrets/personal-actions.env
-   with the Windmill webhook-specific token.
-
-8. Run:
+6. Run:
    personal-actions-check
+
+7. After OAuth resources are connected, set:
+   PERSONAL_ACTIONS_DRY_RUN=0
+   in ~/.config/agents-secrets/personal-actions.env
 
 Keep Windmill MCP disabled for Claude/Codex/Hermes until the narrow webhook path is proven.
 EOF

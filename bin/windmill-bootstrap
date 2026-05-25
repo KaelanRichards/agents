@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# windmill-bootstrap — create the local Windmill workspace, script, route, and secrets.
+set -euo pipefail
+exec python3 "$HOME/.config/agents/scripts/windmill_bootstrap.py" "$@"

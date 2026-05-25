@@ -93,7 +93,6 @@ async function verifyRequest(action: string, payload: Payload, metadata: Metadat
   if (!Object.hasOwn(ALLOWED, action)) throw new Error(`unsupported action: ${action}`);
   const unknown = Object.keys(payload).filter((key) => !ALLOWED[action].includes(key));
   if (unknown.length) throw new Error(`unknown payload keys: ${unknown.join(", ")}`);
-  if (action === "health_check") return;
 
   const idempotencyKey = header(metadata, "x-personal-actions-idempotency-key");
   if (!idempotencyKey) throw new Error("missing idempotency key");
@@ -107,6 +106,12 @@ async function verifyRequest(action: string, payload: Payload, metadata: Metadat
   const canonicalBody = JSON.stringify({ action, payload });
   const expected = await hmacHex(hmacSecret, `${timestamp}.${canonicalBody}`);
   if (signature !== expected) throw new Error("signature mismatch");
+}
+
+function verifyBearer(metadata: Metadata | undefined, webhookToken: string) {
+  if (!webhookToken) throw new Error("webhook_token variable is required");
+  const actual = header(metadata, "authorization").replace(/^Bearer\s+/i, "");
+  if (actual !== webhookToken) throw new Error("invalid bearer token");
 }
 
 function token(resource: OAuthResource): string {
@@ -230,15 +235,25 @@ async function calendarUpdate(gcal: OAuthResource, payload: Payload) {
 }
 
 export async function main(
-  action: string,
+  raw_string = "",
+  action = "",
   payload: Payload = {},
-  hmac_secret = "",
   slack_resource_path = "u/admin/slack",
   gmail_resource_path = "u/admin/gmail",
   calendar_resource_path = "u/admin/gcal",
   WEBHOOK__METADATA__?: Metadata,
 ) {
-  await verifyRequest(action, payload, WEBHOOK__METADATA__, hmac_secret);
+  if (raw_string) {
+    const parsed = JSON.parse(raw_string) as { action: string; payload: Payload };
+    action = parsed.action;
+    payload = parsed.payload ?? {};
+  }
+  if (WEBHOOK__METADATA__?.headers) {
+    const hmac_secret = await wmill.getVariable("u/admin/personal_actions_hmac_secret");
+    const webhook_token = await wmill.getVariable("u/admin/personal_actions_webhook_token");
+    verifyBearer(WEBHOOK__METADATA__, webhook_token);
+    await verifyRequest(action, payload, WEBHOOK__METADATA__, hmac_secret);
+  }
   if (action === "health_check") return { ok: true, action, write: false };
 
   if (action === "slack_send_message") {

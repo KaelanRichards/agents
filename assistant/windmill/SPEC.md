@@ -30,7 +30,7 @@ authenticated webhook and dispatches to Slack, Gmail, and Google Calendar resour
 
 - [x] T1 — Stack files: `stacks/windmill/docker-compose.yml`, `stacks/windmill/.env.example`.
 - [x] T2 — Helper scripts: `bin/windmill-up`, `bin/windmill-down`, `bin/windmill-status`,
-  `bin/windmill-logs`, `bin/windmill-setup`.
+  `bin/windmill-logs`, `bin/windmill-setup`, `bin/windmill-bootstrap`.
 - [x] T3 — Windmill script template:
   `assistant/windmill/personal_actions_handler.ts`.
 - [x] T4 — Documentation: `assistant/windmill/README.md`, main README references.
@@ -42,6 +42,5 @@ authenticated webhook and dispatches to Slack, Gmail, and Google Calendar resour
 - `yq -e . stacks/windmill/docker-compose.yml`
 - `just ci-local`
 - If Docker is available: `windmill-up`, `windmill-status`, then open `http://localhost:8790`.
-- After creating the Windmill script and webhook token:
-  `personal-actions-configure --url "http://localhost:8790/api/w/<workspace>/jobs/run_wait_result/..." --live`
-  with `PERSONAL_ACTIONS_ALLOW_HTTP=1` only for localhost.
+- `windmill-bootstrap`
+- `personal-actions-check` returns `{"ok": true, "write": false, "action": "health_check"}`.
