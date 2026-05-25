@@ -19,6 +19,9 @@ skills-update:
 mcp-update:
     mcp-update
 
+hermes-sync:
+    hermes-sync
+
 test:
     shellcheck -S error -x bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh
     actionlint

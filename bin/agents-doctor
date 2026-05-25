@@ -25,6 +25,7 @@ done
 for t in claude codex; do
 	command -v "$t" >/dev/null 2>&1 && ok "$t present" || warn "$t not on PATH"
 done
+command -v hermes >/dev/null 2>&1 && ok "hermes present" || warn "hermes not on PATH"
 
 echo "== instruction symlinks =="
 for f in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
@@ -81,6 +82,23 @@ if [ -f "$AH/skills.lock.json" ]; then
 	[ "$lock_skills" = "$canonical_skills" ] && ok "skills.lock.json covers all canonical skills" || bad "skills.lock.json count mismatch: lock=$lock_skills canonical=$canonical_skills"
 else
 	bad "missing skills.lock.json"
+fi
+
+echo "== Hermes personal assistant =="
+if command -v hermes >/dev/null 2>&1; then
+	[ -f "$HOME/.hermes/config.yaml" ] && ok "hermes config.yaml present" || warn "hermes config.yaml missing (run hermes-sync)"
+	if hermes mcp list 2>/dev/null | grep -q "agents_readonly"; then
+		ok "hermes agents_readonly MCP configured"
+	else
+		warn "hermes agents_readonly MCP missing (run hermes-sync)"
+	fi
+	if [ -n "${HERMES_PERSONAL_ACTIONS_MCP_URL:-}" ]; then
+		ok "Hermes personal action endpoint env present"
+	else
+		warn "Hermes personal action endpoint not set (set HERMES_PERSONAL_ACTIONS_MCP_URL for Slack/Gmail/Calendar writes)"
+	fi
+else
+	warn "Hermes not installed"
 fi
 
 echo "== repo sync =="

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# personal-log — append an assistant action note to the daily audit log.
+set -euo pipefail
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+logdir="$AH/assistant/logs"
+mkdir -p "$logdir"
+log="$logdir/$(date +%F).md"
+msg="${*:-}"
+[ -n "$msg" ] || { echo "usage: personal-log <message>" >&2; exit 1; }
+printf -- "- %s %s\n" "$(date +%H:%M:%S%z)" "$msg" >> "$log"
+echo "$log"

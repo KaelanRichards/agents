@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# hermes-sync — generate ~/.hermes/config.yaml from the shared agents policy.
+set -euo pipefail
+
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+config="$HERMES_HOME/config.yaml"
+actions_url="${HERMES_PERSONAL_ACTIONS_MCP_URL:-}"
+
+mkdir -p "$HERMES_HOME" "$AH/assistant/logs"
+if [ -f "$config" ]; then
+	cp "$config" "$config.hermes-sync.bak"
+fi
+
+actions_enabled=false
+if [ -n "$actions_url" ]; then
+	actions_enabled=true
+else
+	actions_url="https://example.invalid/configure-HERMES_PERSONAL_ACTIONS_MCP_URL"
+fi
+
+cat > "$config" <<EOF
+# Managed by hermes-sync. Edit ~/.config/agents/assistant/* or env vars, then rerun hermes-sync.
+#
+# Required for write actions:
+#   export HERMES_PERSONAL_ACTIONS_MCP_URL='https://...'
+#
+# The remote endpoint must be constrained to:
+#   Slack send message
+#   Gmail create draft / send email
+#   Google Calendar create event / update event
+
+terminal:
+  backend: "local"
+  cwd: "$HOME"
+  timeout: 180
+  docker_mount_cwd_to_workspace: false
+  lifetime_seconds: 300
+
+mcp_servers:
+  agents_readonly:
+    command: "agents-mcp"
+    args: []
+    env:
+      AGENTS_MCP_ALLOW_MUTATION: "0"
+    tools:
+      include:
+        - repo_status
+        - repo_log
+        - repo_diff
+        - list_tasks
+        - list_mcp_servers
+      prompts: false
+      resources: false
+
+  personal_actions:
+    url: "$actions_url"
+    enabled: $actions_enabled
+    tools:
+      prompts: false
+      resources: false
+
+context_files:
+  - "$AH/AGENTS.md"
+  - "$AH/assistant/policy.md"
+  - "$AH/assistant/memory/preferences.md"
+  - "$AH/assistant/memory/people.md"
+  - "$AH/assistant/memory/projects.md"
+EOF
+
+echo "wrote $config"
+if [ "$actions_enabled" = false ]; then
+	echo "personal_actions disabled: set HERMES_PERSONAL_ACTIONS_MCP_URL and rerun hermes-sync"
+fi

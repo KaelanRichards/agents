@@ -97,6 +97,9 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,
   then report upstream drift without modifying files. `skills.lock.json` is the source of truth.
 - **`mcp-update`** — report npm drift for pinned stdio MCP packages without modifying `mcp.json`.
+- **`hermes-sync`** — generate the managed Hermes personal-assistant profile at
+  `~/.hermes/config.yaml`. Hermes uses a constrained `personal_actions` MCP endpoint for Slack,
+  Gmail, and Calendar writes plus read-only `agents` MCP tools.
 - **`obs up`** — local OpenTelemetry → Prometheus → Grafana stack for agent cost/usage
   (`obs env` prints the env that streams Claude Code telemetry to it).
 - **CI** (`.github/workflows/ci.yml`): lints + validates on every push; weekly it runs the
@@ -111,6 +114,9 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - The custom `agents` MCP server is read-only by default for task/config mutation. Set
   `AGENTS_MCP_ALLOW_MUTATION=1` only in sessions where MCP-triggered task runs or config syncs
   are intentionally allowed.
+- Hermes personal-assistant writes are controlled by `assistant/policy.md` and the
+  `HERMES_PERSONAL_ACTIONS_MCP_URL` endpoint. Keep that endpoint constrained to Slack send,
+  Gmail draft/send, and Calendar create/update.
 - The PreToolUse guard hook is active here too; destructive commands stay blocked.
 - Tools: see `Brewfile`. Languages via `mise` + `rustup`. VCS is jj-first (colocated on the laptop).
 - New machine / full reference: see `ONBOARDING.md`.
