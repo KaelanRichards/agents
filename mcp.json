@@ -43,6 +43,11 @@
       "command": "agents-mcp",
       "args": []
     },
+    "agent-broker": {
+      "type": "stdio",
+      "command": "/Users/kaelan/.config/agents/bin/agent-broker-mcp",
+      "args": []
+    },
     "personal-actions": {
       "type": "stdio",
       "command": "/Users/kaelan/.config/agents/bin/personal-actions-mcp",

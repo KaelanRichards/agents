@@ -28,6 +28,22 @@ else
 	echo "  mcp-sync not on PATH"
 fi
 
+hr "agent control plane"
+if command -v agent-profile >/dev/null 2>&1; then
+	agent-profile list 2>/dev/null | sed 's/^/  profile: /' || echo "  profiles unavailable"
+else
+	echo "  agent-profile not on PATH"
+fi
+if command -v agent-ledger >/dev/null 2>&1; then
+	agent-ledger list --limit 5 2>/dev/null | sed 's/^/  run: /' || echo "  runs: none"
+fi
+if command -v agentq >/dev/null 2>&1; then
+	agentq list --limit 5 2>/dev/null | sed 's/^/  queue: /' || echo "  queue: none"
+fi
+if command -v agent-approve >/dev/null 2>&1; then
+	agent-approve list --limit 5 2>/dev/null | sed 's/^/  approval: /' || echo "  approvals: none"
+fi
+
 hr "personal actions"
 pa_env="$HOME/.config/agents-secrets/personal-actions.env"
 wm_env="$HOME/.config/agents-secrets/windmill-admin.env"

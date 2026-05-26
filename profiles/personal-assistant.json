@@ -1,0 +1,12 @@
+{
+  "name": "personal-assistant",
+  "description": "Hermes-style personal assistant with constrained Gmail, Calendar, Slack, Drive, and read-only agent context.",
+  "mcp_servers": ["personal-actions", "agents", "agent-broker"],
+  "allowed_tools": ["personal_search", "personal_gmail_draft", "personal_calendar_list", "repo_status", "repo_log"],
+  "disallowed_tools": ["bulk_delete", "permanent_delete", "broad_filesystem", "prod_mutation"],
+  "filesystem": {"mode": "none", "roots": []},
+  "shell": {"mode": "none", "mutating": false},
+  "confirm": ["gmail_send", "gmail_trash", "slack_post", "calendar_create", "calendar_update"],
+  "skills": [],
+  "risk": "high"
+}

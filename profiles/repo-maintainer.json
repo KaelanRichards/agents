@@ -1,0 +1,12 @@
+{
+  "name": "repo-maintainer",
+  "description": "Repository maintenance: CI, PR triage, dependency checks, and release hygiene.",
+  "mcp_servers": ["context7", "github", "linear", "agents", "agent-broker"],
+  "allowed_tools": ["repo_status", "repo_log", "repo_diff", "list_tasks", "run_tests", "gh_read", "gh_pr_create"],
+  "disallowed_tools": ["personal_write", "prod_mutation", "secret_read"],
+  "filesystem": {"mode": "workspace-write", "roots": ["current_repo"]},
+  "shell": {"mode": "guarded", "mutating": true},
+  "confirm": ["push", "merge", "release", "dependency_update"],
+  "skills": ["gh-fix-ci", "gh-address-comments", "qa"],
+  "risk": "medium"
+}

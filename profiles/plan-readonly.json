@@ -1,0 +1,12 @@
+{
+  "name": "plan-readonly",
+  "description": "Read-only exploration, planning, and codebase analysis.",
+  "mcp_servers": ["context7", "filesystem", "github", "linear", "agents", "agent-broker"],
+  "allowed_tools": ["read", "grep", "glob", "repo_status", "repo_log", "repo_diff", "list_tasks"],
+  "disallowed_tools": ["write", "edit", "shell_mutation", "personal_write", "prod_mutation"],
+  "filesystem": {"mode": "read-only", "roots": ["~/code", "~/.config/agents"]},
+  "shell": {"mode": "ask", "mutating": false},
+  "confirm": ["network_write", "shell_command"],
+  "skills": ["spec"],
+  "risk": "low"
+}

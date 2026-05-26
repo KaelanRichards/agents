@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# agent-profile — validate and compile canonical permission profiles.
+set -euo pipefail
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+exec python3 "$AH/scripts/agent_control.py" profile "$@"

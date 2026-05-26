@@ -11,11 +11,18 @@ and config sync. Operates on the launching client's working directory by default
 import json
 import os
 import subprocess
+import importlib.util
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("agents")
+AGENTS_HOME = Path(os.environ.get("AGENTS_HOME", str(Path.home() / ".config/agents"))).expanduser()
+CONTROL_PATH = AGENTS_HOME / "scripts" / "agent_control.py"
+_spec = importlib.util.spec_from_file_location("agent_control", CONTROL_PATH)
+agent_control = importlib.util.module_from_spec(_spec)
+assert _spec and _spec.loader
+_spec.loader.exec_module(agent_control)
 
 
 def _run(cmd: list[str], cwd: str | None = None, timeout: int = 60) -> str:
@@ -131,6 +138,69 @@ def sync_config() -> str:
     if not _mutation_allowed():
         return "error: mutating tools disabled; set AGENTS_MCP_ALLOW_MUTATION=1 to sync config"
     return _run(["mcp-sync"]) + "\n" + _run(["agents-sync"])
+
+
+@mcp.tool()
+def list_agent_profiles() -> str:
+    """List canonical permission profiles in ~/.config/agents/profiles."""
+    rows = []
+    for path in agent_control.profile_files():
+        data = agent_control.load_json(path)
+        rows.append(f"{data['name']}: {data['risk']} — {data['description']}")
+    return "\n".join(rows) or "(no profiles)"
+
+
+@mcp.tool()
+def list_agent_runs(limit: int = 20) -> str:
+    """List recent local agent run ledger entries."""
+    entries = agent_control.iter_ledger()[-int(limit):]
+    if not entries:
+        return "(no runs recorded)"
+    return "\n".join(
+        f"{e.get('ts','')} {e.get('id','')} {e.get('kind','')} {e.get('status','')} {e.get('profile','')} {e.get('repo','')}"
+        for e in entries
+    )
+
+
+@mcp.tool()
+def get_agent_run(run_id: str) -> str:
+    """Return one local agent run ledger entry by id."""
+    for entry in agent_control.iter_ledger():
+        if entry.get("id") == run_id:
+            return json.dumps(entry, indent=2, sort_keys=True)
+    return f"error: run not found: {run_id}"
+
+
+@mcp.tool()
+def list_agent_queue(status: str = "all", limit: int = 20) -> str:
+    """List local background agent queue items."""
+    conn = agent_control.queue_db()
+    rows = conn.execute(
+        "SELECT id, created_at, status, profile, agent, repo, task FROM tasks WHERE (? = 'all' OR status = ?) ORDER BY created_at DESC LIMIT ?",
+        (status, status, int(limit)),
+    ).fetchall()
+    if not rows:
+        return "(no queued tasks)"
+    return "\n".join(
+        f"{r['created_at']} {r['id']} {r['status']} {r['profile']} {r['agent']} {r['repo']} {r['task'][:80]}"
+        for r in rows
+    )
+
+
+@mcp.tool()
+def list_pending_approvals(limit: int = 20) -> str:
+    """List pending local approval inbox items."""
+    conn = agent_control.approval_db()
+    rows = conn.execute(
+        "SELECT id, created_at, kind, summary, status FROM approvals WHERE status = 'pending' ORDER BY created_at DESC LIMIT ?",
+        (int(limit),),
+    ).fetchall()
+    if not rows:
+        return "(no pending approvals)"
+    return "\n".join(
+        f"{r['created_at']} {r['id']} {r['status']} {r['kind']} {r['summary']}"
+        for r in rows
+    )
 
 
 if __name__ == "__main__":

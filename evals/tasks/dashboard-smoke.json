@@ -1,0 +1,9 @@
+{
+  "id": "dashboard-smoke",
+  "description": "Verify the Textual dashboard composes with all panels.",
+  "profile": "repo-maintainer",
+  "agent": "noop",
+  "repo": "~/.config/agents",
+  "prompt": "Run the dashboard smoke test.",
+  "success_command": "uv run --script tests/dash_smoke.py"
+}

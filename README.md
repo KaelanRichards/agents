@@ -100,6 +100,17 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 ## Maintenance & health
 - **`agents-doctor`** — verify tools, symlinks, MCP parity, configs, and agent-CLI version drift
   (run anytime, or on a new machine).
+- **Agent control plane** — local orchestration primitives layered on top of jj, tmux, MCP, and
+  the shared profile/policy model:
+  - `agent-profile list|validate|compile` manages canonical permission profiles in `profiles/`
+    and writes disposable generated artifacts under `generated/profiles/`.
+  - `agent-ledger record|list|show` stores append-only run events under gitignored `state/runs/`.
+  - `agentq add|list|show|start|worker` queues background agent work into isolated jj workspaces.
+    On an always-on VM, install `systemd/agentq-worker.{service,timer}` as user units and enable
+    the timer to poll queued work every minute.
+  - `agent-approve request|list|show|approve|reject` manages the local approval inbox.
+  - `agent-eval list|run` runs small local eval tasks from `evals/tasks/`.
+  - `agent-broker` is a local MCP policy facade that checks profile/tool decisions and records them.
 - **`just ci-local`** — local verification loop: shell scripts, JSON locks, sync round-trip,
   agent-system contract checks, dashboard smoke test, `gitleaks`, and `agents-doctor`.
 - **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,

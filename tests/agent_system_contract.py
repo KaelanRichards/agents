@@ -21,6 +21,7 @@ REQUIRED_MCP = {
     "sentry",
     "bigquery",
     "agents",
+    "agent-broker",
     "personal-actions",
     "linear",
 }
@@ -70,6 +71,25 @@ def main() -> None:
     assert servers["bigquery"]["args"] == []
     assert servers["github"]["bearer_token_env_var"] == "GITHUB_PAT"
     assert servers["personal-actions"]["command"].endswith("/bin/personal-actions-mcp")
+    assert servers["agent-broker"]["command"].endswith("/bin/agent-broker-mcp")
+
+    profiles_dir = ROOT / "profiles"
+    required_profiles = {
+        "plan-readonly",
+        "code-edit",
+        "repo-maintainer",
+        "personal-assistant",
+        "prod-observer",
+        "prod-mutator-confirmed",
+    }
+    actual_profiles = {path.stem for path in profiles_dir.glob("*.json")}
+    assert required_profiles.issubset(actual_profiles)
+    for name in required_profiles:
+        profile = load_json(profiles_dir / f"{name}.json")
+        assert profile["name"] == name
+        assert isinstance(profile["mcp_servers"], list)
+        assert isinstance(profile["confirm"], list)
+        assert profile["risk"] in {"low", "medium", "high", "critical"}
 
     codex_toml = HOME / ".codex" / "config.toml"
     if codex_toml.exists():
@@ -107,6 +127,30 @@ def main() -> None:
         assert re.search(rf"def {re.escape(tool)}\(", server), f"personal-actions server missing {tool}"
     assert "/trash" in server
     assert "/delete" not in server
+
+    broker = read(ROOT / "mcp-servers" / "agent-broker" / "server.py")
+    assert_contains(broker, "authorize_tool_call", "agent-broker MCP")
+
+    control = read(ROOT / "scripts" / "agent_control.py")
+    for phrase in ["cmd_profile", "cmd_ledger", "cmd_queue", "cmd_approve", "cmd_eval", "broker_authorize"]:
+        assert_contains(control, phrase, "agent control script")
+
+    spec = read(ROOT / "specs" / "agent-control-plane.md")
+    for phrase in ["Permission profiles", "Run ledger", "Background queue", "Approval inbox", "MCP broker"]:
+        assert_contains(spec, phrase, "agent control spec")
+
+    eval_tasks = {path.stem for path in (ROOT / "evals" / "tasks").glob("*.json")}
+    assert {
+        "smoke-noop",
+        "profile-compile",
+        "mcp-contract",
+        "prompt-injection-policy",
+        "personal-actions-dry-run",
+        "dashboard-smoke",
+        "queue-smoke",
+    }.issubset(eval_tasks)
+    assert (ROOT / "systemd" / "agentq-worker.service").exists()
+    assert (ROOT / "systemd" / "agentq-worker.timer").exists()
 
     policy = read(ROOT / "assistant" / "policy.md")
     assert_contains(policy, "exact Gmail message id", "personal assistant policy")

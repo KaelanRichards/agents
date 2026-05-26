@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import subprocess
 import tempfile
 import time
 
@@ -103,6 +104,27 @@ def main() -> None:
             )
             assert drive_response["action"] == "drive_search_files"
             assert drive_response["status"] == "dry_run"
+
+            os.environ["PERSONAL_ACTIONS_DRY_RUN"] = "0"
+            os.environ["PERSONAL_ACTIONS_WEBHOOK_URL"] = "https://example.invalid/webhook"
+            os.environ["PERSONAL_ACTIONS_REQUIRE_APPROVAL"] = "1"
+            os.environ["AGENTS_HOME"] = str(ROOT)
+            os.environ["AGENTS_STATE"] = td
+            approval_response = json.loads(
+                mod.personal_slack_send_message(channel="#ops", text="approval smoke")
+            )
+            assert approval_response["status"] == "approval_required"
+            approval_id = approval_response["result"]["approval_id"]
+            assert approval_id
+            pending = subprocess.run(
+                ["agent-approve", "list", "--status", "pending"],
+                env=os.environ,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            assert pending.returncode == 0
+            assert approval_id in pending.stdout
 
             print("personal-actions smoke OK")
         finally:

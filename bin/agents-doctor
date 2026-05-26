@@ -44,7 +44,7 @@ if command -v jq >/dev/null 2>&1; then
 	cl=$(jq '.mcpServers // {} | length' "$HOME/.claude.json" 2>/dev/null || echo -1)
 	cx=$(grep -cE '^\[mcp_servers\.[^.]+\]$' "$HOME/.codex/config.toml" 2>/dev/null || echo -1)
 	[ "$c" = "$cl" ] && [ "$c" = "$cx" ] && ok "MCP servers in sync ($c)" || bad "MCP parity mismatch: canonical=$c claude=$cl codex=$cx (run mcp-sync)"
-	required_mcp="context7 playwright filesystem sequential-thinking github datadog sentry bigquery agents personal-actions linear"
+	required_mcp="context7 playwright filesystem sequential-thinking github datadog sentry bigquery agents agent-broker personal-actions linear"
 	for s in $required_mcp; do
 		jq -e --arg s "$s" '.mcpServers[$s]' "$AH/mcp.json" >/dev/null 2>&1 && ok "MCP required server present: $s" || bad "missing required MCP server: $s"
 	done
@@ -75,6 +75,23 @@ if [ -f "$HOME/.codex/config.toml" ]; then
 	else
 		warn "codex hooks not wired (run agents-sync)"
 	fi
+fi
+
+echo "== agent control plane =="
+if command -v agent-profile >/dev/null 2>&1; then
+	agent-profile validate >/dev/null 2>&1 && ok "agent profiles valid" || bad "agent profiles invalid"
+else
+	warn "agent-profile not on PATH"
+fi
+if command -v agent-eval >/dev/null 2>&1; then
+	agent-eval list >/dev/null 2>&1 && ok "agent eval tasks readable" || bad "agent eval tasks unreadable"
+else
+	warn "agent-eval not on PATH"
+fi
+if [ -x "$AH/bin/agent-broker-mcp" ]; then
+	ok "agent-broker MCP launcher present"
+else
+	bad "agent-broker MCP launcher missing"
 fi
 
 echo "== skill sync =="

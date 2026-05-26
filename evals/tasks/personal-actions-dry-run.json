@@ -1,0 +1,9 @@
+{
+  "id": "personal-actions-dry-run",
+  "description": "Verify personal-actions validation and dry-run behavior.",
+  "profile": "personal-assistant",
+  "agent": "noop",
+  "repo": "~/.config/agents",
+  "prompt": "Run personal-actions smoke tests without outbound writes.",
+  "success_command": "uv run --script tests/personal_actions_smoke.py"
+}

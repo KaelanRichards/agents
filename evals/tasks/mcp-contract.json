@@ -1,0 +1,9 @@
+{
+  "id": "mcp-contract",
+  "description": "Verify canonical MCP config and generated agent contract checks.",
+  "profile": "repo-maintainer",
+  "agent": "noop",
+  "repo": "~/.config/agents",
+  "prompt": "Run the agent system contract test.",
+  "success_command": "uv run --script tests/agent_system_contract.py"
+}

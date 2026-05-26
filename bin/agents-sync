@@ -81,7 +81,16 @@ if command -v yq >/dev/null && ! yq -p toml "$CODEX_TOML" >/dev/null 2>&1; then
 fi
 echo "hooks: wired into Claude (settings.json) + Codex (config.toml)"
 
-# 4) MEMORY INDEX — regenerate the compact index in AGENTS.md between managed markers.
+# 4) PROFILES — validate and compile portable permission profiles for supported tools.
+if command -v agent-profile >/dev/null 2>&1; then
+  agent-profile validate
+  agent-profile compile
+else
+  "$AH/bin/agent-profile" validate
+  "$AH/bin/agent-profile" compile
+fi
+
+# 5) MEMORY INDEX — regenerate the compact index in AGENTS.md between managed markers.
 #    Both Claude and Codex always load AGENTS.md (symlinked), so this is the cross-tool
 #    auto-load for assistant/memory/*.md without per-tool session hooks (Codex has no
 #    SessionStart event, and agents-sync owns Claude's .hooks key).

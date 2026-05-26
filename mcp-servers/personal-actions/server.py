@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import hashlib
 import hmac
+import importlib.util
 import os
 import re
 import subprocess
@@ -90,6 +91,80 @@ def _dry_run() -> bool:
     if _provider() == "webhook" and os.environ.get("PERSONAL_ACTIONS_WEBHOOK_URL", "").strip():
         return False
     return True
+
+
+APPROVAL_ACTIONS = {
+    "slack_send_message",
+    "gmail_send_email",
+    "gmail_trash_email",
+    "calendar_create_event",
+    "calendar_update_event",
+}
+
+
+def _approval_required(action: str) -> bool:
+    return action in APPROVAL_ACTIONS and _truthy(os.environ.get("PERSONAL_ACTIONS_REQUIRE_APPROVAL"))
+
+
+def _agent_control():
+    path = _agents_home() / "scripts" / "agent_control.py"
+    spec = importlib.util.spec_from_file_location("agent_control", path)
+    if not spec or not spec.loader:
+        raise PersonalActionError(f"could not load agent control module at {path}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _approval_gate(action: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+    if _dry_run() or not _approval_required(action):
+        return None
+    approval_id = str(payload.get("approval_id", "")).strip()
+    control = _agent_control()
+    conn = control.approval_db()
+    if approval_id:
+        row = conn.execute("SELECT * FROM approvals WHERE id = ?", (approval_id,)).fetchone()
+        if not row:
+            raise PersonalActionError(f"approval id not found: {approval_id}")
+        if row["status"] != "approved":
+            return {
+                "approval_required": True,
+                "approval_id": approval_id,
+                "approval_status": row["status"],
+                "message": "approval is not approved; approve it with agent-approve before retrying",
+            }
+        return None
+    request_payload = json.dumps({"action": action, "payload": _redact(payload)}, sort_keys=True)
+    aid = str(uuid4())
+    conn.execute(
+        "INSERT INTO approvals VALUES (?, ?, ?, ?, ?, ?, 'pending', '')",
+        (
+            aid,
+            _now(),
+            _now(),
+            action,
+            f"Personal action approval required: {action}",
+            request_payload,
+        ),
+    )
+    conn.commit()
+    control.append_ledger(
+        {
+            "kind": "approval",
+            "status": "pending",
+            "profile": "personal-assistant",
+            "agent": "personal-actions",
+            "repo": "",
+            "prompt": action,
+            "details": {"approval_id": aid, "approval_kind": action},
+        }
+    )
+    return {
+        "approval_required": True,
+        "approval_id": aid,
+        "approval_status": "pending",
+        "message": "approval required; approve with agent-approve and retry with approval_id",
+    }
 
 
 def _redact_text(value: str) -> str:
@@ -190,31 +265,37 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
             _audit(action, payload, "dry_run", result)
             return _json_response(action, "dry_run", payload, result)
 
-        if action == "gmail_create_draft" and _gmail_compose_configured_for(str(payload.get("account", "personal"))):
-            result = _gmail_create_draft_local(payload)
+        approval = _approval_gate(action, payload)
+        if approval:
+            _audit(action, payload, "approval_required", approval)
+            return _json_response(action, "approval_required", payload, approval)
+        provider_payload = {key: value for key, value in payload.items() if key != "approval_id"}
+
+        if action == "gmail_create_draft" and _gmail_compose_configured_for(str(provider_payload.get("account", "personal"))):
+            result = _gmail_create_draft_local(provider_payload)
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
 
         if action == "gmail_trash_email":
-            result = _gmail_trash_email_local(payload)
+            result = _gmail_trash_email_local(provider_payload)
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
 
-        if action == "gmail_search_messages" and _gmail_modify_configured_for(str(payload.get("account", "personal"))):
-            result = _gmail_search_messages_local(payload)
+        if action == "gmail_search_messages" and _gmail_modify_configured_for(str(provider_payload.get("account", "personal"))):
+            result = _gmail_search_messages_local(provider_payload)
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
 
-        if action == "gmail_get_message" and _gmail_modify_configured_for(str(payload.get("account", "personal"))):
-            result = _gmail_get_message_local(payload)
+        if action == "gmail_get_message" and _gmail_modify_configured_for(str(provider_payload.get("account", "personal"))):
+            result = _gmail_get_message_local(provider_payload)
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
 
         provider = _provider()
         if provider == "webhook":
-            result = _dispatch_webhook(action, payload)
+            result = _dispatch_webhook(action, provider_payload)
         elif provider == "google_workspace_cli":
-            result = _dispatch_google_workspace_cli(action, payload)
+            result = _dispatch_google_workspace_cli(action, provider_payload)
         else:
             raise PersonalActionError(
                 "unsupported PERSONAL_ACTIONS_PROVIDER; use webhook, google_workspace_cli, or set PERSONAL_ACTIONS_DRY_RUN=1"
@@ -517,12 +598,13 @@ def _dispatch_google_workspace_cli(action: str, payload: dict[str, Any]) -> dict
 
 
 @mcp.tool()
-def personal_slack_send_message(channel: str, text: str, thread_ts: str = "") -> str:
+def personal_slack_send_message(channel: str, text: str, thread_ts: str = "", approval_id: str = "") -> str:
     """Send one Slack message to a channel, user, or conversation id."""
     payload = {
         "channel": _require("channel", channel),
         "text": _require("text", text),
         "thread_ts": _optional(thread_ts),
+        "approval_id": _optional(approval_id),
     }
     return _dispatch("slack_send_message", payload)
 
@@ -559,6 +641,7 @@ def personal_gmail_send_email(
     bcc: str = "",
     html: bool = False,
     account: str = "personal",
+    approval_id: str = "",
 ) -> str:
     """Send a Gmail email with explicit recipients, subject, and body."""
     payload = {
@@ -569,16 +652,18 @@ def personal_gmail_send_email(
         "cc": _split_csv(cc),
         "bcc": _split_csv(bcc),
         "html": bool(html),
+        "approval_id": _optional(approval_id),
     }
     return _dispatch("gmail_send_email", payload)
 
 
 @mcp.tool()
-def personal_gmail_trash_email(message_id: str, account: str = "personal") -> str:
+def personal_gmail_trash_email(message_id: str, account: str = "personal", approval_id: str = "") -> str:
     """Move one exact Gmail message id to Trash; does not permanently delete."""
     payload = {
         "account": _account(account),
         "message_id": _require("message_id", message_id),
+        "approval_id": _optional(approval_id),
     }
     return _dispatch("gmail_trash_email", payload)
 
@@ -624,6 +709,7 @@ def personal_calendar_create_event(
     location: str = "",
     attendees: str = "",
     account: str = "personal",
+    approval_id: str = "",
 ) -> str:
     """Create one Google Calendar event with ISO-8601 start and end times."""
     payload = {
@@ -635,6 +721,7 @@ def personal_calendar_create_event(
         "description": _optional(description),
         "location": _optional(location),
         "attendees": _split_csv(attendees),
+        "approval_id": _optional(approval_id),
     }
     return _dispatch("calendar_create_event", payload)
 
@@ -650,6 +737,7 @@ def personal_calendar_update_event(
     location: str = "",
     attendees: str = "",
     account: str = "personal",
+    approval_id: str = "",
 ) -> str:
     """Update one Google Calendar event by event id."""
     payload = {
@@ -662,6 +750,7 @@ def personal_calendar_update_event(
         "description": _optional(description),
         "location": _optional(location),
         "attendees": _split_csv(attendees),
+        "approval_id": _optional(approval_id),
     }
     if not any(payload[key] for key in ["summary", "start", "end", "description", "location", "attendees"]):
         raise PersonalActionError("at least one update field is required")

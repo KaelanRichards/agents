@@ -5,4 +5,6 @@ result
 .doctor-versions
 assistant/personal-actions.env
 assistant/logs/
+state/
+generated/
 stacks/windmill/.env

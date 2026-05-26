@@ -1,0 +1,12 @@
+{
+  "name": "prod-mutator-confirmed",
+  "description": "Explicitly confirmed production mutation profile; never selected by default.",
+  "mcp_servers": ["datadog", "sentry", "github", "linear", "agent-broker"],
+  "allowed_tools": ["datadog_read", "sentry_read", "github_read", "linear_read", "confirmed_mutation"],
+  "disallowed_tools": ["unconfirmed_mutation", "bulk_delete", "credential_change"],
+  "filesystem": {"mode": "workspace-write", "roots": ["current_repo"]},
+  "shell": {"mode": "confirm-each", "mutating": true},
+  "confirm": ["every_mutation", "rollback_plan", "blast_radius"],
+  "skills": ["qa", "security-threat-model"],
+  "risk": "critical"
+}

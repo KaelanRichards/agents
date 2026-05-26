@@ -32,10 +32,12 @@ test:
     ruff check .
     bash tests/sync-roundtrip.sh
     uv run --script tests/agent_system_contract.py
+    uv run --script tests/agent_control_smoke.py
     uv run --script tests/bigquery_mcp_smoke.py
     uv run --script tests/personal_actions_smoke.py
     uv run --script tests/windmill_stack_smoke.py
     uv run --script tests/dash_smoke.py
+    uv run --script tests/prompt_injection_policy.py
 
 secrets:
     gitleaks detect --source . --no-git --redact --verbose

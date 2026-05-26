@@ -53,6 +53,13 @@ PANELS: dict[str, tuple[str, str]] = {
     ),
     "health": ("Health", "agents-doctor 2>/dev/null | tail -1"),
     "mcp": ("MCP servers", "mcp-sync list 2>/dev/null"),
+    "control": (
+        "Agent Control",
+        "agent-profile list 2>/dev/null | sed 's/^/profile: /'; "
+        "echo '--- runs ---'; agent-ledger list --limit 5 2>/dev/null || true; "
+        "echo '--- queue ---'; agentq list --limit 5 2>/dev/null || true; "
+        "echo '--- approvals ---'; agent-approve list --limit 5 2>/dev/null || true",
+    ),
     "ci": (
         "Repo / CI",
         f"gh run list --repo {REPO} -L 5 2>/dev/null | cut -f1-4; "
@@ -100,6 +107,7 @@ def status_payload() -> dict:
 # action -> builds an argv-safe shell command from posted args
 def _cmd_for(action: str, args: dict) -> str | None:
     name = shlex.quote(str(args.get("name", "")))
+    item_id = shlex.quote(str(args.get("id", "")))
     cmd = str(args.get("command", ""))
     server = shlex.quote(str(args.get("server", "agents")))
     builders = {
@@ -112,6 +120,12 @@ def _cmd_for(action: str, args: dict) -> str | None:
             f"mcp-sync add {name} -- {cmd}" if args.get("name") and cmd else None
         ),
         "mcp-remove": lambda: f"mcp-sync remove {name}" if args.get("name") else None,
+        "profile-compile": lambda: "agent-profile validate && agent-profile compile",
+        "eval-smoke": lambda: "agent-eval run smoke-noop --agent noop",
+        "queue-start": lambda: "agentq start",
+        "queue-tail": lambda: f"agentq tail {item_id} --lines 120" if args.get("id") else None,
+        "approval-approve": lambda: f"agent-approve approve {item_id}" if args.get("id") else None,
+        "approval-reject": lambda: f"agent-approve reject {item_id}" if args.get("id") else None,
     }
     b = builders.get(action)
     return b() if b else None
@@ -211,6 +225,8 @@ input{font:inherit;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;bor
   <h1>agents · webdash</h1>
   <button onclick="run('sync')">⇄ Sync</button>
   <button onclick="run('doctor')">🩺 Doctor</button>
+  <button onclick="run('profile-compile')">▣ Profiles</button>
+  <button onclick="run('eval-smoke')">✓ Eval</button>
   <button onclick="run('provision')">＋ Provision</button>
   <button class="danger" onclick="if(confirm('Tear down the VM (snapshot+delete)?'))run('teardown')">🗑 Teardown</button>
   <button class="danger" onclick="if(confirm('Reboot the VM?'))run('reboot')">⟳ Reboot</button>
@@ -227,6 +243,22 @@ input{font:inherit;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;bor
       <input id="mrm" placeholder="remove name"><button class="danger">remove</button>
     </form>
   </div>
+  <div class="card"><h2>Queue</h2>
+    <form onsubmit="queueTail(event)">
+      <input id="qid" placeholder="task id"><button>tail</button>
+    </form>
+    <form onsubmit="queueStart(event)" style="margin-top:.3rem">
+      <button>start next queued task</button>
+    </form>
+  </div>
+  <div class="card"><h2>Approvals</h2>
+    <form onsubmit="approvalApprove(event)">
+      <input id="aidApprove" placeholder="approval id"><button>approve</button>
+    </form>
+    <form onsubmit="approvalReject(event)" style="margin-top:.3rem">
+      <input id="aidReject" placeholder="approval id"><button class="danger">reject</button>
+    </form>
+  </div>
 </div>
 <h2 style="padding:0 1rem;color:#58a6ff">Grafana</h2>
 <div style="padding:0 1rem 1rem"><iframe src="__GRAFANA__" class="full"></iframe></div>
@@ -239,7 +271,7 @@ const TOKEN=new URLSearchParams(location.search).get('token')||'';
 const auth=u=>TOKEN?u+(u.includes('?')?'&':'?')+'token='+TOKEN:u;
 const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function render(d){
-  const order=['machines','cost','health','mcp','ci','sessions'];
+  const order=['machines','cost','health','mcp','control','ci','sessions'];
   document.getElementById('grid').innerHTML=order.filter(k=>d[k]).map(k=>
     `<div class="card"><h2>${esc(d[k].title)}</h2><pre>${esc(d[k].out)}</pre></div>`).join('');
   document.getElementById('updated').textContent='live · '+new Date().toLocaleTimeString();
@@ -256,6 +288,10 @@ async function run(action,args={}){
 }
 function mcpAdd(e){e.preventDefault();run('mcp-add',{name:mname.value,command:mcmd.value});}
 function mcpRemove(e){e.preventDefault();run('mcp-remove',{name:mrm.value});}
+function queueStart(e){e.preventDefault();run('queue-start');}
+function queueTail(e){e.preventDefault();run('queue-tail',{id:qid.value});}
+function approvalApprove(e){e.preventDefault();run('approval-approve',{id:aidApprove.value});}
+function approvalReject(e){e.preventDefault();run('approval-reject',{id:aidReject.value});}
 </script></body></html>"""
 
 
