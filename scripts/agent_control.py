@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 import shlex
 import sqlite3
 import subprocess
@@ -300,24 +301,35 @@ def cmd_approve(args: argparse.Namespace) -> int:
             print(f"{r['created_at']}\t{r['id']}\t{r['status']}\t{r['kind']}\t{r['summary']}")
         return 0
     if args.approve_cmd == "show":
-        row = conn.execute("SELECT * FROM approvals WHERE id = ?", (args.id,)).fetchone()
+        row = lookup_approval(conn, args.id)
         if not row:
             raise SystemExit(f"approval not found: {args.id}")
         print(json.dumps(dict(row), indent=2, sort_keys=True))
         return 0
     if args.approve_cmd in {"approve", "reject"}:
         status = "approved" if args.approve_cmd == "approve" else "rejected"
+        row = lookup_approval(conn, args.id)
+        if not row:
+            raise SystemExit(f"approval not found: {args.id}")
         conn.execute(
             "UPDATE approvals SET status = ?, updated_at = ?, decision_note = ? WHERE id = ?",
-            (status, now(), args.note or "", args.id),
+            (status, now(), args.note or "", row["id"]),
         )
-        if conn.total_changes == 0:
-            raise SystemExit(f"approval not found: {args.id}")
         conn.commit()
-        append_ledger({"kind": "approval", "status": status, "profile": "", "agent": "", "repo": "", "prompt": args.id, "details": {"note": args.note or ""}})
+        append_ledger({"kind": "approval", "status": status, "profile": "", "agent": "", "repo": "", "prompt": row["id"], "details": {"note": args.note or ""}})
         print(status)
         return 0
     raise SystemExit("missing approval command")
+
+
+def lookup_approval(conn: sqlite3.Connection, approval_id: str) -> sqlite3.Row | None:
+    row = conn.execute("SELECT * FROM approvals WHERE id = ?", (approval_id,)).fetchone()
+    if row:
+        return row
+    rows = conn.execute("SELECT * FROM approvals WHERE id LIKE ?", (approval_id + "%",)).fetchall()
+    if len(rows) > 1:
+        raise SystemExit(f"approval id prefix is ambiguous: {approval_id}")
+    return rows[0] if rows else None
 
 
 def queue_db() -> sqlite3.Connection:
@@ -410,7 +422,7 @@ def cmd_queue(args: argparse.Namespace) -> int:
             print(f"{r['created_at']}\t{r['id']}\t{r['status']}\t{r['profile']}\t{r['agent']}\t{r['repo']}\t{r['task'][:80]}")
         return 0
     if args.queue_cmd == "show":
-        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (args.id,)).fetchone()
+        row = lookup_queue_task(conn, args.id)
         if not row:
             raise SystemExit(f"task not found: {args.id}")
         print(json.dumps(dict(row), indent=2, sort_keys=True))
@@ -422,7 +434,7 @@ def cmd_queue(args: argparse.Namespace) -> int:
         start_queue_task(conn, row, foreground=args.foreground)
         return 0
     if args.queue_cmd == "run":
-        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (args.id,)).fetchone()
+        row = lookup_queue_task(conn, args.id)
         if not row:
             raise SystemExit(f"task not found: {args.id}")
         run_queue_task(conn, row)
@@ -455,8 +467,18 @@ def cmd_queue(args: argparse.Namespace) -> int:
 
 def select_queue_task(conn: sqlite3.Connection, qid: str) -> sqlite3.Row | None:
     if qid:
-        return conn.execute("SELECT * FROM tasks WHERE id = ?", (qid,)).fetchone()
+        return lookup_queue_task(conn, qid)
     return conn.execute("SELECT * FROM tasks WHERE status = 'queued' ORDER BY created_at LIMIT 1").fetchone()
+
+
+def lookup_queue_task(conn: sqlite3.Connection, qid: str) -> sqlite3.Row | None:
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (qid,)).fetchone()
+    if row:
+        return row
+    rows = conn.execute("SELECT * FROM tasks WHERE id LIKE ?", (qid + "%",)).fetchall()
+    if len(rows) > 1:
+        raise SystemExit(f"task id prefix is ambiguous: {qid}")
+    return rows[0] if rows else None
 
 
 def start_queue_task(conn: sqlite3.Connection, row: sqlite3.Row, foreground: bool) -> None:
@@ -511,12 +533,12 @@ def run_queue_task(conn: sqlite3.Connection, row: sqlite3.Row) -> None:
 def finish_queue_task(conn: sqlite3.Connection, qid: str, exit_code: int, status: str = "") -> None:
     if not status:
         status = "done" if int(exit_code) == 0 else "failed"
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (qid,)).fetchone()
+    row = lookup_queue_task(conn, qid)
     if not row:
         raise SystemExit(f"task not found: {qid}")
     conn.execute(
         "UPDATE tasks SET status = ?, updated_at = ?, completed_at = ?, exit_code = ? WHERE id = ?",
-        (status, now(), now(), int(exit_code), qid),
+        (status, now(), now(), int(exit_code), row["id"]),
     )
     conn.commit()
     append_ledger(
@@ -527,43 +549,43 @@ def finish_queue_task(conn: sqlite3.Connection, qid: str, exit_code: int, status
             "agent": row["agent"],
             "repo": row["repo"],
             "prompt": row["task"],
-            "details": {"queue_id": qid, "exit_code": int(exit_code), "log": row["log"]},
+            "details": {"queue_id": row["id"], "exit_code": int(exit_code), "log": row["log"]},
         }
     )
 
 
 def cancel_queue_task(conn: sqlite3.Connection, qid: str) -> None:
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (qid,)).fetchone()
+    row = lookup_queue_task(conn, qid)
     if not row:
         raise SystemExit(f"task not found: {qid}")
     if row["status"] == "running":
         run(["tmux", "kill-session", "-t", row["session"]], timeout=15)
     conn.execute(
         "UPDATE tasks SET status = 'canceled', updated_at = ?, completed_at = ?, cancel_requested = 1 WHERE id = ?",
-        (now(), now(), qid),
+        (now(), now(), row["id"]),
     )
     conn.commit()
-    append_ledger({"kind": "queue", "status": "canceled", "profile": row["profile"], "agent": row["agent"], "repo": row["repo"], "prompt": row["task"], "details": {"queue_id": qid}})
-    print(f"canceled: {qid}")
+    append_ledger({"kind": "queue", "status": "canceled", "profile": row["profile"], "agent": row["agent"], "repo": row["repo"], "prompt": row["task"], "details": {"queue_id": row["id"]}})
+    print(f"canceled: {row['id']}")
 
 
 def retry_queue_task(conn: sqlite3.Connection, qid: str) -> None:
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (qid,)).fetchone()
+    row = lookup_queue_task(conn, qid)
     if not row:
         raise SystemExit(f"task not found: {qid}")
     if row["status"] not in {"failed", "canceled"}:
         raise SystemExit(f"task {qid} is {row['status']}; only failed/canceled tasks can be retried")
     conn.execute(
         "UPDATE tasks SET status = 'queued', updated_at = ?, completed_at = '', exit_code = NULL, cancel_requested = 0 WHERE id = ?",
-        (now(), qid),
+        (now(), row["id"]),
     )
     conn.commit()
-    append_ledger({"kind": "queue", "status": "retried", "profile": row["profile"], "agent": row["agent"], "repo": row["repo"], "prompt": row["task"], "details": {"queue_id": qid}})
-    print(f"queued: {qid}")
+    append_ledger({"kind": "queue", "status": "retried", "profile": row["profile"], "agent": row["agent"], "repo": row["repo"], "prompt": row["task"], "details": {"queue_id": row["id"]}})
+    print(f"queued: {row['id']}")
 
 
 def tail_queue_task(conn: sqlite3.Connection, qid: str, lines: int, follow: bool) -> None:
-    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (qid,)).fetchone()
+    row = lookup_queue_task(conn, qid)
     if not row:
         raise SystemExit(f"task not found: {qid}")
     log = Path(row["log"])
@@ -617,6 +639,105 @@ def agent_command(agent: str, task: str) -> str:
     raise SystemExit(f"unsupported agent: {agent}")
 
 
+MUTATING_TOOL_WORDS = {
+    "add",
+    "approve",
+    "archive",
+    "assign",
+    "cancel",
+    "close",
+    "create",
+    "delete",
+    "deploy",
+    "edit",
+    "execute",
+    "ignore",
+    "merge",
+    "mute",
+    "post",
+    "provision",
+    "push",
+    "reboot",
+    "reject",
+    "release",
+    "remove",
+    "resolve",
+    "restore",
+    "run",
+    "send",
+    "start",
+    "sync",
+    "teardown",
+    "trash",
+    "update",
+    "write",
+}
+
+CAPABILITY_TOOLS = {
+    "personal_search": {
+        "personal_slack_search_messages",
+        "personal_gmail_search_messages",
+        "personal_gmail_get_message",
+        "personal_drive_search_files",
+    },
+    "personal_gmail_draft": {"personal_gmail_create_draft"},
+    "personal_calendar_list": {"personal_calendar_list_events"},
+    "gmail_send": {"personal_gmail_send_email"},
+    "gmail_trash": {"personal_gmail_trash_email"},
+    "slack_post": {"personal_slack_send_message"},
+    "calendar_create": {"personal_calendar_create_event"},
+    "calendar_update": {"personal_calendar_update_event"},
+    "bigquery_readonly": {"bigquery_execute_sql_readonly", "bigquery_dry_run_sql"},
+    "repo_status": {"repo_status"},
+    "repo_log": {"repo_log"},
+    "repo_diff": {"repo_diff"},
+    "list_tasks": {"list_tasks"},
+    "run_tests": {"run_task"},
+    "gh_read": {"gh_read"},
+    "gh_pr_create": {"gh_pr_create"},
+    "github_read": {"github_read"},
+    "linear_read": {"linear_read"},
+    "datadog_write": {"datadog_write"},
+    "sentry_write": {"sentry_write"},
+    "bigquery_write": {"bigquery_write"},
+}
+
+READ_CAPABILITY_SERVERS = {
+    "datadog_read": "datadog",
+    "sentry_read": "sentry",
+    "github_read": "github",
+    "linear_read": "linear",
+}
+
+
+def tool_words(tool: str) -> set[str]:
+    return {part for part in re.split(r"[^a-z0-9]+", tool.lower()) if part}
+
+
+def infer_mutation(tool: str, mutation: bool) -> bool:
+    if mutation:
+        return True
+    return bool(tool_words(tool) & MUTATING_TOOL_WORDS)
+
+
+def capability_matches(capability: str, server: str, tool: str, inferred_mutation: bool) -> bool:
+    tool_key = tool.lower()
+    if tool_key in CAPABILITY_TOOLS.get(capability, set()):
+        return True
+    if capability in READ_CAPABILITY_SERVERS:
+        expected_server = READ_CAPABILITY_SERVERS[capability]
+        return server == expected_server and not inferred_mutation
+    if capability == "read":
+        return not inferred_mutation
+    if capability == "confirmed_mutation":
+        return inferred_mutation
+    return tool_key == capability or tool_key.startswith(f"{capability}_")
+
+
+def capability_list_matches(capabilities: list[str], server: str, tool: str, inferred_mutation: bool) -> bool:
+    return any(capability_matches(capability, server, tool, inferred_mutation) for capability in capabilities)
+
+
 def cmd_eval(args: argparse.Namespace) -> int:
     if args.eval_cmd == "list":
         for path in sorted(EVALS.glob("*.json")):
@@ -648,12 +769,15 @@ def cmd_eval(args: argparse.Namespace) -> int:
 def broker_authorize(profile_name: str, server: str, tool: str, mutation: bool) -> dict[str, Any]:
     profile = load_profile(profile_name)
     allowed_server = server in profile["mcp_servers"]
-    tool_key = tool.lower()
-    disallowed = any(part in tool_key for part in profile["disallowed_tools"])
-    allowed_tool = any(part in tool_key for part in profile["allowed_tools"]) or not mutation
-    needs_confirm = mutation or any(part in tool_key for part in profile["confirm"])
+    inferred_mutation = infer_mutation(tool, mutation)
+    disallowed = capability_list_matches(profile["disallowed_tools"], server, tool, inferred_mutation)
+    allowed_tool = capability_list_matches(profile["allowed_tools"], server, tool, inferred_mutation)
+    confirm_tool = capability_list_matches(profile["confirm"], server, tool, inferred_mutation)
+    if confirm_tool:
+        allowed_tool = True
+    needs_confirm = inferred_mutation or confirm_tool
     allowed = allowed_server and allowed_tool and not disallowed
-    if mutation and profile["risk"] in {"high", "critical"}:
+    if inferred_mutation and profile["risk"] in {"high", "critical"}:
         needs_confirm = True
     return {
         "allowed": allowed,
@@ -661,7 +785,8 @@ def broker_authorize(profile_name: str, server: str, tool: str, mutation: bool) 
         "profile": profile_name,
         "server": server,
         "tool": tool,
-        "mutation": mutation,
+        "mutation": inferred_mutation,
+        "caller_marked_mutation": mutation,
         "reason": "ok" if allowed else "server/tool denied by profile",
     }
 

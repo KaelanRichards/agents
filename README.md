@@ -53,9 +53,11 @@ Three views over the same data (machines+cost, health, MCP, CI/PRs, sessions) â€
   (sync/doctor/provision/teardown/reboot, MCP add/remove), embedded Grafana + terminal.
 
 ```bash
-dashweb     # local: http://localhost:8787 (no token â€” localhost-only)
+dashweb     # local: http://localhost:8787 (read-only without WEBDASH_TOKEN)
 ```
 Panel prerequisites: Grafana panel needs `obs up`; terminal panel needs `ttyd -p 7681 -W zsh`.
+Dashboard mutation controls (`sync`, `doctor`, queue/approval actions, MCP add/remove, VM actions)
+require `WEBDASH_TOKEN` and same-origin CSRF headers even on localhost.
 
 ### Always-on + phone access (on the VM)
 ```bash

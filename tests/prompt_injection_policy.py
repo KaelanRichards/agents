@@ -43,8 +43,22 @@ def main() -> None:
     assert denied["allowed"] is False
     assert denied["needs_confirmation"] is True
 
+    omitted_mutation = control.broker_authorize(
+        "personal-assistant", "personal-actions", "personal_gmail_send_email", False
+    )
+    assert omitted_mutation["allowed"] is True
+    assert omitted_mutation["mutation"] is True
+    assert omitted_mutation["needs_confirmation"] is True
+
+    unknown_read = control.broker_authorize("personal-assistant", "personal-actions", "personal_unknown_read", False)
+    assert unknown_read["allowed"] is False
+
     allowed = control.broker_authorize("prod-observer", "datadog", "datadog_read_logs", False)
     assert allowed["allowed"] is True
+
+    hidden_write = control.broker_authorize("prod-observer", "datadog", "create_monitor", False)
+    assert hidden_write["allowed"] is False
+    assert hidden_write["mutation"] is True
     print("prompt injection policy OK")
 
 

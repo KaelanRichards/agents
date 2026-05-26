@@ -5,7 +5,7 @@
 ## Scope
 
 - Local system: `Kaelans-MacBook-Pro-2.local`, macOS 26.5, Apple Silicon.
-- VM: Hetzner server `agents`, public IPv4 `91.99.218.202`, Tailscale IP `100.84.252.93`.
+- VM: Hetzner server `agents`, public IPv4 `91.99.218.202`, Tailscale IP `100.84.252.93`, Tailscale DNS `agents.tailfae3a0.ts.net`.
 - Agent control plane config under `~/.config/agents`.
 - Local Vizcom development containers managed by `/Users/kaelan/code/vizcom/docker-compose.yml`.
 
@@ -35,23 +35,25 @@ vizcom_redis   127.0.0.1:6379->6379/tcp
 
 ### Local SSH agent forwarding
 
-Updated `/Users/kaelan/.ssh/config` so the `agents` host no longer forwards the local SSH agent by default:
+Updated `/Users/kaelan/.ssh/config` so the `agents` host uses Tailscale instead of the public IPv4 address and no longer forwards the local SSH agent by default:
 
 ```sshconfig
 Host agents
-  HostName 91.99.218.202
+  HostName 100.84.252.93
   User kaelan
   ForwardAgent no
 ```
 
-Use `ssh -A agents` only for a deliberate one-off session that needs agent forwarding.
+Added the matching Tailscale-IP host key to `/Users/kaelan/.ssh/known_hosts` after verifying it matched the public-IP SSH host key.
+
+Use `ssh -A agents` only for a deliberate one-off session that needs agent forwarding, and prefer not to re-enable agent forwarding on this host.
 
 ### Hetzner cloud firewall
 
-Created and applied Hetzner firewall `agents-tight` to server `agents`:
+Created and applied Hetzner firewall `agents-tight` to server `agents`, then moved SSH access fully behind Tailscale:
 
-- Allow inbound TCP `22` only from current public IP `98.207.58.134/32`.
 - Allow inbound UDP `41641` from `0.0.0.0/0` and `::/0` for Tailscale direct connectivity.
+- No inbound public TCP SSH rule remains.
 - No public access to webdash; it remains localhost-bound and exposed through Tailscale Serve.
 
 Verified firewall:
@@ -60,11 +62,10 @@ Verified firewall:
 Firewall: agents-tight
 Applied to: agents
 Rules:
-  in tcp 22 from 98.207.58.134/32
   in udp 41641 from 0.0.0.0/0 and ::/0
 ```
 
-Important: if the home/office public IP changes, SSH over the public address may stop working until this rule is updated. Tailscale access should continue as long as outbound networking works on both sides.
+Important: SSH now depends on Tailscale. Keep at least one authenticated tailnet device available before changing Tailscale or VM networking. If break-glass public SSH is ever needed, add a temporary Hetzner firewall rule for TCP `22` from the current trusted IP only, then remove it after recovery.
 
 ### VM SSH hardening
 
@@ -78,7 +79,7 @@ X11Forwarding no
 AllowAgentForwarding no
 ```
 
-Verified the file via SSH after reload. Public SSH still accepted the existing key from the allowed IP.
+Verified the file via SSH after reload. SSH access through `Host agents` works over Tailscale.
 
 ### VM dashboard posture
 
@@ -121,13 +122,22 @@ docker ps --filter name=vizcom_pg --filter name=vizcom_redis --format 'table {{.
 hcloud firewall describe agents-tight
 ssh agents 'sudo -n cat /etc/ssh/sshd_config.d/99-agent-hardening.conf'
 ssh agents 'ss -tuln | awk "NR==1 || /:22|:443|:8787|41641/"'
+tailscale status
 gitleaks detect --source /Users/kaelan/.config/agents --no-git --redact --verbose
 agents-doctor
 ```
 
 ## Residual Risks
 
-- Public SSH exists, but is now restricted by Hetzner firewall to one IPv4 source. Keep Tailscale access working before changing SSH firewall rules further.
+- SSH is no longer publicly reachable through the Hetzner firewall. This improves exposure but makes Tailscale availability the primary admin dependency.
 - The local macOS firewall remains disabled until the interactive `sudo` commands above are run.
 - Local dev services use known development credentials. They are now localhost-bound, but should not be exposed through tunnels or public Docker port mappings.
 - The Mac reported no MDM enrollment via `profiles status -type enrollment`; this conflicts with the shared machine instructions and should be checked in System Settings or Rippling.
+
+## Additional Tailscale Hardening To Consider
+
+- Enable Tailscale SSH in the admin console and restrict SSH to the `agents` machine to the specific user/device identities that need it.
+- Add ACL tags such as `tag:agent-vm` and use ACLs instead of broad user-to-device reachability.
+- Require device approval for new tailnet devices.
+- Enable tailnet lock if operationally acceptable.
+- Review Tailscale Serve permissions so only the dashboard endpoint intended for tailnet use is exposed.

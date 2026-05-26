@@ -17,12 +17,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import secrets
 import shlex
 import subprocess
+from urllib.parse import urlparse
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 
 REPO = os.environ.get("AGENTS_REPO_SLUG", "KaelanRichards/agents")
 PORT = int(os.environ.get("WEBDASH_PORT", "8787"))
@@ -30,6 +32,9 @@ HOST = os.environ.get("WEBDASH_HOST", "127.0.0.1")
 TOKEN = os.environ.get("WEBDASH_TOKEN", "")
 GRAFANA = os.environ.get("GRAFANA_URL", "http://localhost:3000")
 TTYD = os.environ.get("TTYD_URL", "http://localhost:7681")
+CSRF_COOKIE = "webdash_csrf"
+CSRF_TOKEN = secrets.token_urlsafe(32)
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 _PATH = ":".join(
     [
@@ -56,9 +61,9 @@ PANELS: dict[str, tuple[str, str]] = {
     "control": (
         "Agent Control",
         "agent-profile list 2>/dev/null | sed 's/^/profile: /'; "
-        "echo '--- runs ---'; agent-ledger list --limit 5 2>/dev/null || true; "
-        "echo '--- queue ---'; agentq list --limit 5 2>/dev/null || true; "
-        "echo '--- approvals ---'; agent-approve list --limit 5 2>/dev/null || true",
+        "agent-ledger list --limit 5 2>/dev/null | sed 's/^/run: /' || true; "
+        "agentq list --limit 5 2>/dev/null | sed 's/^/queue: /' || true; "
+        "agent-approve list --limit 5 2>/dev/null | sed 's/^/approval: /' || true",
     ),
     "ci": (
         "Repo / CI",
@@ -134,6 +139,37 @@ def _cmd_for(action: str, args: dict) -> str | None:
 app = FastAPI(title="agents webdash")
 
 
+def _host_only(value: str) -> str:
+    host = (value or "").split(",", 1)[0].strip()
+    if "://" in host:
+        host = urlparse(host).netloc
+    if host.startswith("["):
+        return host.split("]", 1)[0].lstrip("[").lower()
+    return host.split(":", 1)[0].lower()
+
+
+def _same_origin(request: Request) -> bool:
+    host = _host_only(request.headers.get("host", ""))
+    for header in ("origin", "referer"):
+        value = request.headers.get(header, "")
+        if not value:
+            continue
+        if _host_only(value) != host:
+            return False
+    return True
+
+
+def _require_run_auth(request: Request) -> None:
+    if not TOKEN:
+        raise HTTPException(403, "WEBDASH_TOKEN is required for mutating dashboard actions")
+    if not _same_origin(request):
+        raise HTTPException(403, "cross-origin dashboard action denied")
+    csrf_header = request.headers.get("x-csrf-token", "")
+    csrf_cookie = request.cookies.get(CSRF_COOKIE, "")
+    if csrf_header != CSRF_TOKEN or csrf_cookie != CSRF_TOKEN:
+        raise HTTPException(403, "CSRF token missing or invalid")
+
+
 @app.middleware("http")
 async def auth(request: Request, call_next):
     if not TOKEN:
@@ -144,9 +180,14 @@ async def auth(request: Request, call_next):
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     response = await call_next(request)
     # Authenticated via ?token= / header -> set a cookie so the bare URL works next time.
+    secure_cookie = request.url.scheme == "https"
     if via_param == TOKEN and request.cookies.get("token") != TOKEN:
         response.set_cookie(
-            "token", TOKEN, max_age=2592000, httponly=True, samesite="lax", secure=True
+            "token", TOKEN, max_age=2592000, httponly=True, samesite="lax", secure=secure_cookie
+        )
+    if request.cookies.get(CSRF_COOKIE) != CSRF_TOKEN:
+        response.set_cookie(
+            CSRF_COOKIE, CSRF_TOKEN, max_age=2592000, httponly=False, samesite="strict", secure=secure_cookie
         )
     return response
 
@@ -168,7 +209,8 @@ async def events() -> StreamingResponse:
 
 
 @app.post("/api/run")
-async def run(body: dict) -> StreamingResponse:
+async def run(request: Request, body: dict) -> StreamingResponse:
+    _require_run_auth(request)
     action = str(body.get("action", ""))
     cmd = _cmd_for(action, body.get("args", {}) or {})
     if not cmd:
@@ -196,106 +238,207 @@ def index() -> str:
     return INDEX.replace("__GRAFANA__", GRAFANA).replace("__TTYD__", TTYD)
 
 
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    return Response(status_code=204)
+
+
 INDEX = """<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>agents · webdash</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>agents control</title>
 <style>
-:root{color-scheme:dark}
+:root{
+  color-scheme:light;
+  --paper:#f4f6f3;--ink:#171916;--muted:#667064;--line:#c9d1c4;--panel:#ffffff;
+  --panel2:#eef2ec;--green:#16784f;--red:#b3261e;--amber:#a35d00;--blue:#2359a7;
+  --shadow:0 16px 38px rgba(30,39,28,.12)
+}
 *{box-sizing:border-box}
-body{margin:0;font:14px/1.5 ui-monospace,Menlo,monospace;background:#0d1117;color:#c9d1d9}
-header{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;padding:.6rem 1rem;background:#161b22;border-bottom:1px solid #30363d;position:sticky;top:0;z-index:5}
-header h1{font-size:15px;margin:0 .5rem 0 0;font-weight:700}
-button{font:inherit;background:#21262d;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:.3rem .6rem;cursor:pointer}
-button:hover{background:#30363d}
-button.danger{border-color:#7d2b2b}
-#updated{margin-left:auto;color:#8b949e;font-size:12px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:1rem;padding:1rem}
-.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:.6rem .9rem;overflow:auto;max-height:340px}
-.card h2{font-size:13px;margin:0 0 .4rem;color:#58a6ff}
-pre{margin:0;white-space:pre-wrap;word-break:break-word;font-size:12.5px}
-iframe{width:100%;height:340px;border:1px solid #30363d;border-radius:8px;background:#000}
-.full{grid-column:1/-1}
-form{display:flex;gap:.4rem;flex-wrap:wrap;margin:.4rem 0 0}
-input{font:inherit;background:#0d1117;color:#c9d1d9;border:1px solid #30363d;border-radius:6px;padding:.3rem .5rem;flex:1;min-width:120px}
-#log{position:fixed;bottom:0;left:0;right:0;height:38vh;background:#010409;border-top:2px solid #1f6feb;padding:.5rem 1rem;overflow:auto;transform:translateY(100%);transition:.25s;z-index:10}
-#log.open{transform:translateY(0)}
-#log pre{font-size:12px}
-#logbar{position:fixed;bottom:.5rem;right:1rem;z-index:11}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 Avenir Next,Segoe UI,Helvetica,sans-serif;letter-spacing:0}
+button,input,select,textarea{font:inherit}
+button{border:1px solid #9aa694;background:#fff;color:var(--ink);border-radius:6px;padding:.48rem .7rem;cursor:pointer;min-height:34px}
+button:hover{background:#eaf0e7}
+button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+button.danger{color:var(--red);border-color:#d8aaa6;background:#fff8f7}
+button.ghost{background:transparent}
+input,select,textarea{border:1px solid #aeb8a9;border-radius:6px;background:#fff;color:var(--ink);padding:.48rem .6rem;min-height:34px;width:100%}
+textarea{min-height:84px;resize:vertical}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.45 SFMono-Regular,Menlo,Consolas,monospace}
+.app{display:grid;grid-template-columns:246px 1fr;min-height:100vh}
+.rail{background:#18201a;color:#f5f7f1;padding:18px 14px;display:flex;flex-direction:column;gap:18px;position:sticky;top:0;height:100vh}
+.brand{border-bottom:1px solid rgba(255,255,255,.16);padding-bottom:16px}
+.brand b{display:block;font-size:18px;letter-spacing:.02em}.brand span{color:#aebba9;font-size:12px}
+.nav{display:grid;gap:6px}.nav button{text-align:left;background:transparent;color:#e9efe5;border-color:transparent}.nav button.active,.nav button:hover{background:#2b352d;border-color:#465243}
+.railFoot{margin-top:auto;color:#aebba9;font-size:12px}
+.main{min-width:0}
+.top{position:sticky;top:0;z-index:4;background:rgba(244,246,243,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line);padding:14px 20px;display:flex;gap:12px;align-items:center}
+.top h1{font-size:20px;margin:0;min-width:0;flex:1}.updated{color:var(--muted);font-size:12px;white-space:nowrap}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap}.section{display:none;padding:20px;max-width:1540px}.section.active{display:block}
+.hero{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;box-shadow:var(--shadow);min-height:94px}
+.metric label{display:block;font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700}.metric strong{display:block;font-size:25px;margin-top:8px}.metric small{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}.span4{grid-column:span 4}.span5{grid-column:span 5}.span6{grid-column:span 6}.span7{grid-column:span 7}.span8{grid-column:span 8}.span12{grid-column:1/-1}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);min-width:0;overflow:hidden}
+.panelHead{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.panelHead h2{font-size:14px;margin:0}.panelBody{padding:14px;overflow:auto}.scroll{max-height:360px}
+.status{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;background:#fff}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}.ok .dot{background:var(--green)}.warn .dot{background:var(--amber)}.bad .dot{background:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;border-bottom:1px solid var(--line);padding:7px}td{border-bottom:1px solid #e4e9e1;padding:8px;vertical-align:top}tr:last-child td{border-bottom:0}
+.mono{font-family:SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}.muted{color:var(--muted)}.clip{max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.formGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.formGrid .wide{grid-column:1/-1}
+.tabs{display:flex;gap:6px;margin-bottom:12px}.tabs button{background:#fff}.tabs button.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+iframe{width:100%;height:540px;border:0;background:#111;border-radius:0}.terminalFrame{height:560px}
+.drawer{position:fixed;right:18px;bottom:18px;width:min(760px,calc(100vw - 36px));height:min(520px,70vh);background:#10140f;color:#e9efe5;border:1px solid #4e594a;border-radius:8px;box-shadow:0 24px 80px rgba(0,0,0,.35);transform:translateY(18px);opacity:0;visibility:hidden;pointer-events:none;transition:.2s;z-index:9;display:flex;flex-direction:column}
+.drawer.open{transform:translateY(0);opacity:1;visibility:visible;pointer-events:auto}.drawerHead{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #374132}.drawer pre{padding:12px;overflow:auto;flex:1;color:#e9efe5}
+.empty{color:var(--muted);padding:12px;border:1px dashed var(--line);border-radius:6px;background:#fafbf8}
+@media (max-width:980px){.app{grid-template-columns:1fr}.rail{position:relative;height:auto}.hero{grid-template-columns:repeat(2,1fr)}.span4,.span5,.span6,.span7,.span8{grid-column:1/-1}.top{align-items:flex-start;flex-direction:column}.formGrid{grid-template-columns:1fr}}
+@media (max-width:560px){.hero{grid-template-columns:1fr}.section{padding:12px}.toolbar button{flex:1}}
 </style></head><body>
-<header>
-  <h1>agents · webdash</h1>
-  <button onclick="run('sync')">⇄ Sync</button>
-  <button onclick="run('doctor')">🩺 Doctor</button>
-  <button onclick="run('profile-compile')">▣ Profiles</button>
-  <button onclick="run('eval-smoke')">✓ Eval</button>
-  <button onclick="run('provision')">＋ Provision</button>
-  <button class="danger" onclick="if(confirm('Tear down the VM (snapshot+delete)?'))run('teardown')">🗑 Teardown</button>
-  <button class="danger" onclick="if(confirm('Reboot the VM?'))run('reboot')">⟳ Reboot</button>
-  <span id="updated">connecting…</span>
-</header>
-<div class="grid" id="grid"></div>
-<div class="grid">
-  <div class="card"><h2>Add MCP server</h2>
-    <form onsubmit="mcpAdd(event)">
-      <input id="mname" placeholder="name"><input id="mcmd" placeholder="npx -y pkg">
-      <button>add</button>
-    </form>
-    <form onsubmit="mcpRemove(event)" style="margin-top:.3rem">
-      <input id="mrm" placeholder="remove name"><button class="danger">remove</button>
-    </form>
-  </div>
-  <div class="card"><h2>Queue</h2>
-    <form onsubmit="queueTail(event)">
-      <input id="qid" placeholder="task id"><button>tail</button>
-    </form>
-    <form onsubmit="queueStart(event)" style="margin-top:.3rem">
-      <button>start next queued task</button>
-    </form>
-  </div>
-  <div class="card"><h2>Approvals</h2>
-    <form onsubmit="approvalApprove(event)">
-      <input id="aidApprove" placeholder="approval id"><button>approve</button>
-    </form>
-    <form onsubmit="approvalReject(event)" style="margin-top:.3rem">
-      <input id="aidReject" placeholder="approval id"><button class="danger">reject</button>
-    </form>
-  </div>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><b>agents</b><span>local control plane</span></div>
+    <nav class="nav">
+      <button class="active" data-view="overview" onclick="showView('overview')">Overview</button>
+      <button data-view="work" onclick="showView('work')">Work Queue</button>
+      <button data-view="config" onclick="showView('config')">Config</button>
+      <button data-view="observability" onclick="showView('observability')">Observability</button>
+    </nav>
+    <div class="railFoot"><div id="railStatus">connecting</div><div id="railRepo">KaelanRichards/agents</div></div>
+  </aside>
+  <main class="main">
+    <header class="top">
+      <h1 id="viewTitle">Overview</h1>
+      <div class="toolbar">
+        <button onclick="run('sync')">Sync</button>
+        <button onclick="run('doctor')">Doctor</button>
+        <button onclick="run('profile-compile')">Profiles</button>
+        <button onclick="run('eval-smoke')">Eval</button>
+        <button class="danger" onclick="if(confirm('Reboot the agents VM?'))run('reboot')">Reboot VM</button>
+      </div>
+      <div class="updated" id="updated">connecting</div>
+    </header>
+
+    <section id="overview" class="section active">
+      <div class="hero" id="hero"></div>
+      <div class="grid">
+        <article class="panel span7"><div class="panelHead"><h2>Queue</h2><button onclick="run('queue-start')">Start next</button></div><div class="panelBody scroll" id="queueTable"></div></article>
+        <article class="panel span5"><div class="panelHead"><h2>Approvals</h2><span id="approvalBadge" class="status"></span></div><div class="panelBody scroll" id="approvalTable"></div></article>
+        <article class="panel span6"><div class="panelHead"><h2>CI</h2></div><div class="panelBody scroll" id="ciTable"></div></article>
+        <article class="panel span6"><div class="panelHead"><h2>Machines</h2></div><div class="panelBody scroll" id="machinesTable"></div></article>
+      </div>
+    </section>
+
+    <section id="work" class="section">
+      <div class="grid">
+        <article class="panel span7"><div class="panelHead"><h2>Queue State</h2><button onclick="run('queue-start')">Start next queued task</button></div><div class="panelBody scroll" id="queueTableFull"></div></article>
+        <article class="panel span5"><div class="panelHead"><h2>Tail Task Log</h2></div><div class="panelBody">
+          <form onsubmit="queueTail(event)" class="formGrid"><input id="qid" class="wide" placeholder="task id"><button class="primary">Tail log</button></form>
+        </div></article>
+        <article class="panel span6"><div class="panelHead"><h2>Approval Inbox</h2></div><div class="panelBody scroll" id="approvalTableFull"></div></article>
+        <article class="panel span6"><div class="panelHead"><h2>Decide Approval</h2></div><div class="panelBody">
+          <form onsubmit="approvalApprove(event)" class="formGrid"><input id="aidApprove" class="wide" placeholder="approval id"><button class="primary">Approve</button></form>
+          <form onsubmit="approvalReject(event)" class="formGrid" style="margin-top:10px"><input id="aidReject" class="wide" placeholder="approval id"><button class="danger">Reject</button></form>
+        </div></article>
+      </div>
+    </section>
+
+    <section id="config" class="section">
+      <div class="grid">
+        <article class="panel span5"><div class="panelHead"><h2>Profiles</h2></div><div class="panelBody scroll" id="profilesTable"></div></article>
+        <article class="panel span7"><div class="panelHead"><h2>MCP Servers</h2></div><div class="panelBody scroll" id="mcpTable"></div></article>
+        <article class="panel span6"><div class="panelHead"><h2>Add MCP Server</h2></div><div class="panelBody">
+          <form onsubmit="mcpAdd(event)" class="formGrid"><input id="mname" placeholder="name"><input id="mcmd" placeholder="npx -y package"><button class="primary">Add server</button></form>
+        </div></article>
+        <article class="panel span6"><div class="panelHead"><h2>Remove MCP Server</h2></div><div class="panelBody">
+          <form onsubmit="mcpRemove(event)" class="formGrid"><input id="mrm" class="wide" placeholder="server name"><button class="danger">Remove server</button></form>
+        </div></article>
+        <article class="panel span12"><div class="panelHead"><h2>Raw Health</h2></div><div class="panelBody scroll"><pre id="healthRaw"></pre></div></article>
+      </div>
+    </section>
+
+    <section id="observability" class="section">
+      <div class="tabs"><button class="active" onclick="showConsole('grafana')">Grafana</button><button onclick="showConsole('terminal')">Terminal</button></div>
+      <article id="grafanaPane" class="panel"><iframe src="__GRAFANA__"></iframe></article>
+      <article id="terminalPane" class="panel" style="display:none"><iframe class="terminalFrame" src="__TTYD__"></iframe></article>
+    </section>
+  </main>
 </div>
-<h2 style="padding:0 1rem;color:#58a6ff">Grafana</h2>
-<div style="padding:0 1rem 1rem"><iframe src="__GRAFANA__" class="full"></iframe></div>
-<h2 style="padding:0 1rem;color:#58a6ff">Terminal (ttyd)</h2>
-<div style="padding:0 1rem 6rem"><iframe src="__TTYD__" class="full" style="height:420px"></iframe></div>
-<div id="logbar"><button onclick="document.getElementById('log').classList.toggle('open')">▤ Log</button></div>
-<div id="log"><pre id="logpre"></pre></div>
-<script>
-const TOKEN=new URLSearchParams(location.search).get('token')||'';
-const auth=u=>TOKEN?u+(u.includes('?')?'&':'?')+'token='+TOKEN:u;
-const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+<div class="drawer" id="drawer"><div class="drawerHead"><b id="drawerTitle">Command output</b><button onclick="closeDrawer()">Close</button></div><pre id="logpre"></pre></div>
+	<script>
+	const TOKEN=new URLSearchParams(location.search).get('token')||'';
+	const auth=u=>TOKEN?u+(u.includes('?')?'&':'?')+'token='+TOKEN:u;
+	const cookie=n=>document.cookie.split('; ').find(x=>x.startsWith(n+'='))?.split('=').slice(1).join('=')||'';
+	const esc=s=>String(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+let state={};
+function lines(k){return ((state[k]&&state[k].out)||'').split('\\n').filter(Boolean)}
+function classify(text){text=String(text||'').toLowerCase();if(text.includes('fail')||text.includes('error'))return'bad';if(text.includes('warn')||text.includes('pending'))return'warn';return'ok'}
+function showView(id){document.querySelectorAll('.section').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.view===id));viewTitle.textContent={overview:'Overview',work:'Work Queue',config:'Config',observability:'Observability'}[id]||id}
+function showConsole(id){grafanaPane.style.display=id==='grafana'?'block':'none';terminalPane.style.display=id==='terminal'?'block':'none';document.querySelectorAll('.tabs button').forEach((b,i)=>b.classList.toggle('active',(id==='grafana'&&i===0)||(id==='terminal'&&i===1)))}
+function metric(label,value,detail,kind='ok'){return `<div class="metric ${kind}"><label>${esc(label)}</label><strong>${esc(value)}</strong><small>${esc(detail)}</small></div>`}
+function statusPill(text,kind){return `<span class="status ${kind}"><span class="dot"></span>${esc(text)}</span>`}
+function table(headers,rows){if(!rows.length)return'<div class="empty">No items</div>';return `<table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>`}
+function isRow(p){return /^\\d{4}-\\d{2}-\\d{2}T/.test(p[0]||'')}
+function parseQueue(){return lines('control').filter(l=>l.startsWith('queue: ')).map(l=>l.replace('queue: ','').split('\\t')).filter(isRow)}
+function parseApprovals(){return lines('control').filter(l=>l.startsWith('approval: ')).map(l=>l.replace('approval: ','').split('\\t')).filter(isRow)}
+function parseRuns(){return lines('control').filter(l=>l.startsWith('run: ')).map(l=>l.replace('run: ','').split('\\t')).filter(isRow)}
+function parseProfiles(){return lines('control').filter(l=>l.startsWith('profile: ')).map(l=>l.replace('profile: ','').split('\\t'))}
+function parseMcp(){return lines('mcp').map(l=>l.trim()).filter(Boolean).map(l=>l.replace(/^/,'').split(/\\s{2,}/))}
+function parseCi(){return lines('ci').filter(l=>!l.startsWith('---')).map(l=>l.split('\\t')).filter(p=>p.length>2)}
+function renderHero(){
+  const health=(state.health&&state.health.out)||'unknown';
+  const machines=lines('machines').filter(l=>/^\\s*\\d+/.test(l)).length;
+  const queue=parseQueue(), approvals=parseApprovals(), runs=parseRuns();
+  hero.innerHTML=[
+    metric('Health',health.includes('HEALTHY')?'Healthy':'Check',health,classify(health)),
+    metric('Machines',machines||'0',(state.cost&&state.cost.out)||'',machines?'ok':'warn'),
+    metric('Queue',String(queue.length),queue.filter(q=>q[2]==='running').length+' running',queue.some(q=>q[2]==='failed')?'bad':'ok'),
+    metric('Approvals',String(approvals.filter(a=>a[2]==='pending').length),runs.length+' recent runs',approvals.length?'warn':'ok')
+  ].join('');
+  approvalBadge.innerHTML=statusPill(approvals.filter(a=>a[2]==='pending').length+' pending',approvals.length?'warn':'ok');
+}
+function renderQueue(target){
+  const rows=parseQueue().map(p=>`<tr><td class="mono">${esc((p[1]||'').slice(0,8))}</td><td>${statusPill(p[2]||'',classify(p[2]))}</td><td>${esc(p[3]||'')}</td><td>${esc(p[4]||'')}</td><td class="clip">${esc(p[6]||'')}</td></tr>`);
+  target.innerHTML=table(['id','status','profile','agent','task'],rows);
+}
+function renderApprovals(target){
+  const rows=parseApprovals().map(p=>`<tr><td class="mono">${esc((p[1]||'').slice(0,8))}</td><td>${statusPill(p[2]||'',classify(p[2]))}</td><td>${esc(p[3]||'')}</td><td class="clip">${esc(p[4]||'')}</td></tr>`);
+  target.innerHTML=table(['id','status','kind','summary'],rows);
+}
+function renderConfig(){
+  profilesTable.innerHTML=table(['profile','risk','description'],parseProfiles().map(p=>`<tr><td>${esc(p[0])}</td><td>${statusPill(p[1]||'',p[1]==='critical'||p[1]==='high'?'warn':'ok')}</td><td>${esc(p[2]||'')}</td></tr>`));
+  mcpTable.innerHTML=table(['server','type','target'],parseMcp().map(p=>`<tr><td>${esc((p[0]||'').replace(':',''))}</td><td>${esc(p[1]||'')}</td><td class="clip">${esc(p[2]||'')}</td></tr>`));
+  healthRaw.textContent=(state.health&&state.health.out)||'';
+}
+function renderCiMachines(){
+  ciTable.innerHTML=table(['state','result','title','workflow'],parseCi().map(p=>`<tr><td>${esc(p[0])}</td><td>${statusPill(p[1]||'',classify(p[1]))}</td><td class="clip">${esc(p[2]||'')}</td><td>${esc(p[3]||'')}</td></tr>`));
+  machinesTable.innerHTML=table(['raw'],lines('machines').map(l=>`<tr><td class="mono">${esc(l)}</td></tr>`));
+}
 function render(d){
-  const order=['machines','cost','health','mcp','control','ci','sessions'];
-  document.getElementById('grid').innerHTML=order.filter(k=>d[k]).map(k=>
-    `<div class="card"><h2>${esc(d[k].title)}</h2><pre>${esc(d[k].out)}</pre></div>`).join('');
-  document.getElementById('updated').textContent='live · '+new Date().toLocaleTimeString();
+  state=d;renderHero();renderQueue(queueTable);renderQueue(queueTableFull);renderApprovals(approvalTable);renderApprovals(approvalTableFull);renderConfig();renderCiMachines();
+  updated.textContent='updated '+new Date().toLocaleTimeString();railStatus.textContent=(d.health&&d.health.out)||'unknown';
 }
 const ev=new EventSource(auth('/api/events'));
 ev.onmessage=e=>render(JSON.parse(e.data));
-ev.onerror=()=>document.getElementById('updated').textContent='reconnecting…';
-function openLog(){const l=document.getElementById('log');l.classList.add('open');return document.getElementById('logpre');}
-async function run(action,args={}){
-  const pre=openLog();pre.textContent='';
-  const r=await fetch(auth('/api/run'),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({action,args})});
+ev.onerror=()=>updated.textContent='reconnecting';
+function openDrawer(title){drawer.classList.add('open');drawerTitle.textContent=title||'Command output';logpre.textContent='';return logpre}
+function closeDrawer(){drawer.classList.remove('open')}
+	async function run(action,args={}){
+	  const pre=openDrawer(action);
+	  const r=await fetch(auth('/api/run'),{method:'POST',headers:{'content-type':'application/json','x-csrf-token':cookie('webdash_csrf')},body:JSON.stringify({action,args})});
+	  if(!r.ok){pre.textContent=await r.text();return}
   const rd=r.body.getReader(),dec=new TextDecoder();
-  for(;;){const{value,done}=await rd.read();if(done)break;pre.textContent+=dec.decode(value);document.getElementById('log').scrollTop=1e9;}
+  for(;;){const{value,done}=await rd.read();if(done)break;pre.textContent+=dec.decode(value);pre.scrollTop=pre.scrollHeight}
 }
-function mcpAdd(e){e.preventDefault();run('mcp-add',{name:mname.value,command:mcmd.value});}
-function mcpRemove(e){e.preventDefault();run('mcp-remove',{name:mrm.value});}
-function queueStart(e){e.preventDefault();run('queue-start');}
-function queueTail(e){e.preventDefault();run('queue-tail',{id:qid.value});}
-function approvalApprove(e){e.preventDefault();run('approval-approve',{id:aidApprove.value});}
-function approvalReject(e){e.preventDefault();run('approval-reject',{id:aidReject.value});}
+function mcpAdd(e){e.preventDefault();run('mcp-add',{name:mname.value,command:mcmd.value})}
+function mcpRemove(e){e.preventDefault();run('mcp-remove',{name:mrm.value})}
+function queueTail(e){e.preventDefault();run('queue-tail',{id:qid.value})}
+function approvalApprove(e){e.preventDefault();run('approval-approve',{id:aidApprove.value})}
+function approvalReject(e){e.preventDefault();run('approval-reject',{id:aidReject.value})}
 </script></body></html>"""
 
 
 if __name__ == "__main__":
+    if _host_only(HOST) not in LOCAL_HOSTS and not TOKEN:
+        raise SystemExit("WEBDASH_TOKEN is required when WEBDASH_HOST is not localhost")
     note = f"http://{HOST}:{PORT}" + ("  (token required)" if TOKEN else "")
     print(f"webdash on {note}")
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
