@@ -1,27 +1,6 @@
 #!/usr/bin/env bash
 # personal-actions-mcp — narrow Slack/Gmail/Calendar write facade for Claude, Codex, and Hermes.
-set -uo pipefail
-
-cmd=(uv run --quiet --script "$HOME/.config/agents/mcp-servers/personal-actions/server.py" "$@")
-op_env="${AGENTS_1PASSWORD_ENV_FILE:-$HOME/.config/agents-secrets/agents.1password.env}"
-
-if [ "${AGENTS_SECRETS_DISABLE_1PASSWORD:-0}" != "1" ] &&
-	[ -f "$op_env" ] &&
-	command -v agents-secrets-op-run >/dev/null 2>&1; then
-	tmp="$(mktemp)"
-	start="$(date +%s)"
-	agents-secrets-op-run --env-file "$op_env" -- "${cmd[@]}" 2>"$tmp"
-	rc=$?
-	elapsed="$(($(date +%s) - start))"
-	if [ "$rc" -ne 0 ] && [ "$elapsed" -le 3 ] && grep -qiE '1Password|op CLI|desktop app|error initializing client' "$tmp"; then
-		echo "personal-actions-mcp: 1Password unavailable; falling back to legacy env file" >&2
-		cat "$tmp" >&2
-		rm -f "$tmp"
-	else
-		cat "$tmp" >&2
-		rm -f "$tmp"
-		exit "$rc"
-	fi
-fi
-
-exec "${cmd[@]}"
+# Keep stdio MCP startup independent of interactive 1Password desktop integration.
+# The server loads the legacy chmod-600 env file itself. Move this to 1Password only
+# after unattended service-account auth is available in every MCP runtime.
+exec uv run --quiet --script "$HOME/.config/agents/mcp-servers/personal-actions/server.py" "$@"

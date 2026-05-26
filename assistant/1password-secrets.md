@@ -58,11 +58,13 @@ That file must be mode `0600`.
 
 ## Personal Actions Migration
 
-`personal-actions-check` and `personal-actions-mcp` prefer
-`~/.config/agents-secrets/agents.1password.env` when present. If 1Password is unavailable in the
-current shell, they fall back to the legacy `personal-actions.env` file so the agent system does not
-break during migration. Set `AGENTS_SECRETS_DISABLE_1PASSWORD=1` to force the legacy path while
-debugging.
+`personal-actions-check` prefers `~/.config/agents-secrets/agents.1password.env` when present. If
+1Password is unavailable in the current shell, it falls back to the legacy `personal-actions.env`
+file. Set `AGENTS_SECRETS_DISABLE_1PASSWORD=1` to force the legacy path while debugging.
+
+`personal-actions-mcp` intentionally stays on the legacy chmod-600 env file for now. It is a stdio
+MCP server, so startup must not depend on interactive desktop-app 1Password integration. Move it to
+1Password only after unattended service-account auth is available in every MCP runtime.
 
 After the 1Password path is stable in every runtime, rotate the imported tokens and remove migrated
 raw values from `personal-actions.env`.
