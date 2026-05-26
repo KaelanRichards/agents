@@ -31,9 +31,11 @@ That file must be mode `0600`.
 2. Create 1Password items and fields matching `assistant/1password/agents.1password.env.example`.
 3. Create `~/.config/agents-secrets/agents.1password.env` with only `op://` references.
 4. Run `agents-secrets-op-check`.
-5. Convert one launcher at a time to run under `agents-secrets-op-run`.
-6. Rotate migrated tokens after the new path is stable.
-7. Remove the old plaintext value from the legacy env file after each consumer no longer needs it.
+5. Preview import from legacy env files with `agents-secrets-op-import`.
+6. Create missing 1Password items with `agents-secrets-op-import --apply`.
+7. Convert one launcher at a time to run under `agents-secrets-op-run`.
+8. Rotate migrated tokens after the new path is stable.
+9. Remove the old plaintext value from the legacy env file after each consumer no longer needs it.
 
 ## Boundaries
 
@@ -58,6 +60,7 @@ Run:
 
 ```sh
 agents-secrets-op-check
+agents-secrets-op-import
 agents-doctor
 gitleaks detect
 ```
