@@ -4,7 +4,7 @@
 
 ## Target State
 
-Use a dedicated 1Password vault named `Agents System` for credentials owned by the shared local
+Use a dedicated 1Password vault named `Kaelan-Agents` for credentials owned by the shared local
 agents system. Keep app/runtime production secrets out of this vault unless the agents system owns
 them.
 
@@ -27,15 +27,17 @@ That file must be mode `0600`.
 
 ## Migration Order
 
-1. Sign in to 1Password locally or create a read-only service account for the `Agents System` vault.
+1. Sign in to 1Password locally or create a read-only service account for the `Kaelan-Agents` vault.
 2. Create 1Password items and fields matching `assistant/1password/agents.1password.env.example`.
 3. Create `~/.config/agents-secrets/agents.1password.env` with only `op://` references.
 4. Run `agents-secrets-op-check`.
 5. Preview import from legacy env files with `agents-secrets-op-import`.
 6. Create missing 1Password items with `agents-secrets-op-import --apply`.
-7. Convert one launcher at a time to run under `agents-secrets-op-run`.
-8. Rotate migrated tokens after the new path is stable.
-9. Remove the old plaintext value from the legacy env file after each consumer no longer needs it.
+7. Generate the local reference env with `agents-secrets-op-import --write-env`; this includes only
+   items/fields found in legacy local env files so `op run` does not fail on optional future secrets.
+8. Convert one launcher at a time to run under `agents-secrets-op-run`.
+9. Rotate migrated tokens after the new path is stable.
+10. Remove the old plaintext value from the legacy env file after each consumer no longer needs it.
 
 ## Boundaries
 
@@ -54,6 +56,17 @@ That file must be mode `0600`.
 - `webdash.env`: dashboard token, if present.
 - `HCLOUD_TOKEN`: Hetzner API token, if used for provision/teardown/status.
 
+## Personal Actions Migration
+
+`personal-actions-check` and `personal-actions-mcp` prefer
+`~/.config/agents-secrets/agents.1password.env` when present. If 1Password is unavailable in the
+current shell, they fall back to the legacy `personal-actions.env` file so the agent system does not
+break during migration. Set `AGENTS_SECRETS_DISABLE_1PASSWORD=1` to force the legacy path while
+debugging.
+
+After the 1Password path is stable in every runtime, rotate the imported tokens and remove migrated
+raw values from `personal-actions.env`.
+
 ## Verification
 
 Run:
@@ -61,6 +74,7 @@ Run:
 ```sh
 agents-secrets-op-check
 agents-secrets-op-import
+agents-secrets-op-smoke
 agents-doctor
 gitleaks detect
 ```
