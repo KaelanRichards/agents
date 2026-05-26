@@ -68,6 +68,22 @@ Ubuntu 24.04) via `systemd --user` timer `vizcom-sre.{service,timer}` (~7 min). 
 - VM codebase cross-checks: `agents` has a read-only local mirror at `~/code/vizcom`
   (`vizcomtech/vizcom`, refreshed by `~/vizcom-sre/deploy/run-tick.sh` before each tick);
   the diagnostician should prefer `rg`/file reads there and fall back to GitHub MCP/`gh`.
+- AWS read-only context is configured on VM `agents`. The runner loads
+  `~/.config/vizcom-sre/runner.env`, which sets `AWS_PROFILE=vizcom-sre-readonly`,
+  `AWS_REGION=us-east-2`, and `AWS_DEFAULT_REGION=us-east-2`; raw AWS access keys live only in
+  `~/.aws/credentials` under source profile `vizcom-sre-agent` (chmod 600), not in runner env.
+  The profile assumes `arn:aws:iam::502554252943:role/vizcom-sre-metadata-readonly`.
+- AWS safety boundary: base IAM user `vizcom-sre-agent` is only allowed to `sts:AssumeRole` into the
+  read-only role; the role trust is pinned to that user and VM source IP `91.99.218.202/32`, with a
+  1-hour max session. The role permits selected AWS control-plane metadata reads only (EKS/RDS/
+  ElastiCache/ELB/EC2/Auto Scaling/CloudWatch/CloudTrail plus STS identity) and explicitly denies
+  secret/data-plane/mutation paths including Secrets Manager secret reads, SSM parameter reads,
+  S3 object reads, KMS decrypt, Lambda invoke, DynamoDB reads, RDS Data API, EC2 termination, and IAM
+  mutation. `.claude/hooks/ops-guard.sh` adds a second local allowlist for `aws` CLI commands.
+- Scheduled scans now explicitly tell the SRE agent that AWS is available only for read-only
+  control-plane cross-checks and to separate "AWS confirmed" from "Datadog reported". AWS is used
+  when a tick needs infra confirmation/baselines; it is not yet mandated as a fixed section on every
+  tick.
 
 **Open questions.**
 - Sentry + Linear senses deferred (OAuth-only remotes; Sentry needs node + stdio user-token).
@@ -81,3 +97,8 @@ Ubuntu 24.04) via `systemd --user` timer `vizcom-sre.{service,timer}` (~7 min). 
   (→`--strict-mcp-config`). Docs: `deploy/README.md`.
 - 2026-05-26 — Added VM-local `~/code/vizcom` mirror + `ripgrep` so agentic SRE can
   cross-check alerts against the Vizcom codebase before forming hypotheses.
+- 2026-05-26 — Added AWS metadata-read-only context for agentic SRE. Created IAM user
+  `vizcom-sre-agent` and role `vizcom-sre-metadata-readonly`, installed AWS CLI/profile on VM
+  `agents`, documented in `deploy/AWS_READONLY.md`, updated `deploy/run-tick.sh` prompt, and verified
+  live canaries: STS identity assumes the read-only role, EKS cluster listing works, Secrets Manager
+  read is denied, and the base user cannot read EKS directly.
