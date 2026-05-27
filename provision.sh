@@ -10,7 +10,8 @@
 # Run:  bash ~/.config/agents/provision.sh
 # Destroy later:  hcloud server delete agents
 #
-# Tunables (env vars):
+# Tunables (env vars). Defaults below are EU/ARM; for US/x86 export
+# VM_TYPE=cpx21 VM_LOCATION=ash before running.
 VM_NAME="${VM_NAME:-agents}"
 VM_TYPE="${VM_TYPE:-cax11}" # ARM 2 vCPU / 4 GB (~€4/mo). Heavier: cax21. US/x86: cpx21
 VM_IMAGE="${VM_IMAGE:-ubuntu-24.04}"

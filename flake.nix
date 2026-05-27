@@ -57,6 +57,8 @@
             tmux
             zellij
             mosh
+            neovim
+            ttyd
             # provisioning
             hcloud
           ];

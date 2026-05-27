@@ -24,7 +24,9 @@ echo "==> CLI toolbelt (brew bundle)"
 brew bundle --file="$AH/Brewfile"
 
 echo "==> languages: mise (node/pnpm/python) + rust"
-mise use -g node@lts pnpm@latest python@3.12
+# Pin major versions so a fresh bootstrap a year from now produces a reproducible toolchain.
+# Bump these intentionally and verify with `agents-doctor` + the smoke tests.
+mise use -g node@lts pnpm@9 python@3.12
 # auto-read per-repo .nvmrc / .node-version / .python-version on cd
 mise settings set idiomatic_version_file_enable_tools "node,python" 2>/dev/null || true
 [ -f "$HOME/.cargo/env" ] || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
@@ -46,14 +48,33 @@ echo "==> link helper scripts + project dir"
 mkdir -p "$HOME/.local/bin" "$HOME/code"
 for s in "$AH"/bin/*; do
 	chmod +x "$s"
-	ln -sf "$s" "$HOME/.local/bin/$(basename "$s")"
+	dest="$HOME/.local/bin/$(basename "$s")"
+	# Don't silently shadow an unrelated tool with the same name. Only overwrite
+	# if the destination is missing or already points back at our bin/.
+	if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+		echo "    skip: $dest exists and is not a symlink (refusing to shadow)"
+		continue
+	fi
+	if [ -L "$dest" ]; then
+		current=$(readlink "$dest" || true)
+		case "$current" in
+		"$AH"/bin/*) ;;
+		*)
+			echo "    skip: $dest -> $current (not ours)"
+			continue
+			;;
+		esac
+	fi
+	ln -sfn "$s" "$dest"
 done
 
 echo "==> instruction symlinks (AGENTS.md is the source of truth)"
 mkdir -p "$HOME/.claude" "$HOME/.codex" "$HOME/.config/jj"
 ln -sf "$AH/AGENTS.md" "$HOME/.claude/CLAUDE.md"
 ln -sf "$AH/AGENTS.md" "$HOME/.codex/AGENTS.md"
-cp -f "$AH/jj/config.toml" "$HOME/.config/jj/config.toml"
+# Symlink (not copy) jj config so edits to the canonical file take effect immediately —
+# matches how every other dotfile here is wired.
+ln -sf "$AH/jj/config.toml" "$HOME/.config/jj/config.toml"
 mkdir -p "$HOME/.config/tmux" "$HOME/.config/zellij"
 ln -sf "$AH/tmux/tmux.conf" "$HOME/.config/tmux/tmux.conf"
 ln -sf "$AH/zellij/config.kdl" "$HOME/.config/zellij/config.kdl"

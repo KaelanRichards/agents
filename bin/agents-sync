@@ -1,59 +1,198 @@
 #!/usr/bin/env bash
 # agents-sync — propagate canonical skills, subagents, and hooks to Claude Code + Codex.
 # Canonical lives under ~/.config/agents/{skills,agents,hooks}. Run after editing any of them.
+#
+# Usage:
+#   agents-sync          apply (default)
+#   agents-sync check    validate canonical JSON + settings; no writes
 set -euo pipefail
 AH="${AGENTS_HOME:-$HOME/.config/agents}"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 CODEX_TOML="$HOME/.codex/config.toml"
 HB="# >>> agents-sync hooks (managed: edit ~/.config/agents/hooks then run agents-sync) >>>"
 HE="# <<< agents-sync hooks <<<"
-command -v jq >/dev/null || { echo "agents-sync: jq required" >&2; exit 1; }
+# Sentinel used to tag managed Claude hook entries so a re-sync only replaces entries
+# we own and leaves user-added Notification/Stop/SessionStart hooks untouched.
+MANAGED_TAG="agents-sync"
+command -v jq >/dev/null || {
+	echo "agents-sync: jq required" >&2
+	exit 1
+}
+
+mode="apply"
+case "${1:-}" in
+check)
+	mode="check"
+	shift
+	;;
+apply | "") ;;
+help | -h | --help)
+	sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+	exit 0
+	;;
+*)
+	echo "agents-sync: unknown command '$1' (try: agents-sync help)" >&2
+	exit 1
+	;;
+esac
+
+if [ "$mode" = "check" ]; then
+	err=0
+	for f in "$AH"/agents/*.json; do
+		[ -e "$f" ] || continue
+		if ! jq -e . "$f" >/dev/null 2>&1; then
+			echo "FAIL invalid JSON: $f" >&2
+			err=1
+		fi
+	done
+	[ -f "$CLAUDE_SETTINGS" ] && {
+		jq -e . "$CLAUDE_SETTINGS" >/dev/null 2>&1 || {
+			echo "FAIL invalid JSON: $CLAUDE_SETTINGS" >&2
+			err=1
+		}
+	}
+	if command -v yq >/dev/null 2>&1 && [ -f "$CODEX_TOML" ]; then
+		yq -p toml "$CODEX_TOML" >/dev/null 2>&1 || {
+			echo "FAIL invalid TOML: $CODEX_TOML" >&2
+			err=1
+		}
+	fi
+	[ "$err" = 0 ] && echo "agents-sync check: OK"
+	exit "$err"
+fi
+
 mkdir -p "$AH"/skills "$AH"/agents "$AH"/hooks "$HOME/.claude/skills" "$HOME/.claude/agents" "$HOME/.codex/skills" "$HOME/.codex/agents"
 
-# 1) SKILLS — symlink each canonical skill dir into Claude's and Codex's skills dirs
+# Sweep stale symlinks first so a renamed/removed canonical skill or agent
+# doesn't leave a broken link the tool will trip over later.
+sweep_stale() {
+	local dir="$1"
+	[ -d "$dir" ] || return 0
+	find "$dir" -mindepth 1 -maxdepth 1 -type l ! -exec test -e {} \; -print 2>/dev/null |
+		while IFS= read -r p; do
+			echo "  sweep stale: $p"
+			rm -f -- "$p"
+		done
+}
+for d in "$HOME/.claude/skills" "$HOME/.codex/skills" "$HOME/.claude/agents" "$HOME/.codex/agents"; do
+	sweep_stale "$d"
+done
+
+# Portable name-set: bash 3.2 (macOS default) lacks associative arrays, so we keep
+# the per-step "names to keep" list in a temp file and check membership with grep -Fx.
+KEEP_SKILLS=$(mktemp)
+KEEP_AGENTS=$(mktemp)
+trap 'rm -f "$KEEP_SKILLS" "$KEEP_AGENTS"' EXIT
+
+# 1) SKILLS — symlink each canonical skill dir into Claude's and Codex's skills dirs.
 sc=0
 for d in "$AH"/skills/*/; do
-  [ -d "$d" ] || continue
-  ln -sfn "${d%/}" "$HOME/.claude/skills/$(basename "$d")"; sc=$((sc+1))
-  ln -sfn "${d%/}" "$HOME/.codex/skills/$(basename "$d")"
+	[ -d "$d" ] || continue
+	bn=$(basename "$d")
+	echo "$bn" >>"$KEEP_SKILLS"
+	ln -sfn "${d%/}" "$HOME/.claude/skills/$bn"
+	sc=$((sc + 1))
+	ln -sfn "${d%/}" "$HOME/.codex/skills/$bn"
+done
+for tdir in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+	for link in "$tdir"/*; do
+		[ -L "$link" ] || continue
+		bn=$(basename "$link")
+		# Only GC links whose target lives in our canonical skills dir.
+		tgt=$(readlink "$link" 2>/dev/null || true)
+		case "$tgt" in
+		"$AH"/skills/*)
+			if ! grep -Fxq -- "$bn" "$KEEP_SKILLS"; then
+				echo "  gc skill: $link (canonical removed)"
+				rm -f -- "$link"
+			fi
+			;;
+		esac
+	done
 done
 echo "skills: $sc linked into ~/.claude/skills + ~/.codex/skills"
 
-# 2) SUBAGENTS — generate Claude .md + Codex .toml from canonical JSON
+# 2) SUBAGENTS — generate Claude .md + Codex .toml from canonical JSON.
 ac=0
 for f in "$AH"/agents/*.json; do
-  [ -e "$f" ] || continue
-  name=$(jq -r '.name' "$f")
-  {
-    echo "---"
-    echo "name: $name"
-    echo "description: $(jq -r '.description' "$f")"
-    tools=$(jq -r '(.tools // []) | join(", ")' "$f")
-    [ -n "$tools" ] && echo "tools: $tools"
-    echo "---"
-    echo
-    jq -r '.instructions' "$f"
-  } > "$HOME/.claude/agents/$name.md"
-  {
-    printf 'name = %s\n' "$(jq '.name' "$f")"
-    printf 'description = %s\n' "$(jq '.description' "$f")"
-    printf 'developer_instructions = %s\n' "$(jq '.instructions' "$f")"
-  } > "$HOME/.codex/agents/$name.toml"
-  ac=$((ac+1))
+	[ -e "$f" ] || continue
+	jq -e . "$f" >/dev/null || {
+		echo "ERROR: invalid JSON in $f — aborting before partial write" >&2
+		exit 1
+	}
+	name=$(jq -r '.name' "$f")
+	[ -n "$name" ] && [ "$name" != "null" ] || {
+		echo "ERROR: $f missing .name" >&2
+		exit 1
+	}
+	printf '%s.md\n%s.toml\n' "$name" "$name" >>"$KEEP_AGENTS"
+	{
+		echo "---"
+		echo "name: $name"
+		echo "description: $(jq -r '.description' "$f")"
+		tools=$(jq -r '(.tools // []) | join(", ")' "$f")
+		[ -n "$tools" ] && echo "tools: $tools"
+		echo "---"
+		echo
+		jq -r '.instructions' "$f"
+	} >"$HOME/.claude/agents/$name.md"
+	{
+		printf 'name = %s\n' "$(jq '.name' "$f")"
+		printf 'description = %s\n' "$(jq '.description' "$f")"
+		printf 'developer_instructions = %s\n' "$(jq '.instructions' "$f")"
+	} >"$HOME/.codex/agents/$name.toml"
+	ac=$((ac + 1))
+done
+for tdir in "$HOME/.claude/agents" "$HOME/.codex/agents"; do
+	for file in "$tdir"/*.md "$tdir"/*.toml; do
+		[ -f "$file" ] || continue
+		bn=$(basename "$file")
+		if ! grep -Fxq -- "$bn" "$KEEP_AGENTS"; then
+			echo "  gc subagent: $file (canonical removed)"
+			rm -f -- "$file"
+		fi
+	done
 done
 echo "subagents: $ac generated for Claude (~/.claude/agents) + Codex (~/.codex/agents)"
 
 # 3) HOOKS — Claude (settings.json) + Codex (config.toml managed block)
-fmt="$AH/hooks/format-file.sh"; guard="$AH/hooks/guard-bash.sh"
+fmt="$AH/hooks/format-file.sh"
+guard="$AH/hooks/guard-bash.sh"
 chmod +x "$fmt" "$guard" 2>/dev/null || true
-# Claude (preserve everything else; agents-sync owns the .hooks key)
-[ -f "$CLAUDE_SETTINGS" ] || echo '{}' > "$CLAUDE_SETTINGS"
+# Claude — merge managed hook entries into .hooks.PreToolUse / .hooks.PostToolUse.
+# Each managed entry carries a sentinel field; we strip prior managed entries and
+# re-append, preserving user-added entries here and entirely untouched keys like
+# .hooks.Notification / .hooks.Stop / .hooks.SessionStart.
+[ -f "$CLAUDE_SETTINGS" ] || echo '{}' >"$CLAUDE_SETTINGS"
 cp "$CLAUDE_SETTINGS" "$CLAUDE_SETTINGS.agents-sync.bak"
 t=$(mktemp)
-jq --arg fmt "$fmt" --arg guard "$guard" '.hooks = {
-  "PreToolUse":  [ {"matcher":"Bash",                "hooks":[{"type":"command","command":$guard}]} ],
-  "PostToolUse": [ {"matcher":"Edit|Write|MultiEdit","hooks":[{"type":"command","command":$fmt}]} ]
-}' "$CLAUDE_SETTINGS" > "$t" && mv "$t" "$CLAUDE_SETTINGS"
+jq --arg fmt "$fmt" --arg guard "$guard" --arg tag "$MANAGED_TAG" '
+  # Strip an entry if it carries our managed tag OR if it points at one of the
+  # exact command paths we own (covers entries written by older agents-sync
+  # versions that pre-date the tag).
+  def owned_cmd: . == $fmt or . == $guard;
+  def strip_managed:
+    if type=="array" then
+      map(select(
+        (.__managed_by // "") != $tag and
+        ((.hooks // []) | map(.command // "") | any(owned_cmd) | not)
+      ))
+    else . end;
+  .hooks = (.hooks // {})
+  | .hooks.PreToolUse  = ((.hooks.PreToolUse  // []) | strip_managed) + [
+      {"matcher":"Bash", "__managed_by":$tag, "hooks":[{"type":"command","command":$guard}]}
+    ]
+  | .hooks.PostToolUse = ((.hooks.PostToolUse // []) | strip_managed) + [
+      {"matcher":"Edit|Write|MultiEdit", "__managed_by":$tag, "hooks":[{"type":"command","command":$fmt}]}
+    ]
+' "$CLAUDE_SETTINGS" >"$t"
+if jq -e . "$t" >/dev/null 2>&1; then
+	mv "$t" "$CLAUDE_SETTINGS"
+else
+	rm -f "$t"
+	echo "ERROR: generated Claude settings.json is invalid — left $CLAUDE_SETTINGS unchanged" >&2
+	exit 1
+fi
 # Codex managed [[hooks.*]] block
 [ -f "$CODEX_TOML" ] || touch "$CODEX_TOML"
 cp "$CODEX_TOML" "$CODEX_TOML.agents-sync.bak"
@@ -97,7 +236,9 @@ fi
 AGENTS_MD="$AH/AGENTS.md"
 MB="<!-- agents-sync:memory-index:start -->"
 ME="<!-- agents-sync:memory-index:end -->"
-if [ -f "$AGENTS_MD" ] && grep -qF "$MB" "$AGENTS_MD"; then
+# Require BOTH markers — if the end marker is missing the awk loop would otherwise
+# eat from the start marker to EOF, silently truncating AGENTS.md.
+if [ -f "$AGENTS_MD" ] && grep -qF "$MB" "$AGENTS_MD" && grep -qF "$ME" "$AGENTS_MD"; then
   idxf=$(mktemp)
   for f in "$AH"/assistant/memory/*.md; do
     [ -e "$f" ] || continue

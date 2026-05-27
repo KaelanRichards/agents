@@ -1,0 +1,18 @@
+{
+  "_comment": "Per-machine MCP overlay (gitignored). Copy to mcp.local.json to use. Entries here are merged into mcp.json by mcp-sync, overriding by server name. Use this for servers whose binary lives outside ~/.config/agents (e.g. another repo on this machine), or that vary by host. Placeholders $AGENTS_HOME and $HOME are expanded at write time.",
+  "mcpServers": {
+    "slack-dm": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--env-file",
+        "$HOME/.config/agents-secrets/kaelan-pa-slack.env",
+        "--with",
+        "mcp>=1.2",
+        "python",
+        "$HOME/code/kaelan-pa/deploy/slack-dm-mcp.py"
+      ]
+    }
+  }
+}

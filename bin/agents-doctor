@@ -52,7 +52,13 @@ if command -v jq >/dev/null 2>&1; then
 	jq -e '.mcpServers.linear.url == "https://mcp.linear.app/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP URL pinned" || bad "Linear MCP URL mismatch"
 	jq -e '.mcpServers.datadog.url == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Datadog MCP US5 URL pinned" || bad "Datadog MCP URL mismatch"
 	jq -e '.mcpServers.sentry.url == "https://mcp.sentry.dev/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Sentry MCP URL pinned" || bad "Sentry MCP URL mismatch"
-	jq -e '.mcpServers.bigquery.command == "/Users/kaelan/.config/agents/bin/bigquery-mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "BigQuery MCP local facade pinned" || bad "BigQuery MCP command mismatch"
+	# Accept either an $AGENTS_HOME placeholder (portable canonical) or an absolute path to $AH/bin/bigquery-mcp.
+	bq_cmd=$(jq -r '.mcpServers.bigquery.command // ""' "$AH/mcp.json" 2>/dev/null)
+	if [ "$bq_cmd" = "\$AGENTS_HOME/bin/bigquery-mcp" ] || [ "$bq_cmd" = "$AH/bin/bigquery-mcp" ]; then
+		ok "BigQuery MCP local facade pinned"
+	else
+		bad "BigQuery MCP command mismatch (got: $bq_cmd)"
+	fi
 fi
 
 echo "== config validity =="

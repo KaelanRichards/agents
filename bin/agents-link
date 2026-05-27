@@ -1,17 +1,49 @@
 #!/usr/bin/env bash
-# agents-link — in the current repo, make AGENTS.md the source of truth and
+# agents-link — in a target repo, make AGENTS.md the source of truth and
 # symlink CLAUDE.md -> AGENTS.md, so Claude Code and Codex share one project file.
+#
+# Usage:
+#   agents-link              run in the current directory (default)
+#   agents-link -C <path>    run in <path> instead
 set -euo pipefail
 
+target="."
+while [ $# -gt 0 ]; do
+	case "$1" in
+	-C)
+		[ -n "${2:-}" ] || {
+			echo "agents-link: -C requires a path" >&2
+			exit 2
+		}
+		target="$2"
+		shift 2
+		;;
+	-h | --help)
+		sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
+		exit 0
+		;;
+	*)
+		echo "agents-link: unknown arg '$1' (try: agents-link --help)" >&2
+		exit 2
+		;;
+	esac
+done
+
+[ -d "$target" ] || {
+	echo "agents-link: '$target' is not a directory" >&2
+	exit 1
+}
+cd "$target"
+
 if [ ! -e AGENTS.md ]; then
-  printf '# Project agent instructions\n\n' > AGENTS.md
-  echo "created AGENTS.md"
+	printf '# Project agent instructions\n\n' >AGENTS.md
+	echo "created AGENTS.md in $PWD"
 fi
 
 if [ -L CLAUDE.md ] || [ ! -e CLAUDE.md ]; then
-  ln -sf AGENTS.md CLAUDE.md
-  echo "linked CLAUDE.md -> AGENTS.md"
+	ln -sf AGENTS.md CLAUDE.md
+	echo "linked CLAUDE.md -> AGENTS.md in $PWD"
 else
-  echo "CLAUDE.md is a real file; merge its contents into AGENTS.md, delete it, then re-run." >&2
-  exit 1
+	echo "CLAUDE.md in $PWD is a real file; merge its contents into AGENTS.md, delete it, then re-run." >&2
+	exit 1
 fi

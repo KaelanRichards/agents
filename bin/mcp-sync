@@ -19,10 +19,19 @@
 #   mcp-sync add  <name> -- <cmd...>      add a stdio server, then sync
 #   mcp-sync add-http <name> <url> [ENV]  add an http server (optional bearer env var), then sync
 #   mcp-sync remove <name>                remove a server, then sync
+#   mcp-sync check                        validate canonical JSON + show effective config (no writes)
+#   mcp-sync drift                        report npm pkg drift for stdio MCP packages
+#
+# Path placeholders in the canonical JSON (mcp.json) are expanded at write time:
+#   $AGENTS_HOME  -> ~/.config/agents (or $AGENTS_HOME env)
+#   $HOME         -> $HOME
+# Optional per-machine overlay: mcp.local.json (gitignored) is merged into canonical,
+# overriding by server name. Use it for hosts where a server lives at a non-portable path.
 set -euo pipefail
 
 AGENTS_HOME="${AGENTS_HOME:-$HOME/.config/agents}"
 CANON="$AGENTS_HOME/mcp.json"
+LOCAL_OVERLAY="$AGENTS_HOME/mcp.local.json"   # optional per-machine overlay (gitignored)
 CLAUDE_JSON="$HOME/.claude.json"
 CODEX_TOML="$HOME/.codex/config.toml"
 BEGIN="# >>> mcp-sync (managed: edit ~/.config/agents/mcp.json then run mcp-sync) >>>"
@@ -31,6 +40,30 @@ END="# <<< mcp-sync <<<"
 command -v jq >/dev/null || { echo "mcp-sync: jq is required" >&2; exit 1; }
 mkdir -p "$AGENTS_HOME" "$HOME/.codex"
 [ -f "$CANON" ] || echo '{"mcpServers":{}}' > "$CANON"
+
+build_effective() {
+  # Compose the effective config (canonical ⊕ optional local overlay) and expand
+  # $AGENTS_HOME / $HOME placeholders in string fields. Claude/Codex don't shell-expand
+  # the `command` field, so paths must be absolute at write time.
+  local out="$1"
+  local merged
+  merged=$(mktemp)
+  if [ -f "$LOCAL_OVERLAY" ]; then
+    jq -s '.[0].mcpServers as $a | (.[1].mcpServers // {}) as $b | {mcpServers: ($a + $b)}' "$CANON" "$LOCAL_OVERLAY" > "$merged"
+  else
+    cp "$CANON" "$merged"
+  fi
+  jq --arg AH "$AGENTS_HOME" --arg H "$HOME" '
+    def expand: if type=="string" then (gsub("\\$AGENTS_HOME"; $AH) | gsub("\\$HOME"; $H)) else . end;
+    .mcpServers |= with_entries(.value |= (
+        (if has("command") then .command |= expand else . end)
+      | (if has("url")     then .url     |= expand else . end)
+      | (if has("args")    then .args    |= (if type=="array" then map(expand) else . end) else . end)
+      | (if has("env")     then .env     |= (if type=="object" then with_entries(.value |= expand) else . end) else . end)
+    ))
+  ' "$merged" > "$out"
+  rm -f "$merged"
+}
 
 cmd="${1:-sync}"
 if [ $# -gt 0 ]; then shift; fi
@@ -61,30 +94,58 @@ case "$cmd" in
     name="$1"
     t=$(mktemp); jq --arg n "$name" 'del(.mcpServers[$n])' "$CANON" > "$t" && mv "$t" "$CANON"
     echo "removed '$name'" ;;
+  check)
+    jq -e . "$CANON" >/dev/null || { echo "ERROR: invalid JSON in $CANON" >&2; exit 1; }
+    [ -f "$LOCAL_OVERLAY" ] && jq -e . "$LOCAL_OVERLAY" >/dev/null
+    eff=$(mktemp); trap 'rm -f "$eff"' EXIT
+    build_effective "$eff"
+    echo "canonical: $CANON"
+    [ -f "$LOCAL_OVERLAY" ] && echo "overlay:   $LOCAL_OVERLAY (applied)"
+    echo "effective config that would be written:"
+    jq . "$eff"
+    exit 0 ;;
+  drift)
+    exec "$AGENTS_HOME/bin/mcp-update" ;;
   sync) : ;;
   help|-h|--help)
-    sed -n '2,30p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
+    sed -n '2,36p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
   *) echo "mcp-sync: unknown command '$cmd' (try: mcp-sync help)" >&2; exit 1 ;;
 esac
 
 jq -e . "$CANON" >/dev/null 2>&1 || { echo "ERROR: invalid JSON in $CANON" >&2; exit 1; }
+if [ -f "$LOCAL_OVERLAY" ] && ! jq -e . "$LOCAL_OVERLAY" >/dev/null 2>&1; then
+  echo "ERROR: invalid JSON in $LOCAL_OVERLAY" >&2; exit 1
+fi
+
+EFFECTIVE=$(mktemp)
+trap 'rm -f "$EFFECTIVE"' EXIT
+build_effective "$EFFECTIVE"
 
 # 1) Claude Code (JSON, user scope) — preserve everything else in ~/.claude.json.
 #    Map bearer_token_env_var -> Authorization header with ${VAR} expansion.
+#    Validate-then-swap so a broken jq template doesn't disable Claude.
 if [ -f "$CLAUDE_JSON" ]; then
   cp "$CLAUDE_JSON" "$CLAUDE_JSON.mcp-sync.bak"
 else
   echo '{}' > "$CLAUDE_JSON"
 fi
 t=$(mktemp)
-jq --slurpfile c "$CANON" '.mcpServers = (($c[0].mcpServers // {}) | map_values(
+jq --slurpfile c "$EFFECTIVE" '.mcpServers = (($c[0].mcpServers // {}) | map_values(
     if .bearer_token_env_var then
       (.headers = ((.headers // {}) + {Authorization: ("Bearer ${" + .bearer_token_env_var + "}")}))
       | del(.bearer_token_env_var)
-    else . end))' "$CLAUDE_JSON" > "$t" && mv "$t" "$CLAUDE_JSON"
+    else . end))' "$CLAUDE_JSON" > "$t"
+if jq -e . "$t" >/dev/null 2>&1; then
+  mv "$t" "$CLAUDE_JSON"
+else
+  rm -f "$t"
+  echo "ERROR: generated Claude JSON is invalid — left $CLAUDE_JSON unchanged" >&2
+  exit 1
+fi
 
 # 2) Codex CLI (TOML) — replace only the managed block, leave the rest untouched.
 [ -f "$CODEX_TOML" ] || touch "$CODEX_TOML"
+cp "$CODEX_TOML" "$CODEX_TOML.mcp-sync.bak"
 t=$(mktemp)
 awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1;next} $0==e{skip=0;next} skip!=1{print}' "$CODEX_TOML" > "$t" && mv "$t" "$CODEX_TOML"
 {
@@ -99,9 +160,17 @@ awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1;next} $0==e{skip=0;next} skip!=1{pri
     (if (.value.env|type=="object")     then "[mcp_servers.\(.key).env]",          (.value.env|to_entries[]|"\(.key) = \(.value|@json)") else empty end),
     (if (.value.headers|type=="object") then "[mcp_servers.\(.key).http_headers]",  (.value.headers|to_entries[]|"\(.key) = \(.value|@json)") else empty end),
     ""
-  ' "$CANON"
+  ' "$EFFECTIVE"
   echo "$END"
 } >> "$CODEX_TOML"
+# Validate Codex TOML; roll back if broken so a parse error doesn't disable Codex.
+if command -v yq >/dev/null 2>&1 && ! yq -p toml "$CODEX_TOML" >/dev/null 2>&1; then
+  echo "ERROR: generated Codex TOML is invalid — restoring backup" >&2
+  mv "$CODEX_TOML.mcp-sync.bak" "$CODEX_TOML"
+  exit 1
+fi
 
-n=$(jq '.mcpServers // {} | length' "$CANON")
-echo "✓ mcp-sync: $n server(s) → Claude (~/.claude.json) + Codex (~/.codex/config.toml)"
+n=$(jq '.mcpServers // {} | length' "$EFFECTIVE")
+src="$CANON"
+[ -f "$LOCAL_OVERLAY" ] && src="$src + mcp.local.json"
+echo "✓ mcp-sync: $n server(s) ← $src → Claude (~/.claude.json) + Codex (~/.codex/config.toml)"

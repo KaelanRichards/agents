@@ -47,6 +47,26 @@ jobs:
       - name: Lint Python (ruff)
         run: pipx run ruff check .
 
+      - name: Install uv (for smoke tests)
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync round-trip + smoke tests
+        run: |
+          set -e
+          bash tests/sync-roundtrip.sh
+          for t in tests/agent_system_contract.py tests/agent_control_smoke.py \
+                   tests/bigquery_mcp_smoke.py tests/personal_actions_smoke.py \
+                   tests/windmill_stack_smoke.py tests/dash_smoke.py \
+                   tests/webdash_smoke.py tests/prompt_injection_policy.py; do
+            [ -f "$t" ] || { echo "::warning::missing $t"; continue; }
+            echo "::group::$t"
+            uv run --script "$t"
+            echo "::endgroup::"
+          done
+
+      - name: Toolbelt parity (Brewfile <-> flake.nix)
+        run: bash bin/toolbelt-diff
+
   bootstrap-smoke:
     name: bootstrap on fresh Ubuntu
     # Heavy (installs Homebrew + the toolbelt). Only weekly or on demand.

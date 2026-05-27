@@ -1,26 +1,91 @@
 #!/usr/bin/env bash
-# skills-update — report upstream drift for vendored skills. It does not modify files.
+# skills-update — report upstream drift for vendored skills.
+#
+# Usage:
+#   skills-update            report drift (default; no writes)
+#   skills-update --apply    rewrite skills.lock.json with current upstream commits
+#                            for every non-local skill, and stamp updated_at = today.
+#                            Vendored source trees are NOT touched — run skills-audit
+#                            and any per-source vendor step yourself before --apply.
 set -euo pipefail
 AH="${AGENTS_HOME:-$HOME/.config/agents}"
 lock="$AH/skills.lock.json"
 
-command -v jq >/dev/null || { echo "skills-update: jq required" >&2; exit 1; }
-command -v git >/dev/null || { echo "skills-update: git required" >&2; exit 1; }
-[ -f "$lock" ] || { echo "skills-update: missing $lock" >&2; exit 1; }
+apply=0
+case "${1:-}" in
+--apply) apply=1 ;;
+"" | report) ;;
+-h | --help)
+	sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+	exit 0
+	;;
+*)
+	echo "skills-update: unknown arg '$1'" >&2
+	exit 2
+	;;
+esac
+
+command -v jq >/dev/null || {
+	echo "skills-update: jq required" >&2
+	exit 1
+}
+command -v git >/dev/null || {
+	echo "skills-update: git required" >&2
+	exit 1
+}
+[ -f "$lock" ] || {
+	echo "skills-update: missing $lock" >&2
+	exit 1
+}
 
 tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-jq -r '.skills | to_entries[] | select(.value.source != "local") | [.value.source, .value.ref, .value.commit] | @tsv' "$lock" |
-	sort -u > "$tmp"
+updates="$(mktemp)"
+trap 'rm -f "$tmp" "$updates"' EXIT
+jq -r '.skills | to_entries[] | select(.value.source != "local") | [.key, .value.source, .value.ref, .value.commit] | @tsv' "$lock" |
+	sort -u >"$tmp"
 
-while IFS=$'\t' read -r source ref locked; do
+if [ "$apply" = 0 ]; then
+	while IFS=$'\t' read -r _name source ref locked; do
+		remote="https://github.com/$source.git"
+		current=$(git ls-remote "$remote" "refs/heads/$ref" | awk '{print $1}')
+		if [ -z "$current" ]; then
+			printf '%-30s %-8s %s\n' "$source" "$ref" "unable to resolve"
+		elif [ "$current" = "$locked" ]; then
+			printf '%-30s %-8s %s\n' "$source" "$ref" "up to date"
+		else
+			printf '%-30s %-8s %s -> %s\n' "$source" "$ref" "${locked:0:12}" "${current:0:12}"
+		fi
+	done <"$tmp"
+	exit 0
+fi
+
+# --apply: rewrite locked commits for every drifting non-local skill and stamp updated_at.
+echo '{}' >"$updates"
+while IFS=$'\t' read -r name source ref locked; do
 	remote="https://github.com/$source.git"
 	current=$(git ls-remote "$remote" "refs/heads/$ref" | awk '{print $1}')
 	if [ -z "$current" ]; then
-		printf '%-30s %-8s %s\n' "$source" "$ref" "unable to resolve"
-	elif [ "$current" = "$locked" ]; then
-		printf '%-30s %-8s %s\n' "$source" "$ref" "up to date"
-	else
-		printf '%-30s %-8s %s -> %s\n' "$source" "$ref" "${locked:0:12}" "${current:0:12}"
+		echo "  skip $name ($source@$ref): unable to resolve" >&2
+		continue
 	fi
-done < "$tmp"
+	if [ "$current" = "$locked" ]; then
+		continue
+	fi
+	echo "  bump $name ($source@$ref): ${locked:0:12} -> ${current:0:12}"
+	jq --arg n "$name" --arg c "$current" '. + {($n): $c}' "$updates" >"$updates.tmp" && mv "$updates.tmp" "$updates"
+done <"$tmp"
+
+if [ "$(jq 'length' "$updates")" = "0" ]; then
+	echo "skills-update: nothing to bump"
+	exit 0
+fi
+
+today=$(date -u +%Y-%m-%d)
+t=$(mktemp)
+jq --slurpfile u "$updates" --arg today "$today" '
+  (.updated_at) = $today
+  | .skills |= with_entries(
+      .value.commit = ($u[0][.key] // .value.commit)
+    )
+' "$lock" >"$t" && mv "$t" "$lock"
+echo "✓ wrote $lock (updated_at=$today)"

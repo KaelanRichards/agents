@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# agent — single dispatcher for the local control plane.
+# Equivalent to running the matching agent-* / agentq wrapper directly; both forms
+# stay supported for backwards compatibility and PATH discoverability.
+#
+# Usage:
+#   agent approve|eval|ledger|profile|queue <args...>
+#   agent help
+set -euo pipefail
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+
+case "${1:-}" in
+"" | help | -h | --help)
+	sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+	exit 0
+	;;
+approve | eval | ledger | profile | queue)
+	verb="$1"
+	shift
+	exec python3 "$AH/scripts/agent_control.py" "$verb" "$@"
+	;;
+*)
+	echo "agent: unknown subcommand '$1' (try: agent help)" >&2
+	exit 2
+	;;
+esac

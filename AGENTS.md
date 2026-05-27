@@ -5,8 +5,10 @@ This is the single source of truth for both agents. Canonical file lives at
 `~/.codex/AGENTS.md`. **Edit this file** to change instructions for both tools.
 
 ## Machine & environment
-- macOS on Apple Silicon (M5). **Corporate-managed**: Rippling MDM + SentinelOne EDR
-  are active — never modify, disable, or remove security / MDM software.
+- macOS on Apple Silicon (M5). Treat the laptop as **corporate-managed**: Rippling MDM +
+  SentinelOne EDR may be present (current `profiles status -type enrollment` reports none —
+  see `SECURITY_HARDENING.md` — the policy still applies). Never modify, disable, or remove
+  security / MDM software regardless of current enrollment state.
 - `sudo` requires a password; the user must run elevated commands themselves
   (suggest `! <cmd>`). Don't expect passwordless sudo.
 - Homebrew at `/opt/homebrew`. Editor: **Zed** (`zed`). Terminal: **Ghostty**.

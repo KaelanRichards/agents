@@ -22,6 +22,10 @@ mcp-update:
 hermes-sync:
     hermes-sync
 
+# Verify Brewfile and flake.nix stay in sync — both list the shared CLI toolbelt.
+check-toolbelt:
+    toolbelt-diff
+
 test:
     shellcheck -S error -x bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh
     actionlint
@@ -30,6 +34,7 @@ test:
     yq -e . stacks/windmill/docker-compose.yml >/dev/null
     for f in agents/*.json; do jq -e . "$f" >/dev/null; done
     ruff check .
+    toolbelt-diff
     bash tests/sync-roundtrip.sh
     uv run --script tests/agent_system_contract.py
     uv run --script tests/agent_control_smoke.py
@@ -45,7 +50,10 @@ secrets:
 
 ci-local: test secrets doctor
 
-push-agent-config:
+# Describe @, bookmark it, and push. Pass the bookmark name as `name`:
+#   just push-changes name=my-bookmark
+push-changes name='':
+    @test -n "{{ name }}" || (echo "usage: just push-changes name=<bookmark>" >&2 && exit 2)
     jj describe -m "Update shared agent environment"
-    jj bookmark set agent-skills -r @
-    jj git push --bookmark agent-skills
+    jj bookmark set {{ name }} -r @
+    jj git push --bookmark {{ name }}
