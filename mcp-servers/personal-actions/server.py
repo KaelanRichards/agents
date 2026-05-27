@@ -558,11 +558,13 @@ def _gmail_create_draft_local(payload: dict[str, Any]) -> dict[str, Any]:
             bool(payload.get("html")),
         )
     )
+    message: dict[str, Any] = {"raw": raw}
+    thread_id = str(payload.get("thread_id", "")).strip()
+    if thread_id:
+        message["threadId"] = thread_id
     req = urllib.request.Request(
         "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
-        data=json.dumps({"message": {"raw": raw}}, separators=(",", ":")).encode(
-            "utf-8"
-        ),
+        data=json.dumps({"message": message}, separators=(",", ":")).encode("utf-8"),
         method="POST",
         headers={
             "Authorization": f"Bearer {_gmail_compose_access_token(account)}",
@@ -746,8 +748,14 @@ def personal_gmail_create_draft(
     bcc: str = "",
     html: bool = False,
     account: str = "personal",
+    thread_id: str = "",
 ) -> str:
-    """Create a Gmail draft with explicit recipients, subject, and body."""
+    """Create a Gmail draft with explicit recipients, subject, and body.
+
+    If `thread_id` is supplied (Gmail thread id from a prior search/get), the draft is
+    attached to that thread — the recipient sees it as a reply, not a new conversation.
+    Omit it for a fresh thread.
+    """
     payload = {
         "account": _account(account),
         "to": _require("to", to),
@@ -756,6 +764,7 @@ def personal_gmail_create_draft(
         "cc": _split_csv(cc),
         "bcc": _split_csv(bcc),
         "html": bool(html),
+        "thread_id": _optional(thread_id),
     }
     return _dispatch("gmail_create_draft", payload)
 
