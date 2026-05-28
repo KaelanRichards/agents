@@ -26,6 +26,19 @@ hermes-sync:
 check-toolbelt:
     toolbelt-diff
 
+# Verify the per-repo agent-config convention across all project repos (read-only).
+verify-repos:
+    agents-verify
+
+# One verdict over the whole control plane: internal health + per-repo convention.
+# Read-only; catches the drift classes from the 2026-05-28 sync audit.
+verify-all:
+    agents-doctor
+    toolbelt-diff
+    bash tests/sync-roundtrip.sh
+    gitleaks detect --source . --no-git --redact --verbose
+    agents-verify
+
 test:
     shellcheck -S error -x bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh
     actionlint

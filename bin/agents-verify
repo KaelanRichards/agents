@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# agents-verify — sweep project repos and assert the agent-config convention holds.
+# READ-ONLY: never mutates a repo. Exit 0 if every repo passes, 1 on any drift.
+#
+# Per repo (any dir under ~/code with .claude/ or AGENTS.md, plus the control plane),
+# it checks:
+#   1. AGENTS.md is a real file and CLAUDE.md is a symlink -> AGENTS.md  (via agents-link --check)
+#   2. every non-test-* hook script in .claude/hooks/ is executable
+#   3. if .claude/settings.local.json exists, it is git-ignored
+#
+# Usage:
+#   agents-verify            check the default repo set
+#   agents-verify <dir>...   check the given repos instead
+set -euo pipefail
+
+# Resolve the control plane the same way agents-doctor does (symlink-safe; this
+# script runs via a ~/.local/bin symlink, so BASH_SOURCE can't be trusted here).
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+export PATH="$AH/bin:$PATH" # prefer this repo's agents-link
+
+code_root="${AGENTS_CODE_ROOT:-$HOME/code}"
+control_plane="$AH"
+
+# Build the repo list: explicit args, or discovery under $code_root + the control plane.
+repos=()
+if [ "$#" -gt 0 ]; then
+	repos=("$@")
+else
+	repos+=("$control_plane")
+	if [ -d "$code_root" ]; then
+		for d in "$code_root"/*/; do
+			d="${d%/}"
+			case "$(basename "$d")" in
+			*-workspaces) continue ;; # jj/swarm workspace containers, not real repos
+			esac
+			if [ -d "$d/.claude" ] || [ -e "$d/AGENTS.md" ]; then
+				repos+=("$d")
+			fi
+		done
+	fi
+fi
+
+fail=0
+control_plane_phys="$(cd "$control_plane" && pwd -P)"
+
+# check_control_plane_links <path> -> 0/1; the control plane's AGENTS.md is the
+# canonical source consumed via GLOBAL symlinks (~/.claude/CLAUDE.md,
+# ~/.codex/AGENTS.md), not a repo-local CLAUDE.md. Assert that fan-out instead.
+check_control_plane_links() {
+	local cp="$1" ok=0 link
+	if [ ! -e "$cp/AGENTS.md" ] || [ -L "$cp/AGENTS.md" ]; then
+		printf '  FAIL convention: %s/AGENTS.md must be a real source file\n' "$cp"
+		return 1
+	fi
+	# Match agents-doctor: the global links must read back to "$cp/AGENTS.md" verbatim
+	# (mcp/agents-sync write that absolute target), so a raw readlink compare is exact.
+	for link in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
+		if [ ! -L "$link" ]; then
+			printf '  FAIL convention: %s is not a symlink to the canonical AGENTS.md\n' "$link"
+			ok=1
+		elif [ "$(readlink "$link")" != "$cp/AGENTS.md" ]; then
+			printf '  FAIL convention: %s -> %s, expected %s/AGENTS.md\n' "$link" "$(readlink "$link")" "$cp"
+			ok=1
+		fi
+	done
+	[ "$ok" -eq 0 ] && printf '  ok   convention: AGENTS.md canonical, ~/.claude + ~/.codex symlinked to it\n'
+	return "$ok"
+}
+
+# check_repo <path> -> prints "  <status> <detail>" lines, sets repo_failed
+check_repo() {
+	local repo="$1" repo_failed=0 msg
+
+	# 1. AGENTS.md / CLAUDE.md convention. The control plane is consumed via global
+	#    symlinks; project repos use a repo-local CLAUDE.md -> AGENTS.md.
+	if [ "$(cd "$repo" && pwd -P)" = "$control_plane_phys" ]; then
+		check_control_plane_links "$repo" || repo_failed=1
+	elif msg="$(agents-link --check -C "$repo" 2>&1)"; then
+		printf '  ok   convention: AGENTS.md real, CLAUDE.md -> AGENTS.md\n'
+	else
+		printf '  FAIL convention: %s\n' "${msg#agents-link: }"
+		repo_failed=1
+	fi
+
+	# 2. hook scripts executable (skip test-* helpers).
+	if [ -d "$repo/.claude/hooks" ]; then
+		local hook base nonexec=()
+		for hook in "$repo"/.claude/hooks/*.sh "$repo"/.claude/hooks/*.mjs; do
+			[ -e "$hook" ] || continue
+			base="$(basename "$hook")"
+			# Skip test helpers and sourced libraries — neither is invoked as a hook entrypoint.
+			case "$base" in test-* | *.lib.sh) continue ;; esac
+			[ -x "$hook" ] || nonexec+=("$base")
+		done
+		if [ "${#nonexec[@]}" -eq 0 ]; then
+			printf '  ok   hooks: all executable\n'
+		else
+			printf '  FAIL hooks: not executable: %s\n' "${nonexec[*]}"
+			repo_failed=1
+		fi
+	fi
+
+	# 3. settings.local.json, if present, must be git-ignored.
+	local sl="$repo/.claude/settings.local.json"
+	if [ -e "$sl" ]; then
+		if git -C "$repo" check-ignore .claude/settings.local.json >/dev/null 2>&1; then
+			printf '  ok   settings.local.json present and git-ignored\n'
+		else
+			printf '  FAIL settings.local.json present but NOT git-ignored (per-user creds may leak)\n'
+			repo_failed=1
+		fi
+	fi
+
+	return "$repo_failed"
+}
+
+for repo in "${repos[@]}"; do
+	if [ ! -d "$repo" ]; then
+		printf '%s\n  FAIL not a directory\n' "$repo"
+		fail=1
+		continue
+	fi
+	printf '%s\n' "$repo"
+	if ! check_repo "$repo"; then
+		fail=1
+	fi
+done
+
+echo
+if [ "$fail" -eq 0 ]; then
+	echo "agents-verify: all ${#repos[@]} repo(s) pass the convention"
+else
+	echo "agents-verify: drift detected — fix with 'agents-link -C <repo>' and chmod +x the listed hooks" >&2
+fi
+exit "$fail"

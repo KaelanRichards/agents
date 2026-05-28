@@ -5,9 +5,11 @@
 # Usage:
 #   agents-link              run in the current directory (default)
 #   agents-link -C <path>    run in <path> instead
+#   agents-link --check      verify the convention without changing anything (exit 1 on drift)
 set -euo pipefail
 
 target="."
+check_only=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 	-C)
@@ -18,8 +20,12 @@ while [ $# -gt 0 ]; do
 		target="$2"
 		shift 2
 		;;
+	--check)
+		check_only=1
+		shift
+		;;
 	-h | --help)
-		sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
+		sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
 		exit 0
 		;;
 	*)
@@ -34,6 +40,32 @@ done
 	exit 1
 }
 cd "$target"
+
+if [ "$check_only" -eq 1 ]; then
+	# Verify-only: AGENTS.md is a real file and CLAUDE.md is a symlink -> AGENTS.md.
+	if [ ! -e AGENTS.md ]; then
+		echo "agents-link: $PWD: AGENTS.md is missing" >&2
+		exit 1
+	fi
+	if [ -L AGENTS.md ]; then
+		echo "agents-link: $PWD: AGENTS.md must be a real file, not a symlink" >&2
+		exit 1
+	fi
+	if [ ! -L CLAUDE.md ]; then
+		if [ -e CLAUDE.md ]; then
+			echo "agents-link: $PWD: CLAUDE.md is a standalone real file; should be a symlink -> AGENTS.md" >&2
+		else
+			echo "agents-link: $PWD: CLAUDE.md symlink is missing (run agents-link)" >&2
+		fi
+		exit 1
+	fi
+	# Accept any symlink form (relative, ./, or absolute) as long as it resolves to AGENTS.md.
+	if ! [ CLAUDE.md -ef AGENTS.md ]; then
+		echo "agents-link: $PWD: CLAUDE.md points to '$(readlink CLAUDE.md)', does not resolve to AGENTS.md" >&2
+		exit 1
+	fi
+	exit 0
+fi
 
 if [ ! -e AGENTS.md ]; then
 	printf '# Project agent instructions\n\n' >AGENTS.md
