@@ -19,7 +19,74 @@ for f in "$AH"/assistant/memory/*.md; do
 done
 mem_files="${mem_files%$'\n'}"
 
-cat > "$config" <<EOF
+# Pull the remote MCP endpoints from the canonical mcp.json so hermes-sync stays a single source
+# of truth (the pinned Datadog US5 toolsets and Sentry URL live there, not duplicated here).
+dd_url="$(python3 -c "import json;print(json.load(open('$AH/mcp.json'))['mcpServers'].get('datadog',{}).get('url',''))" 2>/dev/null || true)"
+sentry_url="$(python3 -c "import json;print(json.load(open('$AH/mcp.json'))['mcpServers'].get('sentry',{}).get('url',''))" 2>/dev/null || true)"
+
+# Datadog: read-first observability. include-list = read-only tools only (no create/update/upsert/
+# mute/retry), enforcing assistant/policy.md "Datadog MCP" section at the tool-surface level.
+datadog_block=""
+if [ -n "$dd_url" ]; then
+	datadog_block="$(
+		cat <<DDEOF
+
+  datadog:
+    type: "http"
+    url: "$dd_url"
+    tools:
+      include:
+        - search_datadog_logs
+        - get_datadog_metric
+        - search_datadog_metrics
+        - search_datadog_spans
+        - get_datadog_trace
+        - search_datadog_monitors
+        - search_datadog_incidents
+        - get_datadog_incident
+        - search_datadog_services
+        - search_datadog_dashboards
+        - get_datadog_dashboard
+        - search_datadog_error_tracking_issues
+        - get_datadog_error_tracking_issue
+        - search_datadog_hosts
+        - search_datadog_events
+      prompts: false
+      resources: false
+DDEOF
+	)"
+fi
+
+# Sentry: read-first app debugging. include-list = read-only tools only (no resolve/assign/
+# ignore/update), enforcing assistant/policy.md "Sentry MCP" section at the tool-surface level.
+sentry_block=""
+if [ -n "$sentry_url" ]; then
+	sentry_block="$(
+		cat <<SENTRYEOF
+
+  sentry:
+    type: "http"
+    url: "$sentry_url"
+    tools:
+      include:
+        - whoami
+        - find_organizations
+        - find_projects
+        - find_teams
+        - find_releases
+        - search_issues
+        - search_events
+        - search_issue_events
+        - get_issue_tag_values
+        - get_sentry_resource
+        - analyze_issue_with_seer
+      prompts: false
+      resources: false
+SENTRYEOF
+	)"
+fi
+
+cat >"$config" <<EOF
 # Managed by hermes-sync. Edit ~/.config/agents/assistant/* or env vars, then rerun hermes-sync.
 #
 # Personal actions are served by the local personal-actions-mcp facade.
@@ -31,6 +98,9 @@ cat > "$config" <<EOF
 #   Gmail search/read/create draft/send/move exact message id to Trash
 #   Google Calendar list/create/update events
 #   Google Drive search files
+#
+# Read-only investigation MCPs (bigquery/datadog/sentry) mirror the policy in
+# assistant/policy.md and are constrained to read-only tools at the include-list level.
 
 terminal:
   backend: "local"
@@ -81,6 +151,21 @@ mcp_servers:
       prompts: false
       resources: false
 
+  bigquery:
+    command: "bigquery-mcp"
+    args: []
+    tools:
+      include:
+        - bigquery_execute_sql_readonly
+        - bigquery_estimate_query
+        - bigquery_list_datasets
+        - bigquery_list_tables
+        - bigquery_show_table_schema
+      prompts: false
+      resources: false
+$datadog_block
+$sentry_block
+
 context_files:
   - "$AH/AGENTS.md"
   - "$AH/assistant/policy.md"
@@ -89,3 +174,4 @@ EOF
 
 echo "wrote $config"
 echo "personal_actions enabled via personal-actions-mcp (dry-run unless a live provider is configured)"
+echo "read-only investigation MCPs: bigquery${dd_url:+, datadog}${sentry_url:+, sentry} (read-only tool allowlists)"

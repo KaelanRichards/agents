@@ -24,6 +24,7 @@ REQUIRED_MCP = {
     "agent-broker",
     "personal-actions",
     "linear",
+    "slack-dm",
 }
 
 PERSONAL_ACTION_TOOLS = {
