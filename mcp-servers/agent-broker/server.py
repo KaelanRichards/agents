@@ -28,7 +28,13 @@ def list_profiles() -> str:
     rows = []
     for path in agent_control.profile_files():
         data = agent_control.load_json(path)
-        rows.append({"name": data["name"], "risk": data["risk"], "description": data["description"]})
+        rows.append(
+            {
+                "name": data["name"],
+                "risk": data["risk"],
+                "description": data["description"],
+            }
+        )
     return json.dumps(rows, indent=2, sort_keys=True)
 
 
@@ -39,9 +45,21 @@ def get_profile(name: str) -> str:
 
 
 @mcp.tool()
-def authorize_tool_call(profile: str, server: str, tool: str, mutation: bool = False) -> str:
-    """Check whether a profile allows an MCP/tool call; records the decision in the run ledger."""
-    decision = agent_control.broker_authorize(profile, server, tool, mutation)
+def authorize_tool_call(
+    profile: str,
+    server: str,
+    tool: str,
+    mutation: bool = False,
+    context_tainted: bool = False,
+) -> str:
+    """Check whether a profile allows an MCP/tool call; records the decision in the run ledger.
+
+    Set context_tainted=True when the call would act on data drawn from an untrusted source
+    (a fetched web page, an inbound email/Slack message, a Datadog/Sentry payload). A mutation
+    under taint always requires confirmation, and on high/critical profiles is refused outright."""
+    decision = agent_control.broker_authorize(
+        profile, server, tool, mutation, context_tainted
+    )
     agent_control.append_ledger(
         {
             "kind": "broker",

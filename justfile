@@ -57,6 +57,7 @@ test:
     uv run --script tests/dash_smoke.py
     uv run --script tests/webdash_smoke.py
     uv run --script tests/prompt_injection_policy.py
+    uv run --script tests/behavioral_policy.py
 
 secrets:
     gitleaks detect --source . --no-git --redact --verbose

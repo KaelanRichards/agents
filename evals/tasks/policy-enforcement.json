@@ -1,0 +1,9 @@
+{
+	"id": "policy-enforcement",
+	"description": "Adversarial broker enforcement: synonym evasion, fail-closed effects, tainted-context writes, profile boundaries.",
+	"profile": "plan-readonly",
+	"agent": "noop",
+	"repo": "~/.config/agents",
+	"prompt": "Broker denies synonym-evasion tools and tainted-context mutations and holds per-profile boundaries.",
+	"success_command": "uv run --script tests/behavioral_policy.py"
+}

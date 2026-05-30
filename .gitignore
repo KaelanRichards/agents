@@ -8,6 +8,7 @@ assistant/logs/
 state/
 generated/
 stacks/windmill/.env
+observability/.telemetry-on
 
 # Per-machine overlay for non-portable MCP servers (merged by mcp-sync).
 mcp.local.json

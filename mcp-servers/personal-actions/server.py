@@ -64,11 +64,15 @@ _load_env_file()
 
 
 def _agents_home() -> Path:
-    return Path(os.environ.get("AGENTS_HOME", str(Path.home() / ".config/agents"))).expanduser()
+    return Path(
+        os.environ.get("AGENTS_HOME", str(Path.home() / ".config/agents"))
+    ).expanduser()
 
 
 def _hermes_home() -> Path:
-    return Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))).expanduser()
+    return Path(
+        os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))
+    ).expanduser()
 
 
 def _now() -> str:
@@ -88,7 +92,10 @@ def _dry_run() -> bool:
         return _truthy(os.environ.get("PERSONAL_ACTIONS_DRY_RUN"))
     if _truthy(os.environ.get("PERSONAL_ACTIONS_LIVE")):
         return False
-    if _provider() == "webhook" and os.environ.get("PERSONAL_ACTIONS_WEBHOOK_URL", "").strip():
+    if (
+        _provider() == "webhook"
+        and os.environ.get("PERSONAL_ACTIONS_WEBHOOK_URL", "").strip()
+    ):
         return False
     return True
 
@@ -102,8 +109,46 @@ APPROVAL_ACTIONS = {
 }
 
 
+# Read actions whose results are external, untrusted content. We record a taint marker for each
+# so an audit can see that injected instructions could have entered the session before any write.
+READ_ACTIONS = {
+    "slack_search_messages",
+    "gmail_search_messages",
+    "gmail_get_message",
+    "calendar_list_events",
+    "drive_search_files",
+}
+
+
 def _approval_required(action: str) -> bool:
-    return action in APPROVAL_ACTIONS and _truthy(os.environ.get("PERSONAL_ACTIONS_REQUIRE_APPROVAL"))
+    if action not in APPROVAL_ACTIONS:
+        return False
+    # Fail closed: outward-facing writes require an approval handshake by default, matching the
+    # documented confirmation policy. Set PERSONAL_ACTIONS_REQUIRE_APPROVAL=0 to opt a trusted,
+    # already-confirmed environment out (dry-run already short-circuits before this check).
+    value = os.environ.get("PERSONAL_ACTIONS_REQUIRE_APPROVAL")
+    if value is None or value.strip() == "":
+        return True
+    return _truthy(value)
+
+
+def _mark_taint(action: str) -> None:
+    """Append an append-only provenance marker recording that untrusted external content was
+    read into the session. Best-effort: never block a read on a logging failure."""
+    try:
+        _agent_control().append_ledger(
+            {
+                "kind": "taint",
+                "status": "external_read",
+                "profile": "personal-assistant",
+                "agent": "personal-actions",
+                "repo": "",
+                "prompt": action,
+                "details": {"provenance": "untrusted_external", "action": action},
+            }
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _agent_control():
@@ -123,7 +168,9 @@ def _approval_gate(action: str, payload: dict[str, Any]) -> dict[str, Any] | Non
     control = _agent_control()
     conn = control.approval_db()
     if approval_id:
-        row = conn.execute("SELECT * FROM approvals WHERE id = ?", (approval_id,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM approvals WHERE id = ?", (approval_id,)
+        ).fetchone()
         if not row:
             raise PersonalActionError(f"approval id not found: {approval_id}")
         if row["status"] != "approved":
@@ -134,10 +181,13 @@ def _approval_gate(action: str, payload: dict[str, Any]) -> dict[str, Any] | Non
                 "message": "approval is not approved; approve it with agent-approve before retrying",
             }
         return None
-    request_payload = json.dumps({"action": action, "payload": _redact(payload)}, sort_keys=True)
+    request_payload = json.dumps(
+        {"action": action, "payload": _redact(payload)}, sort_keys=True
+    )
     aid = str(uuid4())
     conn.execute(
-        "INSERT INTO approvals VALUES (?, ?, ?, ?, ?, ?, 'pending', '')",
+        "INSERT INTO approvals (id, created_at, updated_at, kind, summary, payload, status, decision_note, expires_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'pending', '', ?)",
         (
             aid,
             _now(),
@@ -145,6 +195,7 @@ def _approval_gate(action: str, payload: dict[str, Any]) -> dict[str, Any] | Non
             action,
             f"Personal action approval required: {action}",
             request_payload,
+            control.approval_expiry(control.DEFAULT_APPROVAL_TTL_HOURS),
         ),
     )
     conn.commit()
@@ -170,7 +221,9 @@ def _approval_gate(action: str, payload: dict[str, Any]) -> dict[str, Any] | Non
 def _redact_text(value: str) -> str:
     out = value
     for pattern in SECRET_PATTERNS:
-        out = pattern.sub(lambda m: f"{m.group(1)}=[REDACTED]" if m.lastindex else "[REDACTED]", out)
+        out = pattern.sub(
+            lambda m: f"{m.group(1)}=[REDACTED]" if m.lastindex else "[REDACTED]", out
+        )
     return out
 
 
@@ -190,7 +243,12 @@ def _redact(obj: Any) -> Any:
     return obj
 
 
-def _audit(action: str, payload: dict[str, Any], status: str, result: dict[str, Any] | None = None) -> None:
+def _audit(
+    action: str,
+    payload: dict[str, Any],
+    status: str,
+    result: dict[str, Any] | None = None,
+) -> None:
     log_dir = _agents_home() / "assistant" / "logs" / "personal-actions"
     log_dir.mkdir(parents=True, exist_ok=True)
     entry = {
@@ -205,6 +263,8 @@ def _audit(action: str, payload: dict[str, Any], status: str, result: dict[str, 
     path = log_dir / f"{datetime.now(UTC).date().isoformat()}.jsonl"
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, sort_keys=True) + "\n")
+    if status == "ok" and action in READ_ACTIONS:
+        _mark_taint(action)
 
 
 def _require(name: str, value: str) -> str:
@@ -244,7 +304,12 @@ def _account(value: str = "personal") -> str:
     return value
 
 
-def _json_response(action: str, status: str, payload: dict[str, Any], result: dict[str, Any] | None = None) -> str:
+def _json_response(
+    action: str,
+    status: str,
+    payload: dict[str, Any],
+    result: dict[str, Any] | None = None,
+) -> str:
     return json.dumps(
         {
             "action": action,
@@ -269,9 +334,13 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
         if approval:
             _audit(action, payload, "approval_required", approval)
             return _json_response(action, "approval_required", payload, approval)
-        provider_payload = {key: value for key, value in payload.items() if key != "approval_id"}
+        provider_payload = {
+            key: value for key, value in payload.items() if key != "approval_id"
+        }
 
-        if action == "gmail_create_draft" and _gmail_compose_configured_for(str(provider_payload.get("account", "personal"))):
+        if action == "gmail_create_draft" and _gmail_compose_configured_for(
+            str(provider_payload.get("account", "personal"))
+        ):
             result = _gmail_create_draft_local(provider_payload)
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
@@ -281,12 +350,16 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
 
-        if action == "gmail_search_messages" and _gmail_modify_configured_for(str(provider_payload.get("account", "personal"))):
+        if action == "gmail_search_messages" and _gmail_modify_configured_for(
+            str(provider_payload.get("account", "personal"))
+        ):
             result = _gmail_search_messages_local(provider_payload)
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
 
-        if action == "gmail_get_message" and _gmail_modify_configured_for(str(provider_payload.get("account", "personal"))):
+        if action == "gmail_get_message" and _gmail_modify_configured_for(
+            str(provider_payload.get("account", "personal"))
+        ):
             result = _gmail_get_message_local(provider_payload)
             _audit(action, payload, "ok", result)
             return _json_response(action, "ok", payload, result)
@@ -315,11 +388,19 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
 def _dispatch_webhook(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     url = os.environ.get("PERSONAL_ACTIONS_WEBHOOK_URL", "").strip()
     if not url:
-        raise PersonalActionError("PERSONAL_ACTIONS_WEBHOOK_URL is required for webhook provider")
-    if not url.startswith("https://") and not _truthy(os.environ.get("PERSONAL_ACTIONS_ALLOW_HTTP")):
-        raise PersonalActionError("webhook URL must be https:// unless PERSONAL_ACTIONS_ALLOW_HTTP=1")
+        raise PersonalActionError(
+            "PERSONAL_ACTIONS_WEBHOOK_URL is required for webhook provider"
+        )
+    if not url.startswith("https://") and not _truthy(
+        os.environ.get("PERSONAL_ACTIONS_ALLOW_HTTP")
+    ):
+        raise PersonalActionError(
+            "webhook URL must be https:// unless PERSONAL_ACTIONS_ALLOW_HTTP=1"
+        )
 
-    body = json.dumps({"action": action, "payload": payload}, separators=(",", ":")).encode("utf-8")
+    body = json.dumps(
+        {"action": action, "payload": payload}, separators=(",", ":")
+    ).encode("utf-8")
     headers = _webhook_headers(body)
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
@@ -328,7 +409,9 @@ def _dispatch_webhook(action: str, payload: dict[str, Any]) -> dict[str, Any]:
             return {"status_code": resp.status, "body": _parse_json_or_text(text)}
     except urllib.error.HTTPError as exc:
         text = exc.read(50_000).decode("utf-8", errors="replace")
-        raise PersonalActionError(f"webhook returned HTTP {exc.code}: {_redact_text(text)}") from exc
+        raise PersonalActionError(
+            f"webhook returned HTTP {exc.code}: {_redact_text(text)}"
+        ) from exc
     except urllib.error.URLError as exc:
         raise PersonalActionError(f"webhook request failed: {exc.reason}") from exc
 
@@ -346,7 +429,9 @@ def _webhook_headers(body: bytes) -> dict[str, str]:
     if hmac_secret:
         timestamp = str(int(time.time()))
         signed = f"{timestamp}.".encode("utf-8") + body
-        digest = hmac.new(hmac_secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+        digest = hmac.new(
+            hmac_secret.encode("utf-8"), signed, hashlib.sha256
+        ).hexdigest()
         headers["X-Personal-Actions-Timestamp"] = timestamp
         headers["X-Personal-Actions-Signature"] = f"v1={digest}"
     return headers
@@ -425,18 +510,22 @@ def _gmail_oauth_access_token(prefix: str, label: str) -> str:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as exc:
         text = exc.read(20_000).decode("utf-8", errors="replace")
-        raise PersonalActionError(f"{label} token refresh failed: {_redact_text(text)}") from exc
+        raise PersonalActionError(
+            f"{label} token refresh failed: {_redact_text(text)}"
+        ) from exc
     token = str(data.get("access_token", "")).strip()
     if not token:
         raise PersonalActionError(f"{label} token refresh returned no access_token")
     return token
 
 
-def _mime_message(to: str, subject: str, body: str, cc: list[str], bcc: list[str], html: bool) -> str:
+def _mime_message(
+    to: str, subject: str, body: str, cc: list[str], bcc: list[str], html: bool
+) -> str:
     lines = [
         f"To: {to}",
         f"Subject: {subject}",
-        f"Content-Type: {'text/html' if html else 'text/plain'}; charset=\"UTF-8\"",
+        f'Content-Type: {"text/html" if html else "text/plain"}; charset="UTF-8"',
         "",
         body,
     ]
@@ -456,7 +545,9 @@ def _base64_url(value: str) -> str:
 def _gmail_create_draft_local(payload: dict[str, Any]) -> dict[str, Any]:
     account = _account(str(payload.get("account", "personal")))
     if not _gmail_compose_configured_for(account):
-        raise PersonalActionError(f"Gmail compose OAuth is not configured for account '{account}'")
+        raise PersonalActionError(
+            f"Gmail compose OAuth is not configured for account '{account}'"
+        )
     raw = _base64_url(
         _mime_message(
             payload["to"],
@@ -469,7 +560,9 @@ def _gmail_create_draft_local(payload: dict[str, Any]) -> dict[str, Any]:
     )
     req = urllib.request.Request(
         "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
-        data=json.dumps({"message": {"raw": raw}}, separators=(",", ":")).encode("utf-8"),
+        data=json.dumps({"message": {"raw": raw}}, separators=(",", ":")).encode(
+            "utf-8"
+        ),
         method="POST",
         headers={
             "Authorization": f"Bearer {_gmail_compose_access_token(account)}",
@@ -478,7 +571,10 @@ def _gmail_create_draft_local(payload: dict[str, Any]) -> dict[str, Any]:
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            return {"status_code": resp.status, "body": json.loads(resp.read().decode("utf-8", errors="replace"))}
+            return {
+                "status_code": resp.status,
+                "body": json.loads(resp.read().decode("utf-8", errors="replace")),
+            }
     except urllib.error.HTTPError as exc:
         text = exc.read(20_000).decode("utf-8", errors="replace")
         raise PersonalActionError(f"Gmail draft failed: {_redact_text(text)}") from exc
@@ -499,17 +595,25 @@ def _gmail_trash_email_local(payload: dict[str, Any]) -> dict[str, Any]:
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            return {"status_code": resp.status, "body": json.loads(resp.read().decode("utf-8", errors="replace"))}
+            return {
+                "status_code": resp.status,
+                "body": json.loads(resp.read().decode("utf-8", errors="replace")),
+            }
     except urllib.error.HTTPError as exc:
         text = exc.read(20_000).decode("utf-8", errors="replace")
         raise PersonalActionError(f"Gmail trash failed: {_redact_text(text)}") from exc
 
 
 def _google_get_json(url: str, token: str, label: str) -> dict[str, Any]:
-    req = urllib.request.Request(url, method="GET", headers={"Authorization": f"Bearer {token}"})
+    req = urllib.request.Request(
+        url, method="GET", headers={"Authorization": f"Bearer {token}"}
+    )
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310
-            return {"status_code": resp.status, "body": json.loads(resp.read().decode("utf-8", errors="replace"))}
+            return {
+                "status_code": resp.status,
+                "body": json.loads(resp.read().decode("utf-8", errors="replace")),
+            }
     except urllib.error.HTTPError as exc:
         text = exc.read(20_000).decode("utf-8", errors="replace")
         raise PersonalActionError(f"{label} failed: {_redact_text(text)}") from exc
@@ -545,7 +649,9 @@ def _gmail_get_message_local(payload: dict[str, Any]) -> dict[str, Any]:
         "format": str(payload.get("format", "metadata")).strip(),
         "metadataHeaders": str(payload.get("metadata_headers", "")).strip(),
     }
-    query = urllib.parse.urlencode({key: value for key, value in params.items() if value})
+    query = urllib.parse.urlencode(
+        {key: value for key, value in params.items() if value}
+    )
     return _google_get_json(
         f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}?{query}",
         _gmail_modify_access_token(account),
@@ -554,7 +660,14 @@ def _gmail_get_message_local(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _google_api_cmd() -> list[str]:
-    script = _hermes_home() / "skills" / "productivity" / "google-workspace" / "scripts" / "google_api.py"
+    script = (
+        _hermes_home()
+        / "skills"
+        / "productivity"
+        / "google-workspace"
+        / "scripts"
+        / "google_api.py"
+    )
     if not script.exists():
         raise PersonalActionError(f"Google Workspace script not found at {script}")
     return [sys.executable, str(script)]
@@ -566,13 +679,26 @@ def _run_google(args: list[str]) -> dict[str, Any]:
     out = (proc.stdout or "").strip()
     err = (proc.stderr or "").strip()
     if proc.returncode != 0:
-        raise PersonalActionError(f"google_workspace_cli failed: {_redact_text(err or out or 'no output')}")
+        raise PersonalActionError(
+            f"google_workspace_cli failed: {_redact_text(err or out or 'no output')}"
+        )
     return {"command": args, "output": _parse_json_or_text(out)}
 
 
-def _dispatch_google_workspace_cli(action: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _dispatch_google_workspace_cli(
+    action: str, payload: dict[str, Any]
+) -> dict[str, Any]:
     if action == "gmail_send_email":
-        args = ["gmail", "send", "--to", payload["to"], "--subject", payload["subject"], "--body", payload["body"]]
+        args = [
+            "gmail",
+            "send",
+            "--to",
+            payload["to"],
+            "--subject",
+            payload["subject"],
+            "--body",
+            payload["body"],
+        ]
         if payload.get("html"):
             args.append("--html")
         return _run_google(args)
@@ -598,7 +724,9 @@ def _dispatch_google_workspace_cli(action: str, payload: dict[str, Any]) -> dict
 
 
 @mcp.tool()
-def personal_slack_send_message(channel: str, text: str, thread_ts: str = "", approval_id: str = "") -> str:
+def personal_slack_send_message(
+    channel: str, text: str, thread_ts: str = "", approval_id: str = ""
+) -> str:
     """Send one Slack message to a channel, user, or conversation id."""
     payload = {
         "channel": _require("channel", channel),
@@ -658,7 +786,9 @@ def personal_gmail_send_email(
 
 
 @mcp.tool()
-def personal_gmail_trash_email(message_id: str, account: str = "personal", approval_id: str = "") -> str:
+def personal_gmail_trash_email(
+    message_id: str, account: str = "personal", approval_id: str = ""
+) -> str:
     """Move one exact Gmail message id to Trash; does not permanently delete."""
     payload = {
         "account": _account(account),
@@ -669,7 +799,9 @@ def personal_gmail_trash_email(message_id: str, account: str = "personal", appro
 
 
 @mcp.tool()
-def personal_gmail_search_messages(query: str, max_results: int = 10, account: str = "personal") -> str:
+def personal_gmail_search_messages(
+    query: str, max_results: int = 10, account: str = "personal"
+) -> str:
     """Search Gmail messages by Gmail query syntax and return message ids/thread ids."""
     payload = {
         "account": _account(account),
@@ -752,7 +884,10 @@ def personal_calendar_update_event(
         "attendees": _split_csv(attendees),
         "approval_id": _optional(approval_id),
     }
-    if not any(payload[key] for key in ["summary", "start", "end", "description", "location", "attendees"]):
+    if not any(
+        payload[key]
+        for key in ["summary", "start", "end", "description", "location", "attendees"]
+    ):
         raise PersonalActionError("at least one update field is required")
     return _dispatch("calendar_update_event", payload)
 
@@ -789,7 +924,9 @@ def personal_slack_search_messages(query: str, max_results: int = 10) -> str:
 
 
 @mcp.tool()
-def personal_drive_search_files(query: str, max_results: int = 10, account: str = "personal") -> str:
+def personal_drive_search_files(
+    query: str, max_results: int = 10, account: str = "personal"
+) -> str:
     """Search Google Drive files using Drive query syntax; read-only and scope-dependent."""
     payload = {
         "account": _account(account),

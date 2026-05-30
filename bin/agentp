@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# agentp — launch Claude Code *under* a canonical permission profile, so the profile is a real
+# boundary rather than advice. The profile compiles (via `agent-profile compile`) into:
+#   generated/profiles/claude/<profile>.mcp.json       — only the servers the profile grants
+#   generated/profiles/claude/<profile>.settings.json  — deny/ask rules for its filesystem/shell
+#                                                         mode and disallowed/confirm tools
+# We pass the subset with --strict-mcp-config (Claude loads *only* those servers) and layer the
+# settings on top, so a low-risk profile literally cannot reach a server or tool it doesn't list.
+#
+# Usage:
+#   agentp <profile> [-- <extra claude args>]
+#   agentp list            list available profiles
+set -euo pipefail
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+CTL="$AH/scripts/agent_control.py"
+GEN="$AH/generated/profiles/claude"
+
+usage() {
+	echo "usage: agentp <profile> [-- <extra claude args>]" >&2
+	echo "profiles:" >&2
+	python3 "$CTL" profile list 2>/dev/null | sed 's/^/  /' >&2
+}
+
+case "${1:-}" in
+"" | -h | --help)
+	usage
+	exit 1
+	;;
+list)
+	python3 "$CTL" profile list
+	exit 0
+	;;
+esac
+
+profile="$1"
+shift
+[ "${1:-}" = "--" ] && shift
+
+# Validate the profile name (exits non-zero on unknown), then ensure compiled artifacts exist.
+python3 "$CTL" profile show "$profile" >/dev/null
+settings="$GEN/$profile.settings.json"
+mcpcfg="$GEN/$profile.mcp.json"
+if [ ! -f "$settings" ] || [ ! -f "$mcpcfg" ]; then
+	python3 "$CTL" profile compile >/dev/null
+fi
+
+command -v claude >/dev/null 2>&1 || {
+	echo "agentp: claude not on PATH" >&2
+	exit 127
+}
+
+# Best-effort audit record; never block the launch on a ledger failure.
+agent-ledger record --kind launch --status started --profile "$profile" --agent claude \
+	--prompt "agentp $profile" >/dev/null 2>&1 || true
+
+exec claude --settings "$settings" --mcp-config "$mcpcfg" --strict-mcp-config "$@"

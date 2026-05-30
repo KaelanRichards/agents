@@ -112,13 +112,26 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
   the shared profile/policy model:
   - `agent-profile list|validate|compile` manages canonical permission profiles in `profiles/`
     and writes disposable generated artifacts under `generated/profiles/`.
-  - `agent-ledger record|list|show` stores append-only run events under gitignored `state/runs/`.
+  - `agentp <profile>` launches Claude Code **under** a profile as a real boundary: it passes the
+    profile's MCP subset with `--strict-mcp-config` (only those servers load) plus a compiled
+    `--settings` file whose deny/ask rules enforce the profile's filesystem/shell mode and
+    disallowed/confirm tools. `agentp list` shows the profiles. (Codex/Gemini/Qwen/OpenCode
+    artifacts are still compiled for reference; Claude is the load-bearing target.)
+  - `agent-ledger record|list|show|verify` stores append-only run events under gitignored
+    `state/runs/`. Entries form a SHA-256 hash chain; `agent-ledger verify` confirms it is
+    tamper-evident (also checked by `agents-doctor`).
   - `agentq add|list|show|start|worker` queues background agent work into isolated jj workspaces.
     On an always-on VM, install `systemd/agentq-worker.{service,timer}` as user units and enable
     the timer to poll queued work every minute.
-  - `agent-approve request|list|show|approve|reject` manages the local approval inbox.
-  - `agent-eval list|run` runs small local eval tasks from `evals/tasks/`.
-  - `agent-broker` is a local MCP policy facade that checks profile/tool decisions and records them.
+  - `agent-approve request|list|show|approve|reject|expire` manages the local approval inbox.
+    Requests carry a TTL (default 24h, `--ttl-hours`) and auto-expire instead of lingering pending.
+  - `agent-eval list|run` runs small local eval tasks from `evals/tasks/`, including
+    `policy-enforcement` (adversarial broker checks: synonym evasion, fail-closed effects,
+    tainted-context writes, per-profile boundaries).
+  - `agent-broker` is a local MCP policy facade that checks profile/tool decisions and records
+    them. It classifies tool *effect* from an authoritative registry (fail-closed for unknown
+    tools) and enforces a provenance rule: a mutation requested with `context_tainted=true` is
+    forced to confirm, and refused outright on high/critical profiles.
 - **`just ci-local`** — local verification loop: shell scripts, JSON locks, sync round-trip,
   agent-system contract checks, dashboard smoke test, `gitleaks`, and `agents-doctor`.
 - **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,
@@ -130,8 +143,10 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
   one exact message id moved to Trash, never permanent or bulk deletion.
 - **`windmill-up` / `windmill-status` / `windmill-down`** — manage the local open-source Windmill
   backend for live personal actions. See `assistant/windmill/README.md`.
-- **`obs up`** — local OpenTelemetry → Prometheus → Grafana stack for agent cost/usage
-  (`obs env` prints the env that streams Claude Code telemetry to it).
+- **`obs up|down|on|off|status`** — local OpenTelemetry → Prometheus → Grafana stack for agent
+  cost/usage. `obs on`/`obs up` drop a `.telemetry-on` marker that `zsh/agents.env.zsh` reads, so
+  every agent shell exports `OTEL_*` automatically (no per-session `obs env`). On the VM, `serve`
+  installs `systemd/otel-stack.service` and turns telemetry on so cost/usage accrues 24/7.
 - **CI** (`.github/workflows/ci.yml`): lints + validates on every push; weekly it runs the
   bootstrap smoke test, `agents-doctor`, the sync round-trip test, and `nix flake check`.
 - **Auto-updates:** Dependabot (Actions) + the `update-flake` workflow open CI-validated PRs.

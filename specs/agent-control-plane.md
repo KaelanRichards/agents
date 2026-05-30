@@ -55,4 +55,35 @@ The shared agent environment becomes a local, auditable control plane for multip
 - `uv run --script tests/agent_system_contract.py`
 - `uv run --script tests/prompt_injection_policy.py`
 - `just test`
+
+## Iteration 2 — from advisory to enforced (2026-05-30)
+
+The first iteration described profiles but left enforcement to each tool's own settings; the
+broker was advisory and policy guessed mutation from tool-name substrings. This iteration closes
+that gap, guided by the 2025/2026 literature (CaMeL / capability + information-flow control;
+"tool eligibility" / prompts-are-not-access-control; tamper-evident audit; AgentDojo-style evals).
+
+- **Profile enforcement (`agentp`)** — `agent-profile compile` now also emits, per profile,
+  `generated/profiles/claude/<name>.mcp.json` (the granted MCP subset) and
+  `<name>.settings.json` (deny/ask rules for filesystem/shell mode and disallowed/confirm tools).
+  `bin/agentp <profile>` launches Claude with `--strict-mcp-config` + `--settings`, so the profile
+  *removes* servers and tools rather than advising. Claude is the load-bearing target.
+- **Authoritative effect registry (fail closed)** — `classify_effect()` replaces substring
+  guessing with a per-tool read/write/destructive registry; unknown tools on write-capable
+  servers are treated as mutations, so synonym evasion (`personalize_email`) cannot slip through.
+- **Provenance rule** — `broker_authorize(..., context_tainted=True)` forces confirmation on any
+  mutation drawn from untrusted content and refuses it on high/critical profiles. The
+  `personal-actions` facade emits `kind: "taint"` ledger markers when it reads external content.
+- **Tamper-evident ledger** — ledger entries form a SHA-256 hash chain (`prev`/`hash`);
+  `agent-ledger verify` validates it; `agents-doctor` checks it.
+- **Approval TTLs** — requests carry `expires_at` and auto-expire (`agent-approve expire`); the
+  personal-actions live-write approval gate now fails closed by default.
+- **Behavioral evals** — `tests/behavioral_policy.py` + the `policy-enforcement` eval assert the
+  above boundaries in CI so a profile/registry/broker change that weakens them fails the build.
+- **Verification:** `uv run --script tests/behavioral_policy.py`; `agent-ledger verify`;
+  `agentp list`; `obs status`.
+
+Deferred: A2A / task-DAG planning (no current workload needs cross-agent negotiation; `swarm`
+fan-out remains the parallelism path). Gemini/Qwen/OpenCode profile artifacts stay compiled for
+reference only.
 - `gitleaks detect --source . --no-git --redact --verbose`

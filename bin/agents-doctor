@@ -100,6 +100,14 @@ if [ -x "$AH/bin/agent-broker-mcp" ]; then
 else
 	bad "agent-broker MCP launcher missing"
 fi
+if [ -x "$AH/bin/agentp" ]; then
+	ok "agentp profile launcher present"
+else
+	bad "agentp profile launcher missing"
+fi
+if command -v agent-ledger >/dev/null 2>&1; then
+	agent-ledger verify >/dev/null 2>&1 && ok "run ledger hash chain intact" || warn "run ledger chain verify failed (agent-ledger verify)"
+fi
 
 echo "== skill sync =="
 canonical_skills=$(find "$AH/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')

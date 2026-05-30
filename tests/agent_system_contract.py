@@ -63,7 +63,10 @@ def main() -> None:
     assert servers["linear"]["type"] == "http"
     assert servers["linear"]["url"] == "https://mcp.linear.app/mcp"
     assert servers["datadog"]["type"] == "http"
-    assert servers["datadog"]["url"] == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+    assert (
+        servers["datadog"]["url"]
+        == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+    )
     assert servers["sentry"]["type"] == "http"
     assert servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
     assert servers["bigquery"]["type"] == "stdio"
@@ -95,9 +98,14 @@ def main() -> None:
     if codex_toml.exists():
         codex = tomllib.loads(read(codex_toml))
         codex_servers = codex.get("mcp_servers", {})
-        assert REQUIRED_MCP.issubset(set(codex_servers)), "Codex config missing required MCP servers"
+        assert REQUIRED_MCP.issubset(set(codex_servers)), (
+            "Codex config missing required MCP servers"
+        )
         assert codex_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
-        assert codex_servers["datadog"]["url"] == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+        assert (
+            codex_servers["datadog"]["url"]
+            == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+        )
         assert codex_servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
         assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
         assert codex_servers["bigquery"]["args"] == []
@@ -108,9 +116,14 @@ def main() -> None:
         claude = load_json(claude_json)
         assert isinstance(claude, dict)
         claude_servers = claude.get("mcpServers", {})
-        assert REQUIRED_MCP.issubset(set(claude_servers)), "Claude config missing required MCP servers"
+        assert REQUIRED_MCP.issubset(set(claude_servers)), (
+            "Claude config missing required MCP servers"
+        )
         assert claude_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
-        assert claude_servers["datadog"]["url"] == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+        assert (
+            claude_servers["datadog"]["url"]
+            == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+        )
         assert claude_servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
         assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
 
@@ -120,11 +133,15 @@ def main() -> None:
         assert_contains(hermes, "agents_readonly:", "Hermes config")
         assert_contains(hermes, "personal_actions:", "Hermes config")
         for tool in PERSONAL_ACTION_TOOLS:
-            assert_contains(hermes, f"- {tool}", "Hermes personal_actions tool allowlist")
+            assert_contains(
+                hermes, f"- {tool}", "Hermes personal_actions tool allowlist"
+            )
 
     server = read(ROOT / "mcp-servers" / "personal-actions" / "server.py")
     for tool in PERSONAL_ACTION_TOOLS:
-        assert re.search(rf"def {re.escape(tool)}\(", server), f"personal-actions server missing {tool}"
+        assert re.search(rf"def {re.escape(tool)}\(", server), (
+            f"personal-actions server missing {tool}"
+        )
     assert "/trash" in server
     assert "/delete" not in server
 
@@ -132,11 +149,31 @@ def main() -> None:
     assert_contains(broker, "authorize_tool_call", "agent-broker MCP")
 
     control = read(ROOT / "scripts" / "agent_control.py")
-    for phrase in ["cmd_profile", "cmd_ledger", "cmd_queue", "cmd_approve", "cmd_eval", "broker_authorize"]:
+    for phrase in [
+        "cmd_profile",
+        "cmd_ledger",
+        "cmd_queue",
+        "cmd_approve",
+        "cmd_eval",
+        "broker_authorize",
+        "classify_effect",
+        "verify_ledger",
+        "expire_approvals",
+        "compile_claude_settings",
+    ]:
         assert_contains(control, phrase, "agent control script")
+    # broker enforces the provenance (tainted-context) rule and a fail-closed effect default.
+    assert_contains(control, "context_tainted", "broker provenance rule")
+    assert_contains(control, "fail closed", "broker fail-closed classification")
 
     spec = read(ROOT / "specs" / "agent-control-plane.md")
-    for phrase in ["Permission profiles", "Run ledger", "Background queue", "Approval inbox", "MCP broker"]:
+    for phrase in [
+        "Permission profiles",
+        "Run ledger",
+        "Background queue",
+        "Approval inbox",
+        "MCP broker",
+    ]:
         assert_contains(spec, phrase, "agent control spec")
 
     eval_tasks = {path.stem for path in (ROOT / "evals" / "tasks").glob("*.json")}
@@ -148,13 +185,19 @@ def main() -> None:
         "personal-actions-dry-run",
         "dashboard-smoke",
         "queue-smoke",
+        "policy-enforcement",
     }.issubset(eval_tasks)
     assert (ROOT / "systemd" / "agentq-worker.service").exists()
     assert (ROOT / "systemd" / "agentq-worker.timer").exists()
+    assert (ROOT / "systemd" / "otel-stack.service").exists()
+    assert (ROOT / "bin" / "agentp").exists()
+    assert (ROOT / "tests" / "behavioral_policy.py").exists()
 
     policy = read(ROOT / "assistant" / "policy.md")
     assert_contains(policy, "exact Gmail message id", "personal assistant policy")
-    assert_contains(policy, "permanent Gmail delete endpoint", "personal assistant policy")
+    assert_contains(
+        policy, "permanent Gmail delete endpoint", "personal assistant policy"
+    )
     assert_contains(policy, "bulk delete", "personal assistant policy")
     assert_contains(policy, "Datadog MCP", "personal assistant policy")
     assert_contains(policy, "Sentry MCP", "personal assistant policy")
@@ -162,7 +205,9 @@ def main() -> None:
 
     oauth_example = read(ROOT / "assistant" / "windmill" / "oauth.env.example")
     for port in ["8765", "8766", "8767", "8768"]:
-        assert_contains(oauth_example, f"http://127.0.0.1:{port}/callback", "Windmill OAuth example")
+        assert_contains(
+            oauth_example, f"http://127.0.0.1:{port}/callback", "Windmill OAuth example"
+        )
 
     print("agent system contract OK")
 

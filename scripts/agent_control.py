@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
+import hashlib
 import json
 import os
 import re
@@ -19,7 +21,9 @@ from pathlib import Path
 from typing import Any
 
 
-AH = Path(os.environ.get("AGENTS_HOME", str(Path.home() / ".config/agents"))).expanduser()
+AH = Path(
+    os.environ.get("AGENTS_HOME", str(Path.home() / ".config/agents"))
+).expanduser()
 STATE = Path(os.environ.get("AGENTS_STATE", str(AH / "state"))).expanduser()
 PROFILES = AH / "profiles"
 GENERATED = AH / "generated" / "profiles"
@@ -87,7 +91,19 @@ def expand_path(value: str) -> Path:
 
 
 def jj_revision(repo: Path) -> str:
-    code, out = run(["jj", "log", "-r", "@", "--no-graph", "-T", "change_id ++ ' ' ++ commit_id.short()"], repo, 15)
+    code, out = run(
+        [
+            "jj",
+            "log",
+            "-r",
+            "@",
+            "--no-graph",
+            "-T",
+            "change_id ++ ' ' ++ commit_id.short()",
+        ],
+        repo,
+        15,
+    )
     if code == 0 and out:
         return out.splitlines()[0].strip()
     code, out = run(["git", "rev-parse", "--short", "HEAD"], repo, 15)
@@ -189,6 +205,92 @@ def compile_profile(profile: dict[str, Any]) -> None:
     ]
     (GENERATED / "codex").mkdir(parents=True, exist_ok=True)
     (GENERATED / "codex" / f"{name}.toml").write_text("\n".join(toml), encoding="utf-8")
+    compile_claude_settings(profile)
+
+
+# Claude Code is the load-bearing target: a compiled profile becomes a real boundary via
+# `agentp <profile>`, which launches Claude with `--strict-mcp-config` (only the profile's MCP
+# servers are loaded) plus a `--settings` file whose permission deny/ask rules enforce the
+# filesystem/shell mode and tool restrictions the profile declares. See bin/agentp.
+EDIT_TOOLS = ["Edit", "MultiEdit", "NotebookEdit", "Write"]
+
+# Concrete Claude permission rules for the few capabilities whose underlying MCP tool name is
+# stable and known (the personal-actions facade). Other capabilities are enforced at the
+# server level by the --strict-mcp-config subset rather than per-tool rules.
+PERSONAL_CAPABILITY_TOOLS = {
+    "gmail_send": "personal_gmail_send_email",
+    "gmail_trash": "personal_gmail_trash_email",
+    "slack_post": "personal_slack_send_message",
+    "calendar_create": "personal_calendar_create_event",
+    "calendar_update": "personal_calendar_update_event",
+}
+
+RISK_DEFAULT_MODE = {
+    "low": "plan",
+    "medium": "default",
+    "high": "default",
+    "critical": "default",
+}
+
+
+def claude_mcp_servers() -> dict[str, Any]:
+    """Effective Claude MCP server map. Prefer the synced ~/.claude.json (placeholders already
+    expanded + bearer→header mapped); fall back to canonical mcp.json so compile works on a fresh box."""
+    claude_json = Path.home() / ".claude.json"
+    if claude_json.exists():
+        try:
+            servers = load_json(claude_json).get("mcpServers")
+            if isinstance(servers, dict):
+                return servers
+        except (json.JSONDecodeError, OSError):
+            pass
+    canon = AH / "mcp.json"
+    if canon.exists():
+        return load_json(canon).get("mcpServers", {}) or {}
+    return {}
+
+
+def compile_claude_settings(profile: dict[str, Any]) -> None:
+    name = profile["name"]
+    servers = claude_mcp_servers()
+    allow_servers = set(profile["mcp_servers"])
+    deny: list[str] = []
+    ask: list[str] = []
+    # Server isolation (defense-in-depth alongside --strict-mcp-config): deny every known MCP
+    # server the profile does not grant.
+    for srv in sorted(set(servers) - allow_servers):
+        deny.append(f"mcp__{srv}")
+    # Filesystem mode → block file mutations for read-only/none profiles.
+    if (profile.get("filesystem") or {}).get("mode") in {"read-only", "none"}:
+        deny.extend(EDIT_TOOLS)
+    # Shell mode → none blocks Bash outright; ask/confirm-each route it through a prompt.
+    shell_mode = (profile.get("shell") or {}).get("mode")
+    if shell_mode == "none":
+        deny.append("Bash")
+    elif shell_mode in {"ask", "confirm-each"}:
+        ask.append("Bash")
+    # Per-tool rules for the known personal-actions capabilities.
+    for cap in profile.get("disallowed_tools", []):
+        tool = PERSONAL_CAPABILITY_TOOLS.get(cap)
+        if tool:
+            deny.append(f"mcp__personal-actions__{tool}")
+    for cap in profile.get("confirm", []):
+        tool = PERSONAL_CAPABILITY_TOOLS.get(cap)
+        if tool:
+            ask.append(f"mcp__personal-actions__{tool}")
+    settings = {
+        "$comment": f"compiled from profiles/{name}.json by `agent-profile compile` — do not edit by hand",
+        "permissions": {
+            "defaultMode": RISK_DEFAULT_MODE.get(profile["risk"], "default"),
+            "allow": [],
+            "deny": sorted(set(deny)),
+            "ask": sorted(set(ask)),
+        },
+    }
+    (GENERATED / "claude").mkdir(parents=True, exist_ok=True)
+    write_json(GENERATED / "claude" / f"{name}.settings.json", settings)
+    subset = {srv: servers[srv] for srv in profile["mcp_servers"] if srv in servers}
+    write_json(GENERATED / "claude" / f"{name}.mcp.json", {"mcpServers": subset})
 
 
 def ledger_path() -> Path:
@@ -198,15 +300,80 @@ def ledger_path() -> Path:
     return path
 
 
+def chain_head_path() -> Path:
+    ensure_state()
+    return STATE / "runs" / ".chain-head"
+
+
+def ledger_hash(entry: dict[str, Any]) -> str:
+    """SHA-256 over the canonical entry (excluding the hash field itself). Because each entry
+    embeds `prev` (the previous entry's hash), the hashes form a tamper-evident chain."""
+    material = json.dumps(
+        {k: v for k, v in entry.items() if k != "hash"},
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
 def append_ledger(entry: dict[str, Any]) -> dict[str, Any]:
     entry = {
         "id": entry.get("id") or str(uuid.uuid4()),
         "ts": entry.get("ts") or now(),
         **entry,
     }
-    with ledger_path().open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, sort_keys=True) + "\n")
+    # Serialize the read-prev → append → write-head critical section across processes (the
+    # detached queue worker and a foreground command can both append), so two entries can't
+    # capture the same prev and clobber the head — which would show up as a false chain break.
+    head = chain_head_path()
+    runs_dir = STATE / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = runs_dir / ".chain.lock"
+    with open(lock_path, "w", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        entry["prev"] = (
+            head.read_text(encoding="utf-8").strip() if head.exists() else ""
+        )
+        entry["hash"] = ledger_hash(entry)
+        with ledger_path().open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, sort_keys=True) + "\n")
+        head.write_text(entry["hash"] + "\n", encoding="utf-8")
     return entry
+
+
+def verify_ledger() -> dict[str, Any]:
+    """Walk the ledger in chronological order and verify the hash chain. Entries that predate
+    the chain (no `hash` field) are counted as legacy and skipped, so a mixed ledger verifies
+    cleanly from the first hashed entry onward."""
+    entries = iter_ledger()
+    prev = ""
+    checked = 0
+    legacy = 0
+    for index, entry in enumerate(entries):
+        if "hash" not in entry:
+            legacy += 1
+            continue
+        if ledger_hash(entry) != entry["hash"]:
+            return {
+                "ok": False,
+                "reason": "hash mismatch",
+                "index": index,
+                "id": entry.get("id"),
+                "checked": checked,
+                "legacy": legacy,
+            }
+        if entry.get("prev", "") != prev:
+            return {
+                "ok": False,
+                "reason": "broken chain link",
+                "index": index,
+                "id": entry.get("id"),
+                "checked": checked,
+                "legacy": legacy,
+            }
+        prev = entry["hash"]
+        checked += 1
+    return {"ok": True, "checked": checked, "legacy": legacy, "total": len(entries)}
 
 
 def iter_ledger() -> list[dict[str, Any]]:
@@ -241,7 +408,9 @@ def cmd_ledger(args: argparse.Namespace) -> int:
     if args.ledger_cmd == "list":
         entries = iter_ledger()[-args.limit :]
         for e in entries:
-            print(f"{e.get('ts','')}\t{e.get('id','')}\t{e.get('kind','')}\t{e.get('status','')}\t{e.get('profile','')}\t{e.get('repo','')}")
+            print(
+                f"{e.get('ts', '')}\t{e.get('id', '')}\t{e.get('kind', '')}\t{e.get('status', '')}\t{e.get('profile', '')}\t{e.get('repo', '')}"
+            )
         return 0
     if args.ledger_cmd == "show":
         for e in iter_ledger():
@@ -249,6 +418,10 @@ def cmd_ledger(args: argparse.Namespace) -> int:
                 print(json.dumps(e, indent=2, sort_keys=True))
                 return 0
         raise SystemExit(f"run not found: {args.id}")
+    if args.ledger_cmd == "verify":
+        result = verify_ledger()
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0 if result["ok"] else 1
     raise SystemExit("missing ledger command")
 
 
@@ -275,21 +448,87 @@ def approval_db() -> sqlite3.Connection:
         )
         """
     )
+    migrate_approval_db(conn)
     return conn
+
+
+def migrate_approval_db(conn: sqlite3.Connection) -> None:
+    if "expires_at" not in table_columns(conn, "approvals"):
+        conn.execute(
+            "ALTER TABLE approvals ADD COLUMN expires_at TEXT NOT NULL DEFAULT ''"
+        )
+
+
+DEFAULT_APPROVAL_TTL_HOURS = 24.0
+
+
+def approval_expiry(ttl_hours: float) -> str:
+    if ttl_hours <= 0:
+        return ""
+    return (dt.datetime.now(dt.UTC) + dt.timedelta(hours=ttl_hours)).isoformat()
+
+
+def expire_approvals(conn: sqlite3.Connection) -> int:
+    """Auto-reject pending approvals whose TTL has elapsed so the inbox cannot accumulate
+    forever-pending items (and a stale request can never be silently honored later)."""
+    ts = now()
+    rows = conn.execute(
+        "SELECT id, expires_at FROM approvals WHERE status = 'pending' AND expires_at != '' AND expires_at < ?",
+        (ts,),
+    ).fetchall()
+    for row in rows:
+        conn.execute(
+            "UPDATE approvals SET status = 'expired', updated_at = ?, decision_note = ? WHERE id = ?",
+            (ts, "auto-expired: TTL elapsed before approval", row["id"]),
+        )
+        append_ledger(
+            {
+                "kind": "approval",
+                "status": "expired",
+                "profile": "",
+                "agent": "",
+                "repo": "",
+                "prompt": row["id"],
+                "details": {"expires_at": row["expires_at"]},
+            }
+        )
+    if rows:
+        conn.commit()
+    return len(rows)
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
     conn = approval_db()
+    expired = expire_approvals(conn)
+    if args.approve_cmd == "expire":
+        print(expired)
+        return 0
     if args.approve_cmd == "request":
         aid = str(uuid.uuid4())
         payload = args.payload or "{}"
         json.loads(payload)
+        expires_at = approval_expiry(args.ttl_hours)
         conn.execute(
-            "INSERT INTO approvals VALUES (?, ?, ?, ?, ?, ?, 'pending', '')",
-            (aid, now(), now(), args.kind, args.summary, payload),
+            "INSERT INTO approvals (id, created_at, updated_at, kind, summary, payload, status, decision_note, expires_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'pending', '', ?)",
+            (aid, now(), now(), args.kind, args.summary, payload, expires_at),
         )
         conn.commit()
-        append_ledger({"kind": "approval", "status": "pending", "profile": "", "agent": "", "repo": "", "prompt": args.summary, "details": {"approval_id": aid, "approval_kind": args.kind}})
+        append_ledger(
+            {
+                "kind": "approval",
+                "status": "pending",
+                "profile": "",
+                "agent": "",
+                "repo": "",
+                "prompt": args.summary,
+                "details": {
+                    "approval_id": aid,
+                    "approval_kind": args.kind,
+                    "expires_at": expires_at,
+                },
+            }
+        )
         print(aid)
         return 0
     if args.approve_cmd == "list":
@@ -298,7 +537,9 @@ def cmd_approve(args: argparse.Namespace) -> int:
             (args.status, args.status, args.limit),
         ).fetchall()
         for r in rows:
-            print(f"{r['created_at']}\t{r['id']}\t{r['status']}\t{r['kind']}\t{r['summary']}")
+            print(
+                f"{r['created_at']}\t{r['id']}\t{r['status']}\t{r['kind']}\t{r['summary']}"
+            )
         return 0
     if args.approve_cmd == "show":
         row = lookup_approval(conn, args.id)
@@ -316,17 +557,31 @@ def cmd_approve(args: argparse.Namespace) -> int:
             (status, now(), args.note or "", row["id"]),
         )
         conn.commit()
-        append_ledger({"kind": "approval", "status": status, "profile": "", "agent": "", "repo": "", "prompt": row["id"], "details": {"note": args.note or ""}})
+        append_ledger(
+            {
+                "kind": "approval",
+                "status": status,
+                "profile": "",
+                "agent": "",
+                "repo": "",
+                "prompt": row["id"],
+                "details": {"note": args.note or ""},
+            }
+        )
         print(status)
         return 0
     raise SystemExit("missing approval command")
 
 
 def lookup_approval(conn: sqlite3.Connection, approval_id: str) -> sqlite3.Row | None:
-    row = conn.execute("SELECT * FROM approvals WHERE id = ?", (approval_id,)).fetchone()
+    row = conn.execute(
+        "SELECT * FROM approvals WHERE id = ?", (approval_id,)
+    ).fetchone()
     if row:
         return row
-    rows = conn.execute("SELECT * FROM approvals WHERE id LIKE ?", (approval_id + "%",)).fetchall()
+    rows = conn.execute(
+        "SELECT * FROM approvals WHERE id LIKE ?", (approval_id + "%",)
+    ).fetchall()
     if len(rows) > 1:
         raise SystemExit(f"approval id prefix is ambiguous: {approval_id}")
     return rows[0] if rows else None
@@ -356,7 +611,9 @@ def queue_db() -> sqlite3.Connection:
 
 
 def table_columns(conn: sqlite3.Connection, table: str) -> set[str]:
-    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    return {
+        row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
 
 
 def migrate_queue_db(conn: sqlite3.Connection) -> None:
@@ -410,7 +667,17 @@ def cmd_queue(args: argparse.Namespace) -> int:
             ),
         )
         conn.commit()
-        append_ledger({"kind": "queue", "status": "queued", "profile": args.profile, "agent": args.agent, "repo": str(repo), "prompt": args.task, "details": {"queue_id": qid, "workspace": str(ws)}})
+        append_ledger(
+            {
+                "kind": "queue",
+                "status": "queued",
+                "profile": args.profile,
+                "agent": args.agent,
+                "repo": str(repo),
+                "prompt": args.task,
+                "details": {"queue_id": qid, "workspace": str(ws)},
+            }
+        )
         print(qid)
         return 0
     if args.queue_cmd == "list":
@@ -419,7 +686,9 @@ def cmd_queue(args: argparse.Namespace) -> int:
             (args.status, args.status, args.limit),
         ).fetchall()
         for r in rows:
-            print(f"{r['created_at']}\t{r['id']}\t{r['status']}\t{r['profile']}\t{r['agent']}\t{r['repo']}\t{r['task'][:80]}")
+            print(
+                f"{r['created_at']}\t{r['id']}\t{r['status']}\t{r['profile']}\t{r['agent']}\t{r['repo']}\t{r['task'][:80]}"
+            )
         return 0
     if args.queue_cmd == "show":
         row = lookup_queue_task(conn, args.id)
@@ -468,7 +737,9 @@ def cmd_queue(args: argparse.Namespace) -> int:
 def select_queue_task(conn: sqlite3.Connection, qid: str) -> sqlite3.Row | None:
     if qid:
         return lookup_queue_task(conn, qid)
-    return conn.execute("SELECT * FROM tasks WHERE status = 'queued' ORDER BY created_at LIMIT 1").fetchone()
+    return conn.execute(
+        "SELECT * FROM tasks WHERE status = 'queued' ORDER BY created_at LIMIT 1"
+    ).fetchone()
 
 
 def lookup_queue_task(conn: sqlite3.Connection, qid: str) -> sqlite3.Row | None:
@@ -481,20 +752,29 @@ def lookup_queue_task(conn: sqlite3.Connection, qid: str) -> sqlite3.Row | None:
     return rows[0] if rows else None
 
 
-def start_queue_task(conn: sqlite3.Connection, row: sqlite3.Row, foreground: bool) -> None:
+def start_queue_task(
+    conn: sqlite3.Connection, row: sqlite3.Row, foreground: bool
+) -> None:
     if row["status"] not in {"queued", "failed", "canceled"}:
         raise SystemExit(f"task {row['id']} is {row['status']}, not queued")
     if int(row["attempts"]) >= int(row["max_attempts"]):
-        raise SystemExit(f"task {row['id']} has exhausted attempts ({row['attempts']}/{row['max_attempts']})")
+        raise SystemExit(
+            f"task {row['id']} has exhausted attempts ({row['attempts']}/{row['max_attempts']})"
+        )
     repo = Path(row["repo"])
     ws = Path(row["workspace"])
     log = Path(row["log"])
     log.parent.mkdir(parents=True, exist_ok=True)
     if not ws.exists():
         ws.parent.mkdir(parents=True, exist_ok=True)
-        code, out = run(["jj", "-R", str(repo), "workspace", "add", str(ws)], timeout=120)
+        code, out = run(
+            ["jj", "-R", str(repo), "workspace", "add", str(ws)], timeout=120
+        )
         if code != 0:
-            conn.execute("UPDATE tasks SET status = 'failed', updated_at = ? WHERE id = ?", (now(), row["id"]))
+            conn.execute(
+                "UPDATE tasks SET status = 'failed', updated_at = ? WHERE id = ?",
+                (now(), row["id"]),
+            )
             conn.commit()
             raise SystemExit(out)
     conn.execute(
@@ -502,15 +782,33 @@ def start_queue_task(conn: sqlite3.Connection, row: sqlite3.Row, foreground: boo
         (now(), row["id"]),
     )
     conn.commit()
-    append_ledger({"kind": "queue", "status": "running", "profile": row["profile"], "agent": row["agent"], "repo": row["repo"], "prompt": row["task"], "details": {"queue_id": row["id"], "workspace": str(ws), "session": row["session"]}})
+    append_ledger(
+        {
+            "kind": "queue",
+            "status": "running",
+            "profile": row["profile"],
+            "agent": row["agent"],
+            "repo": row["repo"],
+            "prompt": row["task"],
+            "details": {
+                "queue_id": row["id"],
+                "workspace": str(ws),
+                "session": row["session"],
+            },
+        }
+    )
     if row["agent"] == "noop" or foreground:
-        updated = conn.execute("SELECT * FROM tasks WHERE id = ?", (row["id"],)).fetchone()
+        updated = conn.execute(
+            "SELECT * FROM tasks WHERE id = ?", (row["id"],)
+        ).fetchone()
         assert updated
         run_queue_task(conn, updated)
         return
     runner = AH / "scripts" / "agent_control.py"
     tmux_cmd = f"python3 {shlex.quote(str(runner))} queue run {shlex.quote(row['id'])}"
-    code, out = run(["tmux", "new-session", "-d", "-s", row["session"], tmux_cmd], timeout=30)
+    code, out = run(
+        ["tmux", "new-session", "-d", "-s", row["session"], tmux_cmd], timeout=30
+    )
     if code != 0:
         raise SystemExit(out)
     print(f"started {row['id']} session={row['session']} log={log}")
@@ -524,13 +822,21 @@ def run_queue_task(conn: sqlite3.Connection, row: sqlite3.Row) -> None:
     code, out = shell(command, ws, timeout=timeout)
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text(out + "\n", encoding="utf-8")
-    cancel_row = conn.execute("SELECT cancel_requested FROM tasks WHERE id = ?", (row["id"],)).fetchone()
-    status = "canceled" if cancel_row and int(cancel_row["cancel_requested"]) else ("done" if code == 0 else "failed")
+    cancel_row = conn.execute(
+        "SELECT cancel_requested FROM tasks WHERE id = ?", (row["id"],)
+    ).fetchone()
+    status = (
+        "canceled"
+        if cancel_row and int(cancel_row["cancel_requested"])
+        else ("done" if code == 0 else "failed")
+    )
     finish_queue_task(conn, row["id"], code, status)
     print(f"{status}: {row['id']} log={log}")
 
 
-def finish_queue_task(conn: sqlite3.Connection, qid: str, exit_code: int, status: str = "") -> None:
+def finish_queue_task(
+    conn: sqlite3.Connection, qid: str, exit_code: int, status: str = ""
+) -> None:
     if not status:
         status = "done" if int(exit_code) == 0 else "failed"
     row = lookup_queue_task(conn, qid)
@@ -549,7 +855,11 @@ def finish_queue_task(conn: sqlite3.Connection, qid: str, exit_code: int, status
             "agent": row["agent"],
             "repo": row["repo"],
             "prompt": row["task"],
-            "details": {"queue_id": row["id"], "exit_code": int(exit_code), "log": row["log"]},
+            "details": {
+                "queue_id": row["id"],
+                "exit_code": int(exit_code),
+                "log": row["log"],
+            },
         }
     )
 
@@ -565,7 +875,17 @@ def cancel_queue_task(conn: sqlite3.Connection, qid: str) -> None:
         (now(), now(), row["id"]),
     )
     conn.commit()
-    append_ledger({"kind": "queue", "status": "canceled", "profile": row["profile"], "agent": row["agent"], "repo": row["repo"], "prompt": row["task"], "details": {"queue_id": row["id"]}})
+    append_ledger(
+        {
+            "kind": "queue",
+            "status": "canceled",
+            "profile": row["profile"],
+            "agent": row["agent"],
+            "repo": row["repo"],
+            "prompt": row["task"],
+            "details": {"queue_id": row["id"]},
+        }
+    )
     print(f"canceled: {row['id']}")
 
 
@@ -574,17 +894,31 @@ def retry_queue_task(conn: sqlite3.Connection, qid: str) -> None:
     if not row:
         raise SystemExit(f"task not found: {qid}")
     if row["status"] not in {"failed", "canceled"}:
-        raise SystemExit(f"task {qid} is {row['status']}; only failed/canceled tasks can be retried")
+        raise SystemExit(
+            f"task {qid} is {row['status']}; only failed/canceled tasks can be retried"
+        )
     conn.execute(
         "UPDATE tasks SET status = 'queued', updated_at = ?, completed_at = '', exit_code = NULL, cancel_requested = 0 WHERE id = ?",
         (now(), row["id"]),
     )
     conn.commit()
-    append_ledger({"kind": "queue", "status": "retried", "profile": row["profile"], "agent": row["agent"], "repo": row["repo"], "prompt": row["task"], "details": {"queue_id": row["id"]}})
+    append_ledger(
+        {
+            "kind": "queue",
+            "status": "retried",
+            "profile": row["profile"],
+            "agent": row["agent"],
+            "repo": row["repo"],
+            "prompt": row["task"],
+            "details": {"queue_id": row["id"]},
+        }
+    )
     print(f"queued: {row['id']}")
 
 
-def tail_queue_task(conn: sqlite3.Connection, qid: str, lines: int, follow: bool) -> None:
+def tail_queue_task(
+    conn: sqlite3.Connection, qid: str, lines: int, follow: bool
+) -> None:
     row = lookup_queue_task(conn, qid)
     if not row:
         raise SystemExit(f"task not found: {qid}")
@@ -601,7 +935,9 @@ def tail_queue_task(conn: sqlite3.Connection, qid: str, lines: int, follow: bool
             printed = len(chunk)
         if not follow:
             return
-        current = conn.execute("SELECT status FROM tasks WHERE id = ?", (qid,)).fetchone()
+        current = conn.execute(
+            "SELECT status FROM tasks WHERE id = ?", (qid,)
+        ).fetchone()
         if current and current["status"] not in {"running", "queued"}:
             return
         time.sleep(2)
@@ -616,7 +952,11 @@ def reconcile_queue(conn: sqlite3.Connection) -> None:
         log = Path(row["log"])
         status = "failed"
         exit_code = 1
-        if log.exists() and "Traceback" not in log.read_text(encoding="utf-8", errors="replace")[-4000:]:
+        if (
+            log.exists()
+            and "Traceback"
+            not in log.read_text(encoding="utf-8", errors="replace")[-4000:]
+        ):
             status = "done" if row["agent"] == "noop" else "failed"
         finish_queue_task(conn, row["id"], exit_code, status)
         print(f"reconciled {row['id']} -> {status}")
@@ -710,17 +1050,111 @@ READ_CAPABILITY_SERVERS = {
 }
 
 
+# Authoritative per-tool effect classification. This is the source of truth the broker uses
+# instead of guessing from the tool *name* — which is trivially evaded by a synonym (the
+# `personalize_email` vs `send_email` problem). Any tool not listed here is classified by the
+# fallback in `classify_effect`, which fails CLOSED (treats unknown tools on write-capable
+# servers as mutations) so a newly-added tool can never silently bypass confirmation.
+TOOL_EFFECTS = {
+    # personal-actions facade
+    "personal_slack_send_message": "write",
+    "personal_gmail_send_email": "write",
+    "personal_gmail_create_draft": "write",
+    "personal_gmail_trash_email": "destructive",
+    "personal_calendar_create_event": "write",
+    "personal_calendar_update_event": "write",
+    "personal_slack_search_messages": "read",
+    "personal_gmail_search_messages": "read",
+    "personal_gmail_get_message": "read",
+    "personal_calendar_list_events": "read",
+    "personal_drive_search_files": "read",
+    # agents MCP
+    "repo_status": "read",
+    "repo_log": "read",
+    "repo_diff": "read",
+    "list_tasks": "read",
+    "list_mcp_servers": "read",
+    "list_agent_profiles": "read",
+    "list_agent_runs": "read",
+    "get_agent_run": "read",
+    "list_agent_queue": "read",
+    "list_pending_approvals": "read",
+    "run_task": "write",
+    "sync_config": "write",
+    # bigquery facade (read-only by construction)
+    "bigquery_execute_sql_readonly": "read",
+    "bigquery_dry_run_sql": "read",
+    # agent-broker (policy queries only)
+    "list_profiles": "read",
+    "get_profile": "read",
+    "authorize_tool_call": "read",
+}
+
+WRITE_EFFECTS = {"write", "destructive"}
+
+# Servers that have no mutating surface at all — unknown tools here stay read-classified.
+READ_ONLY_SERVERS = {"context7", "sequential-thinking", "bigquery"}
+
+# Read-intent verbs: an unknown tool whose name contains one of these is treated as a read
+# even on a write-capable server (most genuine read tools are search/get/list/...).
+READ_INTENT_WORDS = {
+    "read",
+    "get",
+    "list",
+    "search",
+    "show",
+    "describe",
+    "status",
+    "log",
+    "logs",
+    "diff",
+    "dry",
+    "fetch",
+    "find",
+    "query",
+    "view",
+    "aggregate",
+    "analyze",
+    "trace",
+    "whoami",
+    "summary",
+    "details",
+    "context",
+}
+
+
 def tool_words(tool: str) -> set[str]:
     return {part for part in re.split(r"[^a-z0-9]+", tool.lower()) if part}
 
 
-def infer_mutation(tool: str, mutation: bool) -> bool:
-    if mutation:
-        return True
-    return bool(tool_words(tool) & MUTATING_TOOL_WORDS)
+def classify_effect(server: str, tool: str, caller_marked_mutation: bool) -> str:
+    """Return 'read', 'write', or 'destructive' for a (server, tool). Authoritative registry
+    first; then a fail-closed fallback so unknown tools on write-capable servers count as
+    mutations rather than slipping through as reads."""
+    tool_key = tool.lower()
+    words = tool_words(tool)
+    if tool_key in TOOL_EFFECTS:
+        effect = TOOL_EFFECTS[tool_key]
+    elif server in READ_ONLY_SERVERS:
+        effect = "read"
+    elif words & MUTATING_TOOL_WORDS:
+        effect = "write"
+    elif words & READ_INTENT_WORDS:
+        effect = "read"
+    else:
+        effect = "write"  # fail closed: unknown, no read signal, write-capable server
+    if caller_marked_mutation and effect == "read":
+        effect = "write"
+    return effect
 
 
-def capability_matches(capability: str, server: str, tool: str, inferred_mutation: bool) -> bool:
+def infer_mutation(tool: str, mutation: bool, server: str = "") -> bool:
+    return classify_effect(server, tool, mutation) in WRITE_EFFECTS
+
+
+def capability_matches(
+    capability: str, server: str, tool: str, inferred_mutation: bool
+) -> bool:
     tool_key = tool.lower()
     if tool_key in CAPABILITY_TOOLS.get(capability, set()):
         return True
@@ -734,15 +1168,22 @@ def capability_matches(capability: str, server: str, tool: str, inferred_mutatio
     return tool_key == capability or tool_key.startswith(f"{capability}_")
 
 
-def capability_list_matches(capabilities: list[str], server: str, tool: str, inferred_mutation: bool) -> bool:
-    return any(capability_matches(capability, server, tool, inferred_mutation) for capability in capabilities)
+def capability_list_matches(
+    capabilities: list[str], server: str, tool: str, inferred_mutation: bool
+) -> bool:
+    return any(
+        capability_matches(capability, server, tool, inferred_mutation)
+        for capability in capabilities
+    )
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
     if args.eval_cmd == "list":
         for path in sorted(EVALS.glob("*.json")):
             data = load_json(path)
-            print(f"{data['id']}\t{data.get('profile','')}\t{data.get('description','')}")
+            print(
+                f"{data['id']}\t{data.get('profile', '')}\t{data.get('description', '')}"
+            )
         return 0
     if args.eval_cmd == "run":
         task_path = EVALS / f"{args.id}.json"
@@ -753,47 +1194,122 @@ def cmd_eval(args: argparse.Namespace) -> int:
         profile = args.profile or task.get("profile", "plan-readonly")
         agent = args.agent or task.get("agent", "noop")
         load_profile(profile)
-        append_ledger({"kind": "eval", "status": "started", "profile": profile, "agent": agent, "repo": str(repo), "prompt": task["prompt"], "details": {"eval_id": task["id"]}})
+        append_ledger(
+            {
+                "kind": "eval",
+                "status": "started",
+                "profile": profile,
+                "agent": agent,
+                "repo": str(repo),
+                "prompt": task["prompt"],
+                "details": {"eval_id": task["id"]},
+            }
+        )
         if agent != "noop":
-            qid_code = main_inner(["queue", "add", "--repo", str(repo), "--profile", profile, "--agent", agent, "--task", task["prompt"]])
+            qid_code = main_inner(
+                [
+                    "queue",
+                    "add",
+                    "--repo",
+                    str(repo),
+                    "--profile",
+                    profile,
+                    "--agent",
+                    agent,
+                    "--task",
+                    task["prompt"],
+                ]
+            )
             return qid_code
-        code, out = shell(task.get("success_command", "true"), repo, timeout=args.timeout)
+        code, out = shell(
+            task.get("success_command", "true"), repo, timeout=args.timeout
+        )
         status = "passed" if code == 0 else "failed"
-        append_ledger({"kind": "eval", "status": status, "profile": profile, "agent": agent, "repo": str(repo), "prompt": task["prompt"], "details": {"eval_id": task["id"], "exit_code": code, "output": out[-4000:]}})
+        append_ledger(
+            {
+                "kind": "eval",
+                "status": status,
+                "profile": profile,
+                "agent": agent,
+                "repo": str(repo),
+                "prompt": task["prompt"],
+                "details": {
+                    "eval_id": task["id"],
+                    "exit_code": code,
+                    "output": out[-4000:],
+                },
+            }
+        )
         print(out)
         print(f"eval {task['id']}: {status}")
         return code
     raise SystemExit("missing eval command")
 
 
-def broker_authorize(profile_name: str, server: str, tool: str, mutation: bool) -> dict[str, Any]:
+def broker_authorize(
+    profile_name: str,
+    server: str,
+    tool: str,
+    mutation: bool,
+    context_tainted: bool = False,
+) -> dict[str, Any]:
     profile = load_profile(profile_name)
     allowed_server = server in profile["mcp_servers"]
-    inferred_mutation = infer_mutation(tool, mutation)
-    disallowed = capability_list_matches(profile["disallowed_tools"], server, tool, inferred_mutation)
-    allowed_tool = capability_list_matches(profile["allowed_tools"], server, tool, inferred_mutation)
-    confirm_tool = capability_list_matches(profile["confirm"], server, tool, inferred_mutation)
+    effect = classify_effect(server, tool, mutation)
+    inferred_mutation = effect in WRITE_EFFECTS
+    disallowed = capability_list_matches(
+        profile["disallowed_tools"], server, tool, inferred_mutation
+    )
+    allowed_tool = capability_list_matches(
+        profile["allowed_tools"], server, tool, inferred_mutation
+    )
+    confirm_tool = capability_list_matches(
+        profile["confirm"], server, tool, inferred_mutation
+    )
     if confirm_tool:
         allowed_tool = True
     needs_confirm = inferred_mutation or confirm_tool
     allowed = allowed_server and allowed_tool and not disallowed
+    reason = "ok" if allowed else "server/tool denied by profile"
     if inferred_mutation and profile["risk"] in {"high", "critical"}:
         needs_confirm = True
+    # Provenance rule (CaMeL-style): data drawn from an untrusted/tainted context must never
+    # silently authorize a mutation. Any write triggered under taint requires confirmation; on
+    # high/critical profiles it is refused outright so injected content cannot drive a write.
+    if context_tainted and inferred_mutation:
+        needs_confirm = True
+        if profile["risk"] in {"high", "critical"}:
+            allowed = False
+            reason = "write blocked: mutation triggered in untrusted (tainted) context"
     return {
         "allowed": allowed,
         "needs_confirmation": needs_confirm,
         "profile": profile_name,
         "server": server,
         "tool": tool,
+        "effect": effect,
         "mutation": inferred_mutation,
         "caller_marked_mutation": mutation,
-        "reason": "ok" if allowed else "server/tool denied by profile",
+        "context_tainted": bool(context_tainted),
+        "reason": reason,
     }
 
 
 def cmd_broker(args: argparse.Namespace) -> int:
-    decision = broker_authorize(args.profile, args.server, args.tool, args.mutation)
-    append_ledger({"kind": "broker", "status": "allowed" if decision["allowed"] else "denied", "profile": args.profile, "agent": "", "repo": "", "prompt": f"{args.server}.{args.tool}", "details": decision})
+    decision = broker_authorize(
+        args.profile, args.server, args.tool, args.mutation, args.context_tainted
+    )
+    append_ledger(
+        {
+            "kind": "broker",
+            "status": "allowed" if decision["allowed"] else "denied",
+            "profile": args.profile,
+            "agent": "",
+            "repo": "",
+            "prompt": f"{args.server}.{args.tool}",
+            "details": decision,
+        }
+    )
     print(json.dumps(decision, indent=2, sort_keys=True))
     return 0 if decision["allowed"] else 2
 
@@ -824,6 +1340,7 @@ def build_parser() -> argparse.ArgumentParser:
     ll.add_argument("--limit", type=int, default=20)
     ls = lsub.add_parser("show")
     ls.add_argument("id")
+    lsub.add_parser("verify")
 
     ap = sub.add_parser("approve")
     asub = ap.add_subparsers(dest="approve_cmd", required=True)
@@ -831,6 +1348,8 @@ def build_parser() -> argparse.ArgumentParser:
     ar.add_argument("--kind", required=True)
     ar.add_argument("--summary", required=True)
     ar.add_argument("--payload", default="{}")
+    ar.add_argument("--ttl-hours", type=float, default=DEFAULT_APPROVAL_TTL_HOURS)
+    asub.add_parser("expire")
     al = asub.add_parser("list")
     al.add_argument("--status", default="pending")
     al.add_argument("--limit", type=int, default=20)
@@ -891,6 +1410,7 @@ def build_parser() -> argparse.ArgumentParser:
     bp.add_argument("--server", required=True)
     bp.add_argument("--tool", required=True)
     bp.add_argument("--mutation", action="store_true")
+    bp.add_argument("--context-tainted", action="store_true")
     return p
 
 

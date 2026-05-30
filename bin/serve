@@ -13,6 +13,21 @@ systemctl --user daemon-reload
 systemctl --user enable --now webdash.service
 echo "webdash.service: $(systemctl --user is-active webdash.service)"
 
+# Always-on agent telemetry: run the local OTel→Prometheus→Grafana stack as a user service and
+# mark telemetry on so agent shells export OTEL_* (cost/usage accrues 24/7, not just on demand).
+if command -v docker >/dev/null 2>&1; then
+  cp "$HOME/.config/agents/systemd/otel-stack.service" "$HOME/.config/systemd/user/otel-stack.service"
+  systemctl --user daemon-reload
+  if systemctl --user enable --now otel-stack.service 2>/dev/null; then
+    touch "$HOME/.config/agents/observability/.telemetry-on"
+    echo "otel-stack.service: $(systemctl --user is-active otel-stack.service 2>/dev/null || echo unknown) — telemetry on"
+  else
+    echo "otel-stack.service: failed to start (check 'docker compose' access for the user service)"
+  fi
+else
+  echo "telemetry: skipped (no docker on PATH — install Docker/OrbStack, then run 'obs on')"
+fi
+
 if command -v tailscale >/dev/null 2>&1 && tailscale status >/dev/null 2>&1; then
   echo "==> exposing on the tailnet (tailnet members only, HTTPS)"
   tailscale serve --bg 8787 2>&1 || tailscale serve --bg http://127.0.0.1:8787 2>&1 || true
