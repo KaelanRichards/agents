@@ -42,6 +42,37 @@ def ensure_state() -> None:
     STATE.mkdir(parents=True, exist_ok=True)
 
 
+def events_path() -> Path:
+    ensure_state()
+    return STATE / "events.jsonl"
+
+
+# Keep the live event log bounded so a long-running daemon tailing it never reads an
+# unbounded file. We trim to the last N lines opportunistically on append.
+EVENTS_MAX_LINES = 5000
+
+
+def emit_event(event: dict[str, Any]) -> None:
+    """Append a lightweight event to state/events.jsonl. This is the projection a daemon
+    (agentd) tails to push live updates to clients — append-only and best-effort: an emit
+    failure must never break the underlying control-plane action."""
+    try:
+        path = events_path()
+        record = {"ts": event.get("ts") or now(), **event}
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, sort_keys=True) + "\n")
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            if len(lines) > EVENTS_MAX_LINES * 2:
+                path.write_text(
+                    "\n".join(lines[-EVENTS_MAX_LINES:]) + "\n", encoding="utf-8"
+                )
+        except OSError:
+            pass
+    except OSError:
+        pass
+
+
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -147,6 +178,9 @@ def validate_profile(data: dict[str, Any], path: Path) -> None:
 
 def cmd_profile(args: argparse.Namespace) -> int:
     if args.profile_cmd == "list":
+        if getattr(args, "json", False):
+            _print_json(query_profiles())
+            return 0
         for path in profile_files():
             data = load_json(path)
             print(f"{data['name']}\t{data['risk']}\t{data['description']}")
@@ -393,6 +427,22 @@ def append_ledger(entry: dict[str, Any]) -> dict[str, Any]:
         with ledger_path().open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, sort_keys=True) + "\n")
         head.write_text(entry["hash"] + "\n", encoding="utf-8")
+    # Every ledger append is a control-plane transition (queue/approval/broker/eval/taint),
+    # so projecting it onto the event stream gives clients one live feed for all of them.
+    emit_event(
+        {
+            "ts": entry["ts"],
+            "type": "ledger",
+            "kind": entry.get("kind", ""),
+            "status": entry.get("status", ""),
+            "id": entry.get("id", ""),
+            "profile": entry.get("profile", ""),
+            "agent": entry.get("agent", ""),
+            "repo": entry.get("repo", ""),
+            "summary": entry.get("prompt", ""),
+            "details": entry.get("details", {}),
+        }
+    )
     return entry
 
 
@@ -461,7 +511,10 @@ def cmd_ledger(args: argparse.Namespace) -> int:
         print(json.dumps(entry, indent=2, sort_keys=True))
         return 0
     if args.ledger_cmd == "list":
-        entries = iter_ledger()[-args.limit :]
+        entries = query_ledger(args.limit)
+        if getattr(args, "json", False):
+            _print_json(entries)
+            return 0
         for e in entries:
             print(
                 f"{e.get('ts', '')}\t{e.get('id', '')}\t{e.get('kind', '')}\t{e.get('status', '')}\t{e.get('profile', '')}\t{e.get('repo', '')}"
@@ -591,6 +644,9 @@ def cmd_approve(args: argparse.Namespace) -> int:
             "SELECT * FROM approvals WHERE (? = 'all' OR status = ?) ORDER BY created_at DESC LIMIT ?",
             (args.status, args.status, args.limit),
         ).fetchall()
+        if getattr(args, "json", False):
+            _print_json([dict(r) for r in rows])
+            return 0
         for r in rows:
             print(
                 f"{r['created_at']}\t{r['id']}\t{r['status']}\t{r['kind']}\t{r['summary']}"
@@ -740,6 +796,9 @@ def cmd_queue(args: argparse.Namespace) -> int:
             "SELECT * FROM tasks WHERE (? = 'all' OR status = ?) ORDER BY created_at DESC LIMIT ?",
             (args.status, args.status, args.limit),
         ).fetchall()
+        if getattr(args, "json", False):
+            _print_json([dict(r) for r in rows])
+            return 0
         for r in rows:
             print(
                 f"{r['created_at']}\t{r['id']}\t{r['status']}\t{r['profile']}\t{r['agent']}\t{r['repo']}\t{r['task'][:80]}"
@@ -1234,6 +1293,9 @@ def capability_list_matches(
 
 def cmd_eval(args: argparse.Namespace) -> int:
     if args.eval_cmd == "list":
+        if getattr(args, "json", False):
+            _print_json(query_evals())
+            return 0
         for path in sorted(EVALS.glob("*.json")):
             data = load_json(path)
             print(
@@ -1436,9 +1498,103 @@ def cmd_broker_hook(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Structured query API
+#
+# These return plain Python data (JSON-serializable lists/dicts) and are the typed boundary the
+# daemon (web/agentd.py) imports instead of scraping CLI text. The CLI commands render the same
+# data as tab-separated text (default) or JSON (`--json`), so the human and machine surfaces
+# never drift.
+# ---------------------------------------------------------------------------
+
+
+def query_profiles() -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for path in profile_files():
+        data = load_json(path)
+        out.append(
+            {
+                "name": data["name"],
+                "risk": data.get("risk", ""),
+                "description": data.get("description", ""),
+                "mcp_servers": data.get("mcp_servers", []),
+                "allowed_tools": data.get("allowed_tools", []),
+                "disallowed_tools": data.get("disallowed_tools", []),
+                "confirm": data.get("confirm", []),
+            }
+        )
+    return out
+
+
+def query_ledger(limit: int = 20) -> list[dict[str, Any]]:
+    return iter_ledger()[-limit:]
+
+
+def query_approvals(status: str = "pending", limit: int = 20) -> list[dict[str, Any]]:
+    conn = approval_db()
+    expire_approvals(conn)
+    rows = conn.execute(
+        "SELECT * FROM approvals WHERE (? = 'all' OR status = ?) ORDER BY created_at DESC LIMIT ?",
+        (status, status, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_queue(status: str = "all", limit: int = 20) -> list[dict[str, Any]]:
+    conn = queue_db()
+    rows = conn.execute(
+        "SELECT * FROM tasks WHERE (? = 'all' OR status = ?) ORDER BY created_at DESC LIMIT ?",
+        (status, status, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def query_evals() -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for path in sorted(EVALS.glob("*.json")):
+        data = load_json(path)
+        out.append(
+            {
+                "id": data["id"],
+                "profile": data.get("profile", ""),
+                "agent": data.get("agent", ""),
+                "description": data.get("description", ""),
+            }
+        )
+    return out
+
+
+def query_snapshot() -> dict[str, Any]:
+    """One aggregate read for the daemon's initial render / status pill."""
+    pending = query_approvals("pending", 100)
+    running = query_queue("running", 100)
+    queued = query_queue("queued", 100)
+    chain = verify_ledger()
+    return {
+        "ts": now(),
+        "pending_approvals": len(pending),
+        "running_tasks": len(running),
+        "queued_tasks": len(queued),
+        "ledger_ok": bool(chain.get("ok")),
+        "ledger_checked": chain.get("checked", 0),
+        "profiles": [p["name"] for p in query_profiles()],
+    }
+
+
+def _print_json(data: Any) -> None:
+    print(json.dumps(data, indent=2, sort_keys=True, default=str))
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="agent-control")
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable JSON instead of text (list commands + snapshot)",
+    )
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("snapshot", help="aggregate status snapshot (always JSON)")
 
     pp = sub.add_parser("profile")
     psub = pp.add_subparsers(dest="profile_cmd", required=True)
@@ -1543,6 +1699,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main_inner(argv: list[str]) -> int:
     args = build_parser().parse_args(argv)
+    if args.cmd == "snapshot":
+        _print_json(query_snapshot())
+        return 0
     if args.cmd == "profile":
         return cmd_profile(args)
     if args.cmd == "ledger":
