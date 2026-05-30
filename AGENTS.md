@@ -67,6 +67,16 @@ This is the single source of truth for both agents. Canonical file lives at
 - jj is **undoable** — use `jj undo` / `jj op log` instead of risky history surgery.
 - Plain `git` still works underneath when a tool needs it; use `gh` for PRs/issues/CI.
 - Identity: `Kaelan Richards <kadokaelan@gmail.com>`. Only push when asked; never commit secrets.
+- **Never run a jj read concurrently with a jj history mutation.** jj discards divergent
+  concurrent operations, so a backgrounded `jj log`/`jj status` (or a parallel tool batch) running
+  while `jj squash`/`abandon`/`rebase`/`describe` executes will silently undo the mutation. Run
+  history-rewriting commands **alone** — not in a parallel tool block, not while any background job
+  touches the repo — then read the result in a separate step.
+- **Commit each verified step to a jj change as you go.** Don't carry multi-file work uncommitted
+  across turns: the working copy (`@`) can be swapped out by other jj activity, abandoning the
+  changes. After a step passes its check, `jj describe` it (and `jj new` for the next step).
+- For a big multi-step build, isolate it in `wt new <name>` so the main working copy can't be
+  swapped out from under the work and concurrent jj activity elsewhere can't touch it.
 
 ## MCP servers & this config — READ BEFORE CHANGING
 - MCP servers for **both** agents are generated from `~/.config/agents/mcp.json` by the
@@ -113,6 +123,13 @@ This is the single source of truth for both agents. Canonical file lives at
   not just declared. The broker logic is the *backend of the native hook*, not a parallel system.
 - **Hooks (active in both tools)**: edits are auto-formatted (ruff/biome/shfmt/rustfmt);
   a Bash guard blocks destructive/security-sensitive commands.
+  - Because the format hook **rewrites the file after every Write/Edit**, a follow-up `Edit` whose
+    `old_string` covers reformatted text will silently fail to match (a no-op). After writing a
+    file, re-read it before editing the same region — or just re-`Write` the whole file.
+  - **Don't batch dependent or same-file edits in one parallel tool block.** Tools in a parallel
+    batch don't see each other's results, so same-file edits race (stale-file errors) and one
+    failure cancels the whole batch. Sequence anything order-dependent; reserve parallel batches
+    for genuinely independent calls.
 - **Health check**: `agents-doctor` verifies tools, symlinks, MCP parity, config validity, and
   agent-CLI version drift — run it after changes or on a new machine.
 - **Overview**: `agents-status` — read-only single pane (VMs + cost, health, MCP servers,
