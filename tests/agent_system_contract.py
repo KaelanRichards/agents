@@ -85,6 +85,7 @@ def main() -> None:
         "personal-assistant",
         "prod-observer",
         "prod-mutator-confirmed",
+        "vizcom-sre",
     }
     actual_profiles = {path.stem for path in profiles_dir.glob("*.json")}
     assert required_profiles.issubset(actual_profiles)

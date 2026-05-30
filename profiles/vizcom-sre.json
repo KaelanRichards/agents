@@ -1,0 +1,37 @@
+{
+	"name": "vizcom-sre",
+	"description": "Read-only, recommend-only SRE agent for Vizcom prod: observability + repo + Linear context, DM-only outreach. Never mutates Vizcom infra.",
+	"mcp_servers": [
+		"datadog",
+		"sentry",
+		"github",
+		"linear",
+		"agent-broker",
+		"slack-dm"
+	],
+	"allowed_tools": [
+		"datadog_read",
+		"sentry_read",
+		"github_read",
+		"linear_read",
+		"slack_post"
+	],
+	"disallowed_tools": [
+		"datadog_write",
+		"sentry_write",
+		"github_write",
+		"prod_mutation",
+		"gmail_send",
+		"gmail_trash",
+		"calendar_create",
+		"calendar_update"
+	],
+	"filesystem": {
+		"mode": "read-only",
+		"roots": ["current_repo", "~/code/vizcom", "~/code/vizcom-sre"]
+	},
+	"shell": { "mode": "ask", "mutating": false },
+	"confirm": ["slack_post", "large_export"],
+	"skills": ["security-threat-model"],
+	"risk": "medium"
+}
