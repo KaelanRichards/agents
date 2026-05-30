@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agents</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <nav id="rail">
+        <div class="brand"><span class="dot"></span> agents</div>
+        <button class="nav" data-panel="fleet">Fleet</button>
+        <button class="nav" data-panel="runs">Runs</button>
+        <button class="nav" data-panel="approvals">
+          Approvals <span class="badge" id="badge-approvals" hidden>0</span>
+        </button>
+        <button class="nav" data-panel="queue">Queue</button>
+        <button class="nav" data-panel="config">Config</button>
+        <button class="nav" data-panel="memory">Memory</button>
+        <div class="rail-foot">
+          <select id="conn-select" title="Active connection"></select>
+          <span id="conn-status" class="status">…</span>
+        </div>
+      </nav>
+      <main id="content"><div class="loading">Loading…</div></main>
+    </div>
+    <div id="toast" class="toast"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

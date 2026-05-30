@@ -1,0 +1,18 @@
+[Unit]
+Description=agents agentd (typed control-plane daemon + SSE)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# uv + the tools agentd shells out to must be on PATH for the service:
+Environment=PATH=/home/linuxbrew/.linuxbrew/bin:%h/.local/bin:%h/.local/share/mise/shims:/usr/bin:/bin
+Environment=AGENTD_HOST=127.0.0.1
+# Optional: AGENTD_TOKEN for tailnet exposure (defense-in-depth). serve generates it. '-' = optional.
+EnvironmentFile=-%h/.config/agents-secrets/agentd.env
+WorkingDirectory=%h/.config/agents
+ExecStart=%h/.local/bin/agentd
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

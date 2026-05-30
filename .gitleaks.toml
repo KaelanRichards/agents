@@ -1,0 +1,16 @@
+# gitleaks config for the agents repo.
+# Keep all of gitleaks' default rules, but allowlist known false positives. The only hits here are
+# in build artifacts that are never committed (Rust compiles high-entropy symbol blobs into
+# target/**/*.rmeta) — `gitleaks detect --no-git` scans the working tree including gitignored dirs,
+# so we exclude them by path to keep the secret scan signal clean.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Build artifacts and lockfiles are not secret material."
+paths = [
+  '''.*/target/.*''',
+  '''.*\.rmeta$''',
+  '''.*\.rlib$''',
+  '''.*Cargo\.lock$''',
+]
