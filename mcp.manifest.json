@@ -1,0 +1,59 @@
+{
+	"_doc": "Reliability manifest for the MCP fleet — consumed by `mcp-sync verify` and per-repo deploy/preflight.sh. For each server: whether a loop that lists it should treat it as REQUIRED (fail loud / exit non-zero at preflight) or optional (record degraded, continue); the credential it needs and where that cred lives; the token type; and the cheap auth probe to run at startup. Server *definitions* live in mcp.json; this file is the operational contract. See the deep-research report (2026-05-30) for rationale.",
+	"updated_at": "2026-05-30",
+	"servers": {
+		"slack-dm": {
+			"transport": "stdio",
+			"credential_env": "SLACK_BOT_TOKEN",
+			"token_type": "slack-bot xoxb",
+			"required_scopes": [
+				"chat:write",
+				"im:write",
+				"im:read",
+				"im:history",
+				"reactions:read"
+			],
+			"scope_source": "x-oauth-scopes response header on any Web API call (NOT auth.test body)",
+			"preflight": "auth.test -> ok:true AND assert required_scopes subset of x-oauth-scopes header",
+			"notes": "Read path uses conversations.history (im:history) + inline reactions (reactions:read). NEVER search.messages (user-token/search:read only). Scope changes require an app REINSTALL (human). Reactions returned inline; reactions.get(full=true) only for the complete reactor list."
+		},
+		"github": {
+			"transport": "http",
+			"endpoint": "https://api.githubcopilot.com/mcp/",
+			"credential_env": "GITHUB_PAT",
+			"token_type": "fine-grained PAT (ghp_/github_pat_) — NOT a gh CLI gho_ OAuth token, NOT a ghs_ App installation token",
+			"preflight": "GET /rate_limit or get_me with the Bearer PAT -> 200",
+			"notes": "gho_ failed with 401: the remote MCP validates token audience and a gh-CLI OAuth user token has the wrong audience. Remote endpoint accepts only (1) one-click OAuth or (2) a PAT. Headless/CI loops should OMIT this server and use the `gh` CLI (vizcom-sre, vizcom-review) instead of shipping a server that can't auth unattended."
+		},
+		"datadog": {
+			"transport": "http",
+			"credential_env": "DD_API_KEY + DD_APP_KEY",
+			"token_type": "scoped read-only API + application keys",
+			"preflight": "any read with both header keys -> 200",
+			"notes": "US5. Use ?toolsets= to limit exposed tools (already core,apm,error-tracking,software-delivery)."
+		},
+		"sentry": {
+			"transport": "http",
+			"endpoint": "https://mcp.sentry.dev/mcp",
+			"credential_env": "SENTRY_AUTH_TOKEN",
+			"token_type": "Sentry user auth token (org:read project:read event:read member:read)",
+			"preflight": "whoami -> identity",
+			"notes": "Remote OAuth server. Headless: pre-mint the auth token once and store in the secrets env file; do NOT rely on interactive OAuth in cron/systemd. If absent, strict-config it out rather than hang startup."
+		},
+		"linear": {
+			"transport": "http",
+			"endpoint": "https://mcp.linear.app/mcp",
+			"token_type": "OAuth (interactive)",
+			"notes": "Remote OAuth — read-only use. Headless agents that can't complete OAuth should omit it from their strict config (it was a startup-hang contributor)."
+		},
+		"npx-stdio": {
+			"_group": ["context7", "playwright", "filesystem", "sequential-thinking"],
+			"notes": "npx-launched stdio servers need node and a (possibly cold) network fetch on first run — keep them OUT of headless/VM strict configs (they contributed to the claude -p first-turn hang). Versions are pinned in mcp.json; run `mcp-sync drift` in CI."
+		}
+	},
+	"preflight_policy": {
+		"required_fail": "exit non-zero with a named per-server/per-scope error so the runner alerts; do not start the tick.",
+		"optional_fail": "record a degraded-capability line in the tick output (never claim success for a down capability) and continue.",
+		"strict_config_caveat": "--strict-mcp-config does NOT override disabledMcpServers in ~/.claude.json (Claude Code bug #14490); verify must catch a required server disabled there. Always pass a non-empty --mcp-config with strict or it silently strips all servers."
+	}
+}

@@ -1,12 +1,33 @@
 {
-  "name": "prod-observer",
-  "description": "Read-first production investigation across observability and issue systems.",
-  "mcp_servers": ["datadog", "sentry", "bigquery", "github", "linear", "agent-broker"],
-  "allowed_tools": ["datadog_read", "sentry_read", "bigquery_readonly", "github_read", "linear_read"],
-  "disallowed_tools": ["datadog_write", "sentry_write", "bigquery_write", "prod_mutation"],
-  "filesystem": {"mode": "read-only", "roots": ["current_repo", "~/.config/agents"]},
-  "shell": {"mode": "ask", "mutating": false},
-  "confirm": ["bigquery_cost", "large_export"],
-  "skills": ["security-threat-model"],
-  "risk": "medium"
+	"name": "prod-observer",
+	"description": "Read-first production investigation across observability and issue systems.",
+	"mcp_servers": [
+		"datadog",
+		"sentry",
+		"bigquery",
+		"linear",
+		"agent-broker",
+		"slack-dm"
+	],
+	"allowed_tools": [
+		"datadog_read",
+		"sentry_read",
+		"bigquery_readonly",
+		"github_read",
+		"linear_read"
+	],
+	"disallowed_tools": [
+		"datadog_write",
+		"sentry_write",
+		"bigquery_write",
+		"prod_mutation"
+	],
+	"filesystem": {
+		"mode": "read-only",
+		"roots": ["current_repo", "~/.config/agents"]
+	},
+	"shell": { "mode": "ask", "mutating": false },
+	"confirm": ["bigquery_cost", "large_export"],
+	"skills": ["security-threat-model"],
+	"risk": "medium"
 }
