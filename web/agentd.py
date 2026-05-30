@@ -80,17 +80,10 @@ def sh(cmd: str, timeout: int = 30) -> tuple[int, str]:
 
 
 def fleet() -> dict:
-    # hcloud (~1s, network) and agents-doctor (~6s, full check battery) are independent and slow,
-    # so run them concurrently and time-box each. Previously they ran sequentially (~7s), which
-    # made the default panel read as a frozen window. The ledger check is in-process and instant.
-    from concurrent.futures import ThreadPoolExecutor
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        f_hcloud = pool.submit(sh, "hcloud server list -o json 2>/dev/null", 8)
-        f_doctor = pool.submit(sh, "agents-doctor 2>/dev/null | tail -1", 12)
-        code, out = f_hcloud.result()
-        _, doctor = f_doctor.result()
-
+    # Fast path: hcloud (~1s) + in-process ledger check only, so the default panel renders almost
+    # instantly. agents-doctor (~4-6s) is NOT called here — it's fetched lazily via /api/doctor
+    # after the panel paints, so a slow check never makes the window look frozen.
+    code, out = sh("hcloud server list -o json 2>/dev/null", 8)
     servers: list[dict] = []
     total = 0.0
     if code == 0 and out:
@@ -114,10 +107,15 @@ def fleet() -> dict:
     return {
         "servers": servers,
         "monthly_eur": round(total, 2),
-        "doctor": doctor or "(agents-doctor unavailable)",
         "ledger_ok": bool(chain.get("ok")),
         "ledger_checked": chain.get("checked", 0),
     }
+
+
+def doctor() -> dict:
+    """agents-doctor's one-line summary — slow (~4-6s), so the Fleet panel fetches it separately."""
+    _, line = sh("agents-doctor 2>/dev/null | tail -1", 15)
+    return {"doctor": line or "(agents-doctor unavailable)"}
 
 
 def mcp_servers() -> list[dict]:

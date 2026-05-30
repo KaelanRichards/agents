@@ -49,6 +49,43 @@ async function run(fn) {
 	}
 }
 
+// ---- loading-state helpers ----
+
+// Run an async action with a button shown in its busy state (spinner, input blocked).
+async function busy(btn, fn) {
+	if (!btn) return run(fn);
+	const wasDisabled = btn.disabled;
+	btn.classList.add("busy");
+	btn.disabled = true;
+	try {
+		return await run(fn);
+	} finally {
+		btn.classList.remove("busy");
+		btn.disabled = wasDisabled;
+	}
+}
+
+// Panel-shaped skeleton shown while a panel's data is in flight (replaces "Loading…").
+function skeleton(name) {
+	const rows = (n) =>
+		Array.from({ length: n }, () => `<div class="skel skel-row"></div>`).join(
+			"",
+		);
+	const cards = (n) =>
+		Array.from(
+			{ length: n },
+			() => `<div class="card skel skel-card"></div>`,
+		).join("");
+	const head = (t) =>
+		`<h1>${t}</h1><p class="sub skel skel-line" style="width:38%"></p>`;
+	if (name === "fleet")
+		return `${head("Fleet")}<div class="cards">${cards(3)}</div>${rows(4)}`;
+	if (name === "config")
+		return `${head("Config")}<div class="cards">${cards(2)}</div>${rows(6)}`;
+	const title = name.charAt(0).toUpperCase() + name.slice(1);
+	return `${head(title)}${rows(7)}`;
+}
+
 // ---- panel registry -------------------------------------------------------
 
 let current = "fleet";
@@ -68,7 +105,7 @@ async function select(name) {
 	document
 		.querySelectorAll(".nav")
 		.forEach((b) => b.classList.toggle("active", b.dataset.panel === name));
-	content().innerHTML = `<div class="loading">Loading…</div>`;
+	content().innerHTML = skeleton(name);
 	try {
 		await panels[name]();
 	} catch (e) {
@@ -83,7 +120,12 @@ async function select(name) {
 }
 
 function refreshCurrent() {
-	if (current) panels[current]?.();
+	if (!current) return;
+	const c = content();
+	c.classList.add("refreshing");
+	Promise.resolve(panels[current]?.()).finally(() =>
+		c.classList.remove("refreshing"),
+	);
 }
 
 // ---- Fleet ----------------------------------------------------------------
@@ -114,7 +156,7 @@ async function renderFleet() {
       <div class="card"><div class="label">Servers</div><div class="kpi">${servers.length}</div></div>
       <div class="card"><div class="label">Ledger chain</div><div class="kpi small">${f.ledger_ok ? "✓ ok" : "⚠ BROKEN"} <span class="label">(${f.ledger_checked} checked)</span></div></div>
     </div>
-    <div class="card"><div class="label">Doctor</div><div class="mono" style="margin-top:6px">${esc(f.doctor)}</div></div>
+    <div class="card"><div class="label">Doctor</div><div class="mono" id="doctor-line" style="margin-top:6px"><span class="spinner"></span>checking…</div></div>
     <div class="row" style="margin:14px 0">
       <button class="btn primary" id="btn-sync">Sync config</button>
       <button class="btn" id="btn-doctor">Run doctor</button>
@@ -124,22 +166,31 @@ async function renderFleet() {
       <tbody>${rows}</tbody>
     </table>`;
 
-	$("#btn-sync").onclick = () =>
-		run(() => action("sync")).then((r) =>
+	api("/api/doctor")
+		.then((d) => {
+			const el = $("#doctor-line");
+			if (el) el.textContent = d.doctor;
+		})
+		.catch(() => {
+			const el = $("#doctor-line");
+			if (el) el.textContent = "(doctor unavailable)";
+		});
+	$("#btn-sync").onclick = (e) =>
+		busy(e.currentTarget, () => action("sync")).then((r) =>
 			toast(r.ok ? "Synced" : "Sync failed", !r.ok),
 		);
-	$("#btn-doctor").onclick = () =>
-		run(() => action("doctor")).then((r) =>
+	$("#btn-doctor").onclick = (e) =>
+		busy(e.currentTarget, () => action("doctor")).then((r) =>
 			toast(r.ok ? "Doctor ok" : "Doctor reported issues", !r.ok),
 		);
 	content()
 		.querySelectorAll("[data-reboot]")
 		.forEach((b) => {
-			b.onclick = () => {
+			b.onclick = (e) => {
 				if (confirm(`Reboot ${b.dataset.reboot}?`))
-					run(() => action("reboot", { id: b.dataset.reboot })).then(() =>
-						toast("Reboot requested"),
-					);
+					busy(e.currentTarget, () =>
+						action("reboot", { id: b.dataset.reboot }),
+					).then(() => toast("Reboot requested"));
 			};
 		});
 }
@@ -202,17 +253,25 @@ async function renderApprovals() {
       <tbody>${body}</tbody>
     </table>`;
 
-	const decide = (id, verb) =>
-		run(() => action(verb, { id })).then(() => {
+	const decide = (id, verb, btn) =>
+		busy(btn, () => action(verb, { id })).then(() => {
 			toast(verb === "approve" ? "Approved" : "Rejected");
 			renderApprovals();
 		});
 	content()
 		.querySelectorAll("[data-approve]")
-		.forEach((b) => (b.onclick = () => decide(b.dataset.approve, "approve")));
+		.forEach(
+			(b) =>
+				(b.onclick = (e) =>
+					decide(b.dataset.approve, "approve", e.currentTarget)),
+		);
 	content()
 		.querySelectorAll("[data-reject]")
-		.forEach((b) => (b.onclick = () => decide(b.dataset.reject, "reject")));
+		.forEach(
+			(b) =>
+				(b.onclick = (e) =>
+					decide(b.dataset.reject, "reject", e.currentTarget)),
+		);
 }
 
 function updateApprovalBadge(n) {
@@ -275,7 +334,7 @@ async function renderQueue() {
     </table>
     <div id="q-log"></div>`;
 
-	$("#q-add").onclick = () => {
+	$("#q-add").onclick = (e) => {
 		const args = {
 			repo: $("#q-repo").value.trim(),
 			profile: $("#q-profile").value,
@@ -284,7 +343,7 @@ async function renderQueue() {
 		};
 		if (!args.repo || !args.task)
 			return toast("Repo and task are required", true);
-		run(() => action("queue_add", args)).then((r) => {
+		busy(e.currentTarget, () => action("queue_add", args)).then((r) => {
 			toast(
 				r.ok ? "Enqueued" : "Enqueue failed: " + (r.output || r.error || ""),
 				!r.ok,
@@ -293,27 +352,31 @@ async function renderQueue() {
 		});
 	};
 
-	const act = (id, verb, label) =>
-		run(() => action(verb, { id })).then((r) => {
+	const act = (id, verb, label, btn) =>
+		busy(btn, () => action(verb, { id })).then((r) => {
 			toast(r.ok ? label : r.output || r.error || "failed", !r.ok);
 			renderQueue();
 		});
 	content()
 		.querySelectorAll("[data-start]")
 		.forEach(
-			(b) => (b.onclick = () => act(b.dataset.start, "queue_start", "Started")),
+			(b) =>
+				(b.onclick = (e) =>
+					act(b.dataset.start, "queue_start", "Started", e.currentTarget)),
 		);
 	content()
 		.querySelectorAll("[data-cancel]")
 		.forEach(
 			(b) =>
-				(b.onclick = () => act(b.dataset.cancel, "queue_cancel", "Canceled")),
+				(b.onclick = (e) =>
+					act(b.dataset.cancel, "queue_cancel", "Canceled", e.currentTarget)),
 		);
 	content()
 		.querySelectorAll("[data-retry]")
 		.forEach(
 			(b) =>
-				(b.onclick = () => act(b.dataset.retry, "queue_retry", "Requeued")),
+				(b.onclick = (e) =>
+					act(b.dataset.retry, "queue_retry", "Requeued", e.currentTarget)),
 		);
 	content()
 		.querySelectorAll("[data-log]")
@@ -399,10 +462,12 @@ async function renderConfig() {
 		await run(() => writeDoc(configFile, text));
 		return true;
 	};
-	$("#cfg-save").onclick = () =>
-		save().then((ok) => ok && toast("Saved " + configFile));
-	$("#cfg-save-sync").onclick = () =>
-		save().then((ok) => {
+	$("#cfg-save").onclick = (e) =>
+		busy(e.currentTarget, save).then(
+			(ok) => ok && toast("Saved " + configFile),
+		);
+	$("#cfg-save-sync").onclick = (e) =>
+		busy(e.currentTarget, save).then((ok) => {
 			if (!ok) return;
 			toast("Saved — syncing…");
 			run(() => action("sync")).then((r) =>
@@ -493,7 +558,7 @@ async function main() {
 	wireNav();
 	await loadConnections();
 	await pollHealth();
-	await select("fleet");
+	await select("runs");
 
 	// Live updates pushed from the Rust poller.
 	listen("snapshot", (e) => {

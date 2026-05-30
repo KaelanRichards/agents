@@ -129,6 +129,100 @@ button {
 	padding: 24px 0;
 }
 
+/* ---- Loading states ---- */
+
+/* Shimmering skeleton blocks used while a panel's data is in flight. */
+@keyframes shimmer {
+	0% {
+		background-position: -480px 0;
+	}
+	100% {
+		background-position: 480px 0;
+	}
+}
+.skel {
+	border-radius: 6px;
+	background: linear-gradient(
+		90deg,
+		var(--panel) 0%,
+		var(--panel-2) 50%,
+		var(--panel) 100%
+	);
+	background-size: 480px 100%;
+	animation: shimmer 1.2s infinite linear;
+}
+.skel-line {
+	height: 12px;
+	margin: 8px 0;
+}
+.skel-row {
+	height: 38px;
+	margin: 6px 0;
+}
+.skel-card {
+	height: 78px;
+}
+.skel-kpi {
+	height: 26px;
+	width: 60%;
+	margin-top: 8px;
+}
+
+/* Inline spinner for lazy fields (e.g. the Doctor line) and busy buttons. */
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+.spinner {
+	display: inline-block;
+	width: 12px;
+	height: 12px;
+	border: 2px solid var(--line);
+	border-top-color: var(--accent);
+	border-radius: 50%;
+	animation: spin 0.7s linear infinite;
+	vertical-align: -2px;
+	margin-right: 6px;
+}
+
+/* Busy button: dims, blocks input, shows a spinner where the label was. */
+.btn.busy {
+	color: transparent !important;
+	pointer-events: none;
+	position: relative;
+}
+.btn.busy::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	margin: auto;
+	width: 13px;
+	height: 13px;
+	border: 2px solid currentColor;
+	border-top-color: transparent;
+	border-radius: 50%;
+	color: var(--text);
+	animation: spin 0.7s linear infinite;
+}
+
+/* A thin top progress bar shown while a panel refreshes in place. */
+#content.refreshing {
+	position: relative;
+}
+#content.refreshing::before {
+	content: "";
+	position: fixed;
+	top: 0;
+	left: 184px;
+	right: 0;
+	height: 2px;
+	background: linear-gradient(90deg, transparent, var(--accent), transparent);
+	background-size: 50% 100%;
+	animation: shimmer 1s infinite linear;
+	z-index: 50;
+}
+
 h1 {
 	font-size: 19px;
 	margin: 0 0 4px;
