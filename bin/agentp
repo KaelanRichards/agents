@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# agentp — launch Claude Code *under* a canonical permission profile, so the profile is a real
-# boundary rather than advice. The profile compiles (via `agent-profile compile`) into:
-#   generated/profiles/claude/<profile>.mcp.json       — only the servers the profile grants
-#   generated/profiles/claude/<profile>.settings.json  — deny/ask rules for its filesystem/shell
-#                                                         mode and disallowed/confirm tools
-# We pass the subset with --strict-mcp-config (Claude loads *only* those servers) and layer the
-# settings on top, so a low-risk profile literally cannot reach a server or tool it doesn't list.
+# agentp — launch a coding agent *under* a canonical permission profile, so the profile is a real
+# boundary rather than advice.
+#
+# Claude (default): passes the profile's MCP subset with --strict-mcp-config (only those servers
+#   load) and a compiled --settings file (deny/ask rules + native OS sandbox). It also exports
+#   AGENTS_PROFILE so the profile-broker PreToolUse hook can enforce per-tool read/write policy
+#   that settings alone can't express (e.g. allow datadog reads, deny datadog writes).
+#     generated/profiles/claude/<profile>.mcp.json / .settings.json
+#
+# Codex (--codex): launches `codex` with the profile's native --sandbox + --ask-for-approval
+#   (Codex's OS-enforced containment). Codex has no --strict-mcp-config, so server subsetting is
+#   not enforced there; containment is via sandbox + approval policy.
 #
 # Usage:
 #   agentp <profile> [-- <extra claude args>]
+#   agentp --codex <profile> [-- <extra codex args>]
 #   agentp list            list available profiles
 set -euo pipefail
 AH="${AGENTS_HOME:-$HOME/.config/agents}"
@@ -16,11 +22,12 @@ CTL="$AH/scripts/agent_control.py"
 GEN="$AH/generated/profiles/claude"
 
 usage() {
-	echo "usage: agentp <profile> [-- <extra claude args>]" >&2
+	echo "usage: agentp [--codex] <profile> [-- <extra agent args>]" >&2
 	echo "profiles:" >&2
 	python3 "$CTL" profile list 2>/dev/null | sed 's/^/  /' >&2
 }
 
+engine="claude"
 case "${1:-}" in
 "" | -h | --help)
 	usage
@@ -30,27 +37,51 @@ list)
 	python3 "$CTL" profile list
 	exit 0
 	;;
+--codex)
+	engine="codex"
+	shift
+	;;
+--claude)
+	shift
+	;;
 esac
 
-profile="$1"
-shift
+profile="${1:-}"
+[ -n "$profile" ] || {
+	usage
+	exit 1
+}
+shift || true
 [ "${1:-}" = "--" ] && shift
 
-# Validate the profile name (exits non-zero on unknown), then ensure compiled artifacts exist.
+# Validate the profile name (exits non-zero on unknown).
 python3 "$CTL" profile show "$profile" >/dev/null
+
+if [ "$engine" = "codex" ]; then
+	command -v codex >/dev/null 2>&1 || {
+		echo "agentp: codex not on PATH" >&2
+		exit 127
+	}
+	# shellcheck disable=SC2207  # intentional word-split: flags contain no spaces in values
+	flags=($(python3 "$CTL" profile codex-flags "$profile"))
+	agent-ledger record --kind launch --status started --profile "$profile" --agent codex \
+		--prompt "agentp --codex $profile" >/dev/null 2>&1 || true
+	export AGENTS_PROFILE="$profile"
+	exec codex "${flags[@]}" "$@"
+fi
+
+# Claude: ensure compiled artifacts exist, then launch under the profile.
 settings="$GEN/$profile.settings.json"
 mcpcfg="$GEN/$profile.mcp.json"
 if [ ! -f "$settings" ] || [ ! -f "$mcpcfg" ]; then
 	python3 "$CTL" profile compile >/dev/null
 fi
-
 command -v claude >/dev/null 2>&1 || {
 	echo "agentp: claude not on PATH" >&2
 	exit 127
 }
-
-# Best-effort audit record; never block the launch on a ledger failure.
 agent-ledger record --kind launch --status started --profile "$profile" --agent claude \
 	--prompt "agentp $profile" >/dev/null 2>&1 || true
-
+# AGENTS_PROFILE activates the profile-broker PreToolUse hook for this session.
+export AGENTS_PROFILE="$profile"
 exec claude --settings "$settings" --mcp-config "$mcpcfg" --strict-mcp-config "$@"

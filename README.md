@@ -112,11 +112,15 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
   the shared profile/policy model:
   - `agent-profile list|validate|compile` manages canonical permission profiles in `profiles/`
     and writes disposable generated artifacts under `generated/profiles/`.
-  - `agentp <profile>` launches Claude Code **under** a profile as a real boundary: it passes the
-    profile's MCP subset with `--strict-mcp-config` (only those servers load) plus a compiled
-    `--settings` file whose deny/ask rules enforce the profile's filesystem/shell mode and
-    disallowed/confirm tools. `agentp list` shows the profiles. (Codex/Gemini/Qwen/OpenCode
-    artifacts are still compiled for reference; Claude is the load-bearing target.)
+  - `agentp <profile>` / `agentp --codex <profile>` launches a coding agent **under** a profile as
+    a real boundary, composing each harness's *native* enforcement (it does not reimplement it):
+    - **Claude**: the profile's MCP subset via `--strict-mcp-config` (only those servers load), a
+      compiled `--settings` file with deny/ask rules **and a native OS Bash sandbox**
+      (`sandbox.*`: writable roots + `denyRead` of `~/.ssh`/`~/.aws`/secrets), and `AGENTS_PROFILE`
+      so the `profile-broker` PreToolUse hook enforces per-tool read/write policy that settings
+      alone can't express (e.g. allow Datadog reads, deny Datadog writes on the same server).
+    - **Codex**: native `--sandbox` + `--ask-for-approval` derived from the profile's risk/mode.
+    - `agentp list` shows the profiles. (Gemini/Qwen/OpenCode artifacts are compiled for reference.)
   - `agent-ledger record|list|show|verify` stores append-only run events under gitignored
     `state/runs/`. Entries form a SHA-256 hash chain; `agent-ledger verify` confirms it is
     tamper-evident (also checked by `agents-doctor`).
@@ -128,10 +132,11 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
   - `agent-eval list|run` runs small local eval tasks from `evals/tasks/`, including
     `policy-enforcement` (adversarial broker checks: synonym evasion, fail-closed effects,
     tainted-context writes, per-profile boundaries).
-  - `agent-broker` is a local MCP policy facade that checks profile/tool decisions and records
-    them. It classifies tool *effect* from an authoritative registry (fail-closed for unknown
-    tools) and enforces a provenance rule: a mutation requested with `context_tainted=true` is
-    forced to confirm, and refused outright on high/critical profiles.
+  - `agent-broker` holds the policy logic (effect classification from an authoritative registry,
+    fail-closed for unknown tools; provenance rule: a mutation with `context_tainted=true` is
+    forced to confirm and refused on high/critical profiles). It runs in **two** places: the MCP
+    facade (advisory, for interactive queries) and — load-bearing — the `profile-broker` PreToolUse
+    **hook** (`hooks/profile-broker.sh`), which the model cannot route around. Same code, both paths.
 - **`just ci-local`** — local verification loop: shell scripts, JSON locks, sync round-trip,
   agent-system contract checks, dashboard smoke test, `gitleaks`, and `agents-doctor`.
 - **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,

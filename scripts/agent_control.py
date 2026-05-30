@@ -164,6 +164,9 @@ def cmd_profile(args: argparse.Namespace) -> int:
             compile_profile(load_json(path))
         print(f"compiled {len(profile_files())} profile(s) into {GENERATED}")
         return 0
+    if args.profile_cmd == "codex-flags":
+        print(" ".join(codex_sandbox_args(load_profile(args.name))))
+        return 0
     raise SystemExit("missing profile command")
 
 
@@ -286,11 +289,63 @@ def compile_claude_settings(profile: dict[str, Any]) -> None:
             "deny": sorted(set(deny)),
             "ask": sorted(set(ask)),
         },
+        "sandbox": compile_sandbox(profile),
     }
     (GENERATED / "claude").mkdir(parents=True, exist_ok=True)
     write_json(GENERATED / "claude" / f"{name}.settings.json", settings)
     subset = {srv: servers[srv] for srv in profile["mcp_servers"] if srv in servers}
     write_json(GENERATED / "claude" / f"{name}.mcp.json", {"mcpServers": subset})
+
+
+# Credential dirs the OS sandbox should hide from Bash subprocesses. Claude's default read
+# policy still exposes ~/.ssh and ~/.aws, so denying them is a real hardening win, not cosmetic.
+SANDBOX_DENY_READ = ["~/.ssh", "~/.aws", "~/.config/gcloud", "~/.config/agents-secrets"]
+# Tools that are known-incompatible with the OS sandbox; they fall back to the normal permission
+# flow rather than failing the task (docker/gcloud/gh/terraform per Claude's sandbox docs).
+SANDBOX_EXCLUDED = [
+    "docker *",
+    "gcloud *",
+    "gh *",
+    "terraform *",
+    "kubectl *",
+    "jest *",
+]
+
+
+def compile_sandbox(profile: dict[str, Any]) -> dict[str, Any]:
+    """Native OS-level Bash sandbox (Seatbelt/bubblewrap) for the profile. Complements the
+    Edit/Write deny rules above (which the sandbox does NOT cover — it is Bash-only) by confining
+    what Bash subprocesses can write and read. Degrades to a warning if deps are missing."""
+    fs = profile.get("filesystem") or {}
+    allow_write = ["/tmp"]
+    # Only a workspace-write profile grants extra writable roots to Bash. read-only/none profiles
+    # get no extra write scope — `roots` there is READ scope, not write scope. (The working dir is
+    # always sandbox-writable, but Bash is ask/deny-gated for those profiles anyway.)
+    if fs.get("mode") == "workspace-write":
+        for root in fs.get("roots") or []:
+            # current_repo == the working dir, which the sandbox already grants by default.
+            if root and root != "current_repo":
+                allow_write.append(root)
+    return {
+        "enabled": True,
+        "filesystem": {
+            "allowWrite": sorted(set(allow_write)),
+            "denyRead": SANDBOX_DENY_READ,
+        },
+        "excludedCommands": SANDBOX_EXCLUDED,
+    }
+
+
+def codex_sandbox_args(profile: dict[str, Any]) -> list[str]:
+    """Native Codex containment for a profile: --sandbox + --ask-for-approval. Codex's sandbox is
+    OS-enforced like Claude's; approval policy tightens with risk. (Codex has no --strict-mcp-config
+    equivalent, so server subsetting is not enforced there — containment is via sandbox+approval.)"""
+    fs_mode = (profile.get("filesystem") or {}).get("mode")
+    sandbox = "workspace-write" if fs_mode == "workspace-write" else "read-only"
+    approval = (
+        "untrusted" if profile.get("risk") in {"high", "critical"} else "on-request"
+    )
+    return ["--sandbox", sandbox, "--ask-for-approval", approval]
 
 
 def ledger_path() -> Path:
@@ -1314,6 +1369,73 @@ def cmd_broker(args: argparse.Namespace) -> int:
     return 0 if decision["allowed"] else 2
 
 
+def broker_hook_decision(
+    profile: str, tool_name: str, context_tainted: bool = False
+) -> dict[str, str] | None:
+    """Map a Claude PreToolUse tool name (`mcp__server__tool`) to a permission decision via the
+    profile policy. Returns a hookSpecificOutput decision dict for deny/ask, or None to defer to
+    the normal permission flow (so the hook only ever *restricts*, never broadens access).
+
+    Note: the PreToolUse input carries no provenance signal, so context_tainted is False here — the
+    CaMeL-style tainted-context rule is enforced only on the advisory MCP path where a caller can
+    pass context_tainted=True. The hook enforces profile allow/deny + read/write effect."""
+    if not tool_name.startswith("mcp__"):
+        return None
+    parts = tool_name[len("mcp__") :].split("__", 1)
+    if len(parts) != 2:
+        return None
+    server, tool = parts[0], parts[1]
+    d = broker_authorize(profile, server, tool, False, context_tainted)
+    if not d["allowed"]:
+        return {
+            "permissionDecision": "deny",
+            "permissionDecisionReason": f"profile '{profile}': {d['reason']} (effect={d['effect']})",
+        }
+    if d["needs_confirmation"]:
+        return {
+            "permissionDecision": "ask",
+            "permissionDecisionReason": f"profile '{profile}': {tool} is a {d['effect']} action — confirm",
+        }
+    return None
+
+
+def cmd_broker_hook(args: argparse.Namespace) -> int:
+    """PreToolUse hook entrypoint: read the hook JSON on stdin, enforce the active profile on MCP
+    tool calls. No-op (exit 0, no output) when no profile is active or the call isn't an MCP tool."""
+    profile = args.profile or os.environ.get("AGENTS_PROFILE", "")
+    if not profile:
+        return 0
+    try:
+        data = json.loads(sys.stdin.read() or "{}")
+    except json.JSONDecodeError:
+        return 0
+    tool_name = str(data.get("tool_name", ""))
+    try:
+        decision = broker_hook_decision(profile, tool_name)
+    except (SystemExit, Exception):  # noqa: BLE001 — corrupt/unknown profile must never wedge a session
+        return 0
+    if decision is None:
+        return 0
+    print(
+        json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", **decision}})
+    )
+    try:  # audit is best-effort; a ledger failure must not turn an emitted decision into an error
+        append_ledger(
+            {
+                "kind": "broker",
+                "status": decision["permissionDecision"],
+                "profile": profile,
+                "agent": "hook",
+                "repo": "",
+                "prompt": tool_name,
+                "details": decision,
+            }
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="agent-control")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -1325,6 +1447,8 @@ def build_parser() -> argparse.ArgumentParser:
     pshow.add_argument("name")
     psub.add_parser("validate")
     psub.add_parser("compile")
+    pcf = psub.add_parser("codex-flags")
+    pcf.add_argument("name")
 
     lp = sub.add_parser("ledger")
     lsub = lp.add_subparsers(dest="ledger_cmd", required=True)
@@ -1411,6 +1535,9 @@ def build_parser() -> argparse.ArgumentParser:
     bp.add_argument("--tool", required=True)
     bp.add_argument("--mutation", action="store_true")
     bp.add_argument("--context-tainted", action="store_true")
+
+    bh = sub.add_parser("broker-hook")
+    bh.add_argument("--profile", default="")
     return p
 
 
@@ -1428,6 +1555,8 @@ def main_inner(argv: list[str]) -> int:
         return cmd_eval(args)
     if args.cmd == "broker":
         return cmd_broker(args)
+    if args.cmd == "broker-hook":
+        return cmd_broker_hook(args)
     raise SystemExit(f"unknown command: {args.cmd}")
 
 

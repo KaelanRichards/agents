@@ -129,6 +129,42 @@ def main() -> None:
     )
     check("server outside profile denied", off["allowed"] is False)
 
+    # 6) PreToolUse hook decisions (the enforced, not-advisory path). Maps mcp__server__tool →
+    #    deny / ask / defer(None). Only ever restricts; allowed reads defer to native flow.
+    hook = c.broker_hook_decision
+    deny = hook("plan-readonly", "mcp__filesystem__write_file")
+    check(
+        "hook denies write under plan-readonly",
+        deny and deny["permissionDecision"] == "deny",
+    )
+    ask = hook("personal-assistant", "mcp__personal-actions__personal_gmail_send_email")
+    check("hook asks on personal send", ask and ask["permissionDecision"] == "ask")
+    check(
+        "hook defers allowed read",
+        hook("plan-readonly", "mcp__github__search_code") is None,
+    )
+    check("hook ignores non-mcp tool", hook("plan-readonly", "Bash") is None)
+    check(
+        "hook ignores malformed mcp name", hook("plan-readonly", "mcp__weird") is None
+    )
+
+    # 7) Native Codex containment flags compile correctly per profile.
+    check(
+        "codex read-only for plan-readonly",
+        c.codex_sandbox_args(c.load_profile("plan-readonly"))
+        == ["--sandbox", "read-only", "--ask-for-approval", "on-request"],
+    )
+    check(
+        "codex workspace-write+untrusted for critical prod-mutator",
+        c.codex_sandbox_args(c.load_profile("prod-mutator-confirmed"))
+        == ["--sandbox", "workspace-write", "--ask-for-approval", "untrusted"],
+    )
+
+    # 8) Native Claude sandbox compiles with credential denyRead + enabled.
+    sb = c.compile_sandbox(c.load_profile("code-edit"))
+    check("sandbox enabled", sb["enabled"] is True)
+    check("sandbox hides ssh creds from bash", "~/.ssh" in sb["filesystem"]["denyRead"])
+
     print("behavioral policy OK")
 
 

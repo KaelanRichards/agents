@@ -105,10 +105,12 @@ This is the single source of truth for both agents. Canonical file lives at
 - **Parallel work**: `wt new <name>` for one isolated workspace; **`swarm <task>...`** fans out
   N tasks across jj workspaces with parallel headless agents (claude/codex), then review each
   with `jj -R <workspace> log`.
-- **Profile-scoped sessions**: **`agentp <profile>`** launches Claude under a canonical permission
-  profile as a real boundary — `--strict-mcp-config` loads only that profile's MCP servers, and a
-  compiled `--settings` file enforces its filesystem/shell mode and disallowed/confirm tools. Use
-  it (not bare `claude`) when you want least-privilege enforced, not just declared.
+- **Profile-scoped sessions**: **`agentp <profile>`** (or `agentp --codex <profile>`) launches a
+  coding agent under a canonical profile as a real boundary, built on each harness's *native*
+  enforcement — Claude: `--strict-mcp-config` + compiled `--settings` (deny/ask + OS Bash sandbox)
+  + a `profile-broker` PreToolUse hook for per-tool read/write policy; Codex: native `--sandbox` +
+  `--ask-for-approval`. Use it (not bare `claude`/`codex`) when you want least-privilege enforced,
+  not just declared. The broker logic is the *backend of the native hook*, not a parallel system.
 - **Hooks (active in both tools)**: edits are auto-formatted (ruff/biome/shfmt/rustfmt);
   a Bash guard blocks destructive/security-sensitive commands.
 - **Health check**: `agents-doctor` verifies tools, symlinks, MCP parity, config validity, and

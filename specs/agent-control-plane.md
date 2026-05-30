@@ -87,3 +87,30 @@ Deferred: A2A / task-DAG planning (no current workload needs cross-agent negotia
 fan-out remains the parallelism path). Gemini/Qwen/OpenCode profile artifacts stay compiled for
 reference only.
 - `gitleaks detect --source . --no-git --redact --verbose`
+
+## Iteration 3 — fold policy into native harness enforcement (2026-05-30)
+
+Audit question: is the control plane *fighting* Claude Code / Codex or *amplifying* them? Verdict:
+mostly composing native primitives, with one smell — the broker was an advisory MCP the model
+could ignore, duplicating the harnesses' own (stronger, unavoidable) enforcement. This iteration
+moves policy onto the native enforcement points so the harness does the work:
+
+- **Broker → PreToolUse hook.** `hooks/profile-broker.sh` + `agent-control broker-hook` run
+  `broker_authorize()` as a Claude PreToolUse hook (deterministic `permissionDecision`
+  deny/ask/defer), enforcing per-tool read/write policy that settings can't express (same server,
+  different effect). The advisory MCP stays for interactive queries — same code, two paths. The
+  hook only ever restricts (deny/ask) and defers otherwise, so it never broadens access. It
+  no-ops unless `AGENTS_PROFILE` is set (i.e. launched via `agentp`), leaving bare `claude`/`yc`
+  untouched. (The PreToolUse input carries no provenance signal, so the hook enforces profile
+  allow/deny + read/write effect; the tainted-context rule stays on the advisory MCP path.)
+- **Native OS sandbox.** `compile_sandbox()` adds a `sandbox` block to each compiled Claude
+  settings file (Bash-only OS isolation: writable roots from the profile + `/tmp`, `denyRead` of
+  `~/.ssh`/`~/.aws`/`~/.config/gcloud`/secrets, `excludedCommands` for sandbox-incompatible tools).
+  Complements the Edit/Write deny rules (which the sandbox does not cover). Degrades to a warning
+  if bubblewrap/Seatbelt is unavailable.
+- **Codex profile parity.** `codex_sandbox_args()` + `agentp --codex` launch Codex with native
+  `--sandbox` (read-only / workspace-write) and `--ask-for-approval` (on-request / untrusted by
+  risk). Codex has no `--strict-mcp-config`, so server subsetting isn't enforced there;
+  containment is via sandbox + approval.
+- **Verification:** `uv run --script tests/behavioral_policy.py` (now covers hook decisions, codex
+  flags, sandbox compile); `agentp list`; `agents-doctor` (checks the hook is wired).

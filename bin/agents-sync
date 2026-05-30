@@ -158,7 +158,8 @@ echo "subagents: $ac generated for Claude (~/.claude/agents) + Codex (~/.codex/a
 # 3) HOOKS — Claude (settings.json) + Codex (config.toml managed block)
 fmt="$AH/hooks/format-file.sh"
 guard="$AH/hooks/guard-bash.sh"
-chmod +x "$fmt" "$guard" 2>/dev/null || true
+broker="$AH/hooks/profile-broker.sh"
+chmod +x "$fmt" "$guard" "$broker" 2>/dev/null || true
 # Claude — merge managed hook entries into .hooks.PreToolUse / .hooks.PostToolUse.
 # Each managed entry carries a sentinel field; we strip prior managed entries and
 # re-append, preserving user-added entries here and entirely untouched keys like
@@ -166,11 +167,11 @@ chmod +x "$fmt" "$guard" 2>/dev/null || true
 [ -f "$CLAUDE_SETTINGS" ] || echo '{}' >"$CLAUDE_SETTINGS"
 cp "$CLAUDE_SETTINGS" "$CLAUDE_SETTINGS.agents-sync.bak"
 t=$(mktemp)
-jq --arg fmt "$fmt" --arg guard "$guard" --arg tag "$MANAGED_TAG" '
+jq --arg fmt "$fmt" --arg guard "$guard" --arg broker "$broker" --arg tag "$MANAGED_TAG" '
   # Strip an entry if it carries our managed tag OR if it points at one of the
   # exact command paths we own (covers entries written by older agents-sync
   # versions that pre-date the tag).
-  def owned_cmd: . == $fmt or . == $guard;
+  def owned_cmd: . == $fmt or . == $guard or . == $broker;
   def strip_managed:
     if type=="array" then
       map(select(
@@ -180,7 +181,8 @@ jq --arg fmt "$fmt" --arg guard "$guard" --arg tag "$MANAGED_TAG" '
     else . end;
   .hooks = (.hooks // {})
   | .hooks.PreToolUse  = ((.hooks.PreToolUse  // []) | strip_managed) + [
-      {"matcher":"Bash", "__managed_by":$tag, "hooks":[{"type":"command","command":$guard}]}
+      {"matcher":"Bash", "__managed_by":$tag, "hooks":[{"type":"command","command":$guard}]},
+      {"matcher":"mcp__.*", "__managed_by":$tag, "hooks":[{"type":"command","command":$broker}]}
     ]
   | .hooks.PostToolUse = ((.hooks.PostToolUse // []) | strip_managed) + [
       {"matcher":"Edit|Write|MultiEdit", "__managed_by":$tag, "hooks":[{"type":"command","command":$fmt}]}

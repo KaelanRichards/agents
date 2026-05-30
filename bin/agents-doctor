@@ -108,6 +108,15 @@ fi
 if command -v agent-ledger >/dev/null 2>&1; then
 	agent-ledger verify >/dev/null 2>&1 && ok "run ledger hash chain intact" || warn "run ledger chain verify failed (agent-ledger verify)"
 fi
+if [ -x "$AH/hooks/profile-broker.sh" ]; then
+	if [ -f "$HOME/.claude/settings.json" ] && grep -qF 'profile-broker.sh' "$HOME/.claude/settings.json"; then
+		ok "profile-broker PreToolUse hook wired (native enforcement)"
+	else
+		warn "profile-broker hook present but not wired into Claude settings (run agents-sync)"
+	fi
+else
+	bad "profile-broker hook missing or not executable"
+fi
 
 echo "== skill sync =="
 canonical_skills=$(find "$AH/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
