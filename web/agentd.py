@@ -118,6 +118,43 @@ def doctor() -> dict:
     return {"doctor": line or "(agents-doctor unavailable)"}
 
 
+def agents() -> list[dict]:
+    """The launchable-agent roster. Permission profiles are first-class agents (launchable under
+    their compiled boundary via the queue). Subagents (explorer/reviewer) are Claude-internal
+    helpers with no standalone profile, so they're listed but marked launchable=False."""
+    roster: list[dict] = []
+    for p in ac.query_profiles():
+        roster.append(
+            {
+                "kind": "profile",
+                "name": p["name"],
+                "description": p.get("description", ""),
+                "risk": p.get("risk", ""),
+                "mcp_servers": p.get("mcp_servers", []),
+                "launchable": True,
+            }
+        )
+    agents_dir = AH / "agents"
+    if agents_dir.exists():
+        for f in sorted(agents_dir.glob("*.json")):
+            try:
+                d = ac.load_json(f)
+            except (OSError, ValueError):
+                continue
+            roster.append(
+                {
+                    "kind": "subagent",
+                    "name": d.get("name", f.stem),
+                    "description": d.get("description", ""),
+                    "risk": "",
+                    "mcp_servers": [],
+                    "launchable": False,
+                    "note": "runs inside a Claude session (Task tool), not standalone",
+                }
+            )
+    return roster
+
+
 def mcp_servers() -> list[dict]:
     canon = AH / "mcp.json"
     if not canon.exists():
@@ -269,6 +306,12 @@ def api_fleet(request: Request) -> JSONResponse:
 def api_profiles(request: Request) -> JSONResponse:
     require_token(request)
     return JSONResponse(ac.query_profiles())
+
+
+@app.get("/api/agents")
+def api_agents(request: Request) -> JSONResponse:
+    require_token(request)
+    return JSONResponse(agents())
 
 
 @app.get("/api/ledger")

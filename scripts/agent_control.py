@@ -931,7 +931,7 @@ def start_queue_task(
 def run_queue_task(conn: sqlite3.Connection, row: sqlite3.Row) -> None:
     ws = Path(row["workspace"])
     log = Path(row["log"])
-    command = agent_command(row["agent"], row["task"])
+    command = agent_command(row["agent"], row["task"], row["profile"])
     timeout = int(row["timeout_seconds"])
     code, out = shell(command, ws, timeout=timeout)
     log.parent.mkdir(parents=True, exist_ok=True)
@@ -1076,14 +1076,33 @@ def reconcile_queue(conn: sqlite3.Connection) -> None:
         print(f"reconciled {row['id']} -> {status}")
 
 
-def agent_command(agent: str, task: str) -> str:
+def agent_command(agent: str, task: str, profile: str = "") -> str:
+    """Build the shell command to run `agent` on `task`. When a profile is given, Claude is
+    launched UNDER that profile's compiled boundary (same artifacts agentp uses): the granted MCP
+    subset via --strict-mcp-config, the deny/ask settings, and AGENTS_PROFILE exported so the
+    profile-broker PreToolUse hook enforces per-tool read/write policy. Without this, a queued run
+    would ignore its profile and run unconstrained."""
     quoted = shlex.quote(task)
     if agent == "noop":
         return f"printf '%s\\n' {quoted}"
-    if agent == "codex":
-        return f"codex exec --full-auto {quoted}"
     if agent == "claude":
+        if profile:
+            settings = GENERATED / "claude" / f"{profile}.settings.json"
+            mcpcfg = GENERATED / "claude" / f"{profile}.mcp.json"
+            if settings.exists() and mcpcfg.exists():
+                return (
+                    f"AGENTS_PROFILE={shlex.quote(profile)} claude "
+                    f"--settings {shlex.quote(str(settings))} "
+                    f"--mcp-config {shlex.quote(str(mcpcfg))} --strict-mcp-config "
+                    f"-p --permission-mode auto {quoted}"
+                )
         return f"claude -p --permission-mode auto {quoted}"
+    if agent == "codex":
+        # Codex headless: native sandbox flags from the profile (no --strict-mcp-config in codex).
+        if profile:
+            flags = " ".join(codex_sandbox_args(load_profile(profile)))
+            return f"codex exec {flags} {quoted}"
+        return f"codex exec --full-auto {quoted}"
     if agent == "opencode":
         return f"opencode run {quoted}"
     if agent == "gemini":
