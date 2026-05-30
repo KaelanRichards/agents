@@ -80,7 +80,17 @@ def sh(cmd: str, timeout: int = 30) -> tuple[int, str]:
 
 
 def fleet() -> dict:
-    code, out = sh("hcloud server list -o json 2>/dev/null")
+    # hcloud (~1s, network) and agents-doctor (~6s, full check battery) are independent and slow,
+    # so run them concurrently and time-box each. Previously they ran sequentially (~7s), which
+    # made the default panel read as a frozen window. The ledger check is in-process and instant.
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f_hcloud = pool.submit(sh, "hcloud server list -o json 2>/dev/null", 8)
+        f_doctor = pool.submit(sh, "agents-doctor 2>/dev/null | tail -1", 12)
+        code, out = f_hcloud.result()
+        _, doctor = f_doctor.result()
+
     servers: list[dict] = []
     total = 0.0
     if code == 0 and out:
@@ -100,7 +110,6 @@ def fleet() -> dict:
                 )
         except (json.JSONDecodeError, TypeError):
             pass
-    _, doctor = sh("agents-doctor 2>/dev/null | tail -1")
     chain = ac.verify_ledger()
     return {
         "servers": servers,

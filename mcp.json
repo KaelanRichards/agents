@@ -37,6 +37,14 @@
 			"command": "agents-mcp",
 			"args": []
 		},
+		"slack-dm": {
+			"type": "stdio",
+			"command": "$AGENTS_HOME/bin/slack-dm-mcp",
+			"args": [],
+			"env": {
+				"SLACK_DM_TARGET": "U04E9M9235G"
+			}
+		},
 		"agent-broker": {
 			"type": "stdio",
 			"command": "$AGENTS_HOME/bin/agent-broker-mcp",
