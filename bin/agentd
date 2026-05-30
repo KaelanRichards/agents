@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# agentd — typed control-plane daemon (FastAPI; single-file via uv). Binds localhost by default.
+# The desktop app + dashweb + the remote VM all talk to this one backend.
+# Remote: set AGENTD_HOST=<tailnet-ip> AND AGENTD_TOKEN=<secret> (never bind 0.0.0.0 tokenless).
+exec uv run --quiet --python 3.12 --script "$HOME/.config/agents/web/agentd.py" "$@"
