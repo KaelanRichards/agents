@@ -324,6 +324,59 @@ fn list_memory() -> Result<Vec<String>, String> {
 }
 
 // ---------------------------------------------------------------------------
+// PTY attach — interactive agent sessions in an embedded terminal.
+//
+// pty_spawn resolves the active connection's host (empty for local → agentp runs here; a tailnet
+// host for the VM → ssh -t into it) so "Attach" honors the same local/VM switch as everything else.
+// ---------------------------------------------------------------------------
+
+fn host_for_active(state: &State<AppState>) -> String {
+    let conn = active_conn(state);
+    if conn.name == "local" {
+        return String::new();
+    }
+    if let Some(rest) = conn.base_url.strip_prefix("ssh://") {
+        return rest.to_string();
+    }
+    "agents".to_string()
+}
+
+#[tauri::command]
+fn pty_spawn(
+    app: AppHandle,
+    state: State<AppState>,
+    pty_state: State<pty::PtyState>,
+    id: String,
+    profile: String,
+    engine: String,
+    cols: u16,
+    rows: u16,
+) -> Result<String, String> {
+    let host = host_for_active(&state);
+    pty::spawn(&app, &pty_state, id, profile, engine, host, cols, rows).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn pty_write(pty_state: State<pty::PtyState>, id: String, data: String) -> Result<(), String> {
+    pty::write_input(&pty_state, &id, &data).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn pty_resize(
+    pty_state: State<pty::PtyState>,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    pty::resize(&pty_state, &id, cols, rows).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn pty_kill(pty_state: State<pty::PtyState>, id: String) {
+    pty::kill(&pty_state, &id);
+}
+
+// ---------------------------------------------------------------------------
 // Tray + background poller
 // ---------------------------------------------------------------------------
 
