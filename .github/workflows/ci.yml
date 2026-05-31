@@ -11,6 +11,10 @@ jobs:
   lint:
     name: lint + validate
     runs-on: ubuntu-latest
+    # The repo is checked out outside ~/.config/agents on the runner; point AGENTS_HOME at the
+    # checkout so every step (toolbelt-diff, smoke tests, shims) resolves files from here.
+    env:
+      AGENTS_HOME: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v6
 
