@@ -5,6 +5,62 @@
 Each entry: **Current truth** · **Details** · **Open questions** · **Timeline**. Append dated
 changes; don't silently overwrite.
 
+## Co-locating looping agents on VM `agents` (sre + pa)
+
+**Current truth.** VM `agents` (2 vCPU / 3.7 GiB RAM, **no swap**) runs multiple headless `claude`
+loops: `vizcom-sre` (systemd `--user`, 30 min) and now `kaelan-pa` (systemd `--user`, 25 min). To
+keep them from OOM-ing each other, **all agent ticks are serialized fleet-wide** by a shared
+`flock`: each `*.service` has a drop-in (`~/.config/systemd/user/<svc>.service.d/10-tick-lock.conf`)
+wrapping `ExecStart` in `flock -w 800 ~/.config/agents/state/agent-tick.lock <run-tick.sh>`. Only one
+tick runs at a time; the other blocks ≤800s (< `TimeoutStartSec=900`) then proceeds, or skips that
+tick if it can't acquire. Health is watched out-of-process by `fleet-monitor` (timer) reading each
+agent's heartbeat JSONL.
+
+**Details.**
+- **Tick lock** lives in drop-ins (VM-only, not in either agent's repo) so neither committed unit is
+  edited; reversible by deleting the drop-in. Lock file: `state/agent-tick.lock`.
+- **fleet-monitor registration** is per-host via `state/fleet-agents.conf`
+  (`name|repo|max_age_s|max_unpushed`). VM rows: `vizcom-sre|…|4500|3` and
+  `kaelan-pa|…|4500|9999` — PA's unpushed cap is effectively disabled because PA is **push-denied by
+  policy** (DM-only); revisit once a runner-side brain-sync/push exists (PROMOTION.md).
+- **Shared Slack bot (caveat):** sre and pa authenticate as the **same** Slack app
+  (`user_id U0B6KMXJ402`, bot "windmill") → they DM Kaelan in the **same** channel. PA classifies
+  `U0B6KMXJ402` msgs as bot-self (skips them) and folds reactions only against its own audit
+  fingerprints, so no misclassification — but digests interleave and reactions are ambiguous. Clean
+  separation needs a **second Slack app** (interactive setup; deferred).
+- **Bugs fixed during co-location (2026-05-30):** (a) `agentq-worker.service` 203/EXEC — unit calls
+  `~/.local/bin/agentq` but the symlink to `~/.config/agents/bin/agentq` was missing; recreated.
+  (b) `fleet-monitor` `stat -f %m` is BSD-only — on Linux `-f`=--file-system, dumping an fs block
+  into `hb_mtime` → "File: unbound variable", aborting the check; reordered to GNU `stat -c %Y` first.
+  Latent until kaelan-pa became the first VM agent with a heartbeat file.
+
+**Open questions.**
+- **`vizcom-sre` `jj new main failed` — FIXED 2026-05-30, but recurrence-prone.** Root cause: the
+  tick does `jj git fetch` then `jj new main`; `origin/main` is under **active Phase-B development**
+  (commits landing every ~15 min: evals/alert-quality/CI/permissions, incl. `page-precision`), so
+  local `main` (live tick commits) and `origin/main` diverge and the **`main` bookmark goes
+  conflicted** → `jj new main` can't resolve it. Fix applied: paused the timer, rebased the single
+  local tick commit onto `origin/main`, repointed `main` (single, ahead 1 / behind 0, no content
+  conflicts), verified `jj new main` rc=0, resumed timer. The divergent `novmyx` change is the
+  `sre-preflight@origin` **open-PR branch** copy (immutable/pushed) vs its merged copy — benign,
+  resolves when that PR lands; did NOT force-rewrite pushed history. **Recurrence:** will reconflict
+  whenever origin/main advances mid-cadence. Durable options (Kaelan's call): land/pause the Phase-B
+  work on `main`, do that dev on a bookmark instead of `main`, or harden the tick to auto-rebase
+  local commits onto `origin/main` after fetch (risk: content conflicts in an unattended loop — the
+  author deliberately chose "fail loud, reconcile manually", hence this manual fix).
+- No swap on the VM — the flock makes concurrent ticks impossible, but a single tick that balloons
+  could still OOM. Consider a small swapfile (needs sudo → Kaelan).
+- Drop-in tick-lock is VM-only config; if the VM is re-provisioned it must be re-applied (capture in
+  a deploy script / bootstrap).
+
+**Timeline.**
+- 2026-05-30 — Promoted `kaelan-pa` to the VM beside `vizcom-sre`; added fleet-wide `flock` tick
+  serialization, registered PA in `fleet-monitor`, fixed `agentq` symlink + the `fleet-monitor`
+  Linux `stat` bug. `fleet-monitor` now reports "all agents healthy".
+- 2026-05-30 — Reconciled `vizcom-sre`'s conflicted `main` (rebased the live tick commit onto the
+  actively-advancing `origin/main`); `jj new main` works again. Flagged the two-writer root cause
+  (Phase-B dev pushing to the same `main` the VM ticks on).
+
 ## Agent memory lives in the control plane, not Claude auto-memory
 
 **Current truth.** Durable memory is plain markdown under `~/.config/agents/assistant/memory/`,
