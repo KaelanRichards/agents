@@ -143,3 +143,49 @@ is active (or that takes the same `flock` the VM ticks use).
 **Timeline.**
 - 2026-05-30 — Corrupted `kaelan-pa` `main` (3-head conflict) by running git history ops against the
   live Mac PA loop; reconciled after pausing the loop. Recorded the pause-first rule.
+
+## kaelan-pa VM cutover DONE (2026-05-31) — single live runtime, git push, like vizcom-sre
+
+**Current truth.** kaelan-pa now runs **only on VM `agents`** (systemd `--user`, 25 min), **live**
+(`KAELAN_PA_DRY_RUN=0` + facade live), committing AND pushing its brain to `origin/main` every tick —
+functionally identical to vizcom-sre. The **Mac launchd job is retired** (`launchctl bootout
+com.kaelan.kaelan-pa`), so there is exactly ONE writer to `origin/main`. Send-restriction unchanged
+(deny-list: DM-to-Kaelan + Gmail draft/label only; never email send / channel post / calendar / Linear).
+
+**Details — the setup, and the four things that bit us (don't repeat):**
+1. **Per-repo VCS differs — never assume jj.** The VM `~/kaelan-pa` clone is **plain git** (NOT
+   jj-colocated); vizcom-sre's VM repo IS jj-colocated; the Mac `~/code/kaelan-pa` is jj-colocated. The
+   agent commits via git on the VM. So the shell-level brain push in `deploy/run-tick.sh` must be
+   **git** (`git push origin HEAD:refs/heads/main`), not `jj git push`. A jj-based block (what I first
+   wrote, copied from vizcom-sre) silently no-ops on the git-only VM.
+2. **Single writer, always.** Pre-cutover BOTH Mac (live) and VM (live) were ticking + committing → the
+   brains diverged 23/8 commits with real work on both sides (a created Gmail draft on the VM, Morita
+   P1 grounding on the Mac). Promote = **retire the other runtime**; never run two live instances.
+3. **Config drift — trust the box, not the notes.** Docs said "VM in week-1 dry-run" but the VM had
+   already been flipped live (`KAELAN_PA_DRY_RUN=0`, "facade live after ~20 blocked ticks"). Verify
+   live/dry-run state from the runner.env on the host before acting.
+4. **Auth is HTTPS, not SSH.** kaelan-pa & vizcom-sre VM remotes are **HTTPS + a stored credential**
+   (works from systemd, no key needed). The VM's `~/.config/agents` clone was set to an **SSH** remote
+   with no key, so its `git fetch` silently failed for weeks (stuck at `9d52f27`) — switched to HTTPS.
+
+**Reconcile procedure that worked (reuse for any future brain reconcile):** pause both runtimes (stop
+VM timer + `launchctl bootout` Mac) → confirm no tick running → **tag-backup both lineages and push
+them** (`vm-pre-reconcile`, `mac-pre-reconcile`, on origin, recoverable) → build ONE commit **on top of
+origin** (keep its infra/evals/deploy/incidents base) and **overlay only the live runtime's diverged
+brain files** (VM-wins for `people/ recommendations.md incidents/*`; origin kept everything only it
+changed, incl. the Mac's Morita P1 in `people/yasuhiko-morita.md`) → verify **fast-forward** (NEVER
+force-push) → push → repoint the VM onto it → resume ONLY the VM. Verified by a live canary tick:
+`origin/main 10bd482→2a14d6b`, push-fail-streak clean.
+
+**Open questions.**
+- VM `~/.config/agents` clone still has **8 local uncommitted tracked-file edits** (`AGENTS.md`,
+  `README.md`, `bin/agents-doctor/-status/-sync`, `.github/workflows/ci.yml`, `.gitignore`, `bin/wt`)
+  blocking its FF to `origin/main` (a1b9a56). Decide: commit+push those VM-local edits, or `reset
+  --hard`. Left untouched (may be intentional VM customizations).
+- The Mac repo now drifts behind origin every VM tick (expected; it's retired). If ever un-retired it
+  must `git fetch && git reset --hard origin/main` FIRST and never push (single-writer rule).
+
+**Timeline.**
+- 2026-05-31 — Cutover executed early (was planned ~6/06): reconciled the two-writer brain (VM
+  canonical, lossless, FF), git-ified the push block for the git-only VM, retired the Mac launchd,
+  resumed VM-only. Live canary tick committed + pushed. Backups: tags `vm-/mac-pre-reconcile` on origin.
