@@ -85,7 +85,7 @@ def main() -> int:
         (OUT / name).write_bytes(render(size))
         print(f"wrote {OUT / name} ({size}x{size})")
     (OUT.parent.parent / "dist-icon.png").write_bytes(render(1024))
-    print(f"wrote dist-icon.png (1024x1024, source for `pnpm tauri icon`)")
+    print("wrote dist-icon.png (1024x1024, source for `pnpm tauri icon`)")
     return 0
 
 

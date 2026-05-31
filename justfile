@@ -40,7 +40,12 @@ verify-all:
     agents-verify
 
 test:
-    shellcheck -S error -x bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh
+    # shellcheck only real shell scripts — bin/ also holds Python CLIs (page-precision, slack-dm-mcp).
+    for f in bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh; do \
+      [ -f "$f" ] || continue; \
+      head -1 "$f" | grep -Eq 'env (ba)?sh$|/(ba)?sh$' || continue; \
+      shellcheck -S error -x "$f"; \
+    done
     actionlint
     jq -e . mcp.json >/dev/null
     jq -e . skills.lock.json >/dev/null

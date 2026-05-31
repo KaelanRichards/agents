@@ -84,3 +84,30 @@ is unsolved here and across the field — revisit as a scheduled routine if want
 - 2026-05-25 — `hermes-sync` now globs `assistant/memory/*.md` (no hardcoding); added per-file
   template + `decisions.md`; `agents-sync` now regenerates a memory index in `AGENTS.md` for
   Claude/Codex.
+
+## Not factoring a shared "sync" library (agents-sync / mcp-sync / hermes-sync)
+
+**Current truth.** The three sync scripts stay independent. A review floated extracting a shared
+config-propagation helper (claimed ~617 lines of duplication). On inspection the duplication is
+*structural, not literal*: the scripts do genuinely different transforms — `agents-sync` copies
+skill/agent/hook dirs + sweeps stale + injects managed blocks into Claude settings & Codex TOML +
+rebuilds the `AGENTS.md` memory index; `mcp-sync` builds an effective `mcp.json` and renders it to
+Claude JSON + Codex TOML `[mcp_servers.*]`; `hermes-sync` generates `~/.hermes/config.yaml` and
+doesn't touch the Codex TOML at all. The only truly shared code is a one-line `awk` "strip the
+managed block between two markers" idiom in `mcp-sync` (~:150) and `agents-sync` (~:201), plus
+near-identical jq/yq validation guards.
+
+**Details.** Extracting a sourced bash lib for ~5 shared lines across 2 scripts buys negative value:
+it adds `shellcheck -x` source-following + path-resolution fragility (these run from the justfile,
+CI, and `agentd`), and it churns load-bearing paths that mutate live `~/.claude.json` /
+`~/.codex/config.toml` while only `mcp-sync` is covered by `tests/sync-roundtrip.sh` (agents-sync /
+hermes-sync output is not round-trip tested), so a regression could ship silently.
+
+**Open questions.** **Trigger to revisit:** adding a *third* harness target (e.g. Gemini/Qwen CLI
+generators) — at 3+ consumers of the same managed-block + JSON-validate primitives, a small shared
+`bin/lib/sync-lib.sh` (block-strip + validate only) becomes worth it, and should land *with* a
+round-trip test for agents-sync/hermes-sync first so the refactor is regression-guarded.
+
+**Timeline.**
+- 2026-05-30 — Reviewed and deliberately deferred the sync-helper refactor (net-negative churn on
+  stable, partially-untested infra); recorded the trigger condition instead of doing it.
