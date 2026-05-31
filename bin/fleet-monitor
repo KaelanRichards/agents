@@ -68,7 +68,10 @@ for row in $AGENTS; do
 			emit "DEAD   $name: no heartbeat file ($hb) — never reported, or state dir not wired"
 			problems=$((problems+1))
 		else
-			hb_mtime=$(stat -f %m "$hb" 2>/dev/null || stat -c %Y "$hb" 2>/dev/null || echo 0)
+			# GNU (Linux/VM) first, then BSD/macOS. NOTE: `stat -f` on Linux means --file-system
+			# and exits 0 printing a multi-line fs block, which poisons the arithmetic below
+			# ("File: unbound variable") — so GNU `-c %Y` MUST be tried first on the VM.
+			hb_mtime=$(stat -c %Y "$hb" 2>/dev/null || stat -f %m "$hb" 2>/dev/null || echo 0)
 			age=$((NOW_EPOCH - hb_mtime))
 			if [ "$age" -gt "$max_age" ]; then
 				emit "STALE  $name: last heartbeat ${age}s ago (> ${max_age}s) — loop hung or stopped"
