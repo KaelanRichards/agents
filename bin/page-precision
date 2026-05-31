@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""page-precision — online page-quality scorer for the agent fleet (Phase B / B2).
+
+The fleet pages a human rarely, and the only quality signal is the human's reaction on the bot's
+DM (✅ = useful / true positive, ❌🗑️ = noise / false positive). With such small denominators a
+naive weekly precision = TP/(TP+FP) swings wildly run-to-run, so a "regression" is usually noise.
+This computes precision WITH:
+  - a Wilson score lower bound (95% by default) — the statistically-honest "precision is at least X",
+  - a minimum-sample gate — below N labeled pages, report INSUFFICIENT-DATA and never trip CI.
+The weekly digest reports the point estimate + Wilson lower bound; a CI/regression check uses the
+lower bound (not the point estimate) and only past the min-N gate. (specs/fleet-improvement-plan.md B2.)
+
+Input: one or more JSONL audit ledgers. A "page" = a line the agent DM'd. Its verdict comes from
+either:
+  - a top-level "alert_quality":{"verdict": "..."} object (vizcom-sre), or
+  - a "fingerprint" string carrying a reaction code (kaelan-pa: "reaction:confirmed" etc.), or
+  - a "verdict" / "reaction" field.
+Verdict vocabulary (case-insensitive substring match, so "reaction:confirmed" works):
+  TRUE-POSITIVE: true_positive, confirmed, strong-confirm, acked-useful, escalate
+  FALSE-POSITIVE: false_positive, rejected, trash, noise
+  IGNORED (not counted): pending, acked (bare), mute, none/missing
+
+Usage:
+  page-precision <ledger.jsonl> [more.jsonl ...] [--min-n N] [--conf 0.95] [--window-days D] [--json]
+Exit: 0 always (it's a reporter; a separate gate decides CI). With --gate <floor> it exits 2 if the
+Wilson lower bound is below <floor> AND the min-N gate is met (use that in CI).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import sys
+from datetime import datetime, timedelta, timezone
+
+# Verdict vocab — aligned to the ACTUAL ledger markers each agent writes:
+#  vizcom-sre: alert_quality.verdict = true_positive | false_positive
+#  kaelan-pa reaction-corrections.md: ✅ -> "confirmed"; ❌ -> "corrected:wrong" / "corrected-wrong"
+# FALSE is checked BEFORE true, and 'corrected' (any wrong/correction marker) counts as a false page.
+TRUE_TOKENS = ("true_positive", "confirmed", "strong-confirm", "acked-useful", "escalate")
+FALSE_TOKENS = ("false_positive", "corrected:wrong", "corrected-wrong", "rejected", "trash", "noise")
+
+
+def classify(line: dict) -> str | None:
+    """Return 'tp', 'fp', or None (uncounted) for a ledger line."""
+    # Only lines that actually paged the human are scoreable.
+    dm = str(line.get("dm", "")).lower()
+    if dm and dm not in ("sent", "true", "1"):
+        return None
+    blob = []
+    aq = line.get("alert_quality")
+    if isinstance(aq, dict):
+        blob.append(str(aq.get("verdict", "")))
+    for k in ("verdict", "reaction", "fingerprint", "classification", "action"):
+        v = line.get(k)
+        if isinstance(v, str):
+            blob.append(v)
+    text = " ".join(blob).lower()
+    if not text:
+        return None
+    if any(t in text for t in FALSE_TOKENS):
+        return "fp"
+    if any(t in text for t in TRUE_TOKENS):
+        return "tp"
+    return None
+
+
+def wilson_lower_bound(tp: int, n: int, conf: float) -> float:
+    """Wilson score interval lower bound for a binomial proportion (precision = tp/n)."""
+    if n == 0:
+        return 0.0
+    # z for two-sided conf -> one-sided tail; use common z for 95% = 1.96, else approximate.
+    z = {0.90: 1.645, 0.95: 1.96, 0.99: 2.576}.get(round(conf, 2), 1.96)
+    phat = tp / n
+    denom = 1 + z * z / n
+    centre = phat + z * z / (2 * n)
+    margin = z * math.sqrt((phat * (1 - phat) + z * z / (4 * n)) / n)
+    return max(0.0, (centre - margin) / denom)
+
+
+def within_window(line: dict, cutoff: datetime | None) -> bool:
+    if cutoff is None:
+        return True
+    ts = line.get("ts")
+    if not isinstance(ts, str):
+        return True  # undated lines always counted
+    raw = ts.strip().lstrip("~").replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt >= cutoff
+    except ValueError:
+        return True
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("ledgers", nargs="+")
+    ap.add_argument("--min-n", type=int, default=10)
+    ap.add_argument("--conf", type=float, default=0.95)
+    ap.add_argument("--window-days", type=int, default=0)
+    ap.add_argument("--gate", type=float, default=None, help="CI floor on Wilson lower bound")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args(argv)
+
+    cutoff = None
+    if args.window_days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=args.window_days)
+
+    tp = fp = 0
+    for path in args.ledgers:
+        try:
+            with open(path, "r", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not within_window(obj, cutoff):
+                        continue
+                    v = classify(obj)
+                    if v == "tp":
+                        tp += 1
+                    elif v == "fp":
+                        fp += 1
+        except FileNotFoundError:
+            print(f"page-precision: ledger not found: {path}", file=sys.stderr)
+
+    n = tp + fp
+    precision = tp / n if n else None
+    lb = wilson_lower_bound(tp, n, args.conf)
+    enough = n >= args.min_n
+
+    if args.json:
+        print(json.dumps({
+            "labeled_pages": n, "true_positive": tp, "false_positive": fp,
+            "precision": precision, "wilson_lower_bound": lb,
+            "min_n": args.min_n, "sufficient_data": enough,
+        }))
+    else:
+        if n == 0:
+            print("page-precision: 0 labeled pages — no signal yet (react ✅/❌ on bot DMs to feed this)")
+        else:
+            print(f"labeled pages={n}  TP={tp} FP={fp}  precision={precision:.2f}  "
+                  f"wilson{int(args.conf*100)}_lb={lb:.2f}  "
+                  f"{'(sufficient)' if enough else f'(INSUFFICIENT-DATA: need {args.min_n}, have {n})'}")
+
+    # CI gate: only trips on the Wilson LOWER BOUND, and only past the min-N gate, so a tiny
+    # noisy sample can never manufacture a regression.
+    if args.gate is not None and enough and lb < args.gate:
+        print(f"PRECISION GATE FAILED: wilson lower bound {lb:.2f} < floor {args.gate:.2f} "
+              f"(n={n}, TP={tp}, FP={fp})", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
