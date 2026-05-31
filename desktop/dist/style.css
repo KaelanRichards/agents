@@ -250,6 +250,18 @@ h1 {
 	padding: 14px 16px;
 	margin-bottom: 12px;
 }
+.agent-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+	gap: 12px;
+}
+.card.agent {
+	margin-bottom: 0;
+	transition: border-color 0.15s;
+}
+.card.agent:hover {
+	border-color: var(--accent);
+}
 .cards {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

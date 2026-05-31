@@ -93,6 +93,7 @@ const content = () => $("#content");
 
 const panels = {
 	fleet: renderFleet,
+	agents: renderAgents,
 	runs: renderRuns,
 	approvals: renderApprovals,
 	queue: renderQueue,
@@ -193,6 +194,96 @@ async function renderFleet() {
 					).then(() => toast("Reboot requested"));
 			};
 		});
+}
+
+// ---- Agents (roster: launch scoped runs) ----------------------------------
+
+const riskRank = { low: 0, medium: 1, high: 2, critical: 3 };
+
+async function renderAgents() {
+	const roster = await api("/api/agents");
+	const profiles = roster.filter((a) => a.launchable);
+	const subs = roster.filter((a) => !a.launchable);
+
+	const card = (a) => `
+    <div class="card agent" data-agent="${esc(a.name)}">
+      <div class="row" style="justify-content:space-between; align-items:flex-start">
+        <div>
+          <div style="font-weight:650; font-size:15px">${esc(a.name)}</div>
+          <div class="label" style="margin-top:2px">${esc(a.kind)}${a.risk ? ` · risk ${esc(a.risk)}` : ""}</div>
+        </div>
+        ${pill(a.risk || "subagent")}
+      </div>
+      <div class="sub" style="margin:8px 0 10px">${esc(a.description)}</div>
+      ${
+				a.mcp_servers && a.mcp_servers.length
+					? `<div class="mono" style="font-size:11px; color:var(--muted)">mcp: ${a.mcp_servers.map(esc).join(", ")}</div>`
+					: ""
+			}
+      <div class="row" style="margin-top:12px">
+        ${
+					a.launchable
+						? `<button class="btn primary" data-launch="${esc(a.name)}">Launch…</button>`
+						: `<span class="label" title="${esc(a.note || "")}">runs inside a Claude session — not standalone</span>`
+				}
+      </div>
+    </div>`;
+
+	const grid = (items) =>
+		items.length
+			? `<div class="agent-grid">${items.map(card).join("")}</div>`
+			: `<p class="empty">none</p>`;
+
+	content().innerHTML = `
+    <h1>Agents</h1>
+    <p class="sub">Permission-scoped agents. Launch enqueues a background run under that agent's boundary (its MCP subset + deny/sandbox rules), in its own jj workspace. Runs on the active connection — switch local/VM bottom-left.</p>
+    <div class="label" style="margin:6px 0">Launchable (permission profiles)</div>
+    ${grid(profiles)}
+    <div class="label" style="margin:18px 0 6px">Subagents (Claude-internal helpers)</div>
+    ${grid(subs)}
+    <div id="launch-panel"></div>`;
+
+	content()
+		.querySelectorAll("[data-launch]")
+		.forEach((b) => (b.onclick = () => openLaunch(b.dataset.launch, profiles)));
+}
+
+function openLaunch(name, profiles) {
+	const p = profiles.find((a) => a.name === name);
+	const lp = $("#launch-panel");
+	lp.innerHTML = `
+    <div class="card" style="margin-top:18px; border-color:var(--accent)">
+      <div class="label">Launch · ${esc(name)} ${p ? pill(p.risk) : ""}</div>
+      <div class="row" style="margin-top:10px; align-items:flex-end">
+        <div class="field"><label>Repo</label><input id="la-repo" placeholder="~/code/vizcom-sre" size="24" /></div>
+        <div class="field"><label>Engine</label><select id="la-agent"><option>claude</option><option>codex</option></select></div>
+        <div class="field" style="flex:1"><label>Task</label><input id="la-task" placeholder="what should ${esc(name)} do?" style="width:100%" /></div>
+        <button class="btn primary" id="la-go">Launch run</button>
+        <button class="btn" id="la-cancel">Cancel</button>
+      </div>
+      <div class="label" style="margin-top:8px">Enqueues under profile <span class="mono">${esc(name)}</span> on the active connection. Watch it in <b>Queue</b> / <b>Runs</b>.</div>
+    </div>`;
+	lp.scrollIntoView({ behavior: "smooth", block: "nearest" });
+	$("#la-cancel").onclick = () => (lp.innerHTML = "");
+	$("#la-go").onclick = (e) => {
+		const args = {
+			repo: $("#la-repo").value.trim(),
+			profile: name,
+			agent: $("#la-agent").value,
+			task: $("#la-task").value.trim(),
+		};
+		if (!args.repo || !args.task)
+			return toast("Repo and task are required", true);
+		busy(e.currentTarget, () => action("queue_add", args)).then((r) => {
+			if (r.ok) {
+				toast(`Launched ${name} — see Queue`);
+				lp.innerHTML = "";
+				select("queue");
+			} else {
+				toast("Launch failed: " + (r.output || r.error || ""), true);
+			}
+		});
+	};
 }
 
 // ---- Runs (live ledger) ---------------------------------------------------
