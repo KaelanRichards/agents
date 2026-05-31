@@ -50,7 +50,7 @@ jobs:
         run: pipx run ruff check .
 
       - name: Install uv (for smoke tests)
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
 
       - name: Sync round-trip + smoke tests
         run: |
