@@ -57,6 +57,7 @@ jobs:
           bash tests/enforcement_e2e.sh
           for t in tests/agent_system_contract.py tests/agent_control_smoke.py \
                    tests/bigquery_mcp_smoke.py tests/personal_actions_smoke.py \
+                   tests/personal_actions_webhook_live.py \
                    tests/windmill_stack_smoke.py tests/dash_smoke.py \
                    tests/webdash_smoke.py tests/prompt_injection_policy.py \
                    tests/behavioral_policy.py; do

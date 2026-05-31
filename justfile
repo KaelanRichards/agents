@@ -54,6 +54,7 @@ test:
     uv run --script tests/agent_control_smoke.py
     uv run --script tests/bigquery_mcp_smoke.py
     uv run --script tests/personal_actions_smoke.py
+    uv run --script tests/personal_actions_webhook_live.py
     uv run --script tests/windmill_stack_smoke.py
     uv run --script tests/dash_smoke.py
     uv run --script tests/webdash_smoke.py
