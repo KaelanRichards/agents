@@ -32,14 +32,23 @@ JSON=0
 [ "${1:-}" = "--json" ] && JSON=1
 
 # Per-agent expectations: name | repo path | max heartbeat age (seconds) | max unpushed commits.
-# Cadence ~25-30min, so a stale threshold of ~2x catches a hung/dead loop. vizcom-sre is on the VM
-# (heartbeat synced or checked there); listed for completeness — skipped cleanly if no state file.
-AGENTS="
+# Cadence ~25-30min, so a stale threshold of ~2x catches a hung/dead loop.
+#
+# HOST-AWARE: monitoring is per-host (heartbeats are written where each loop runs — the Mac runs
+# kaelan-pa/vizcom-pm, the VM runs vizcom-sre at a DIFFERENT path). To avoid false "DEAD" pages on
+# a host that doesn't run a given agent, the agent list is config-driven: if
+# $AGENTS_HOME/state/fleet-agents.conf exists, it is the source of truth (one "name|repo|max_age|
+# max_unpushed" row per line, '#' comments ok); otherwise the built-in Mac default below is used.
+CONF="${FLEET_AGENTS_CONF:-$AGENTS_HOME/state/fleet-agents.conf}"
+if [ -r "$CONF" ]; then
+	AGENTS=$(grep -vE '^\s*#|^\s*$' "$CONF")
+else
+	AGENTS="
 kaelan-pa|$HOME/code/kaelan-pa|4500|3
 vizcom-pm|$HOME/code/vizcom-pm|9000|3
-vizcom-sre|$HOME/code/vizcom-sre|4500|3
 vizcom-review|$HOME/code/vizcom-review|0|3
 "
+fi
 
 problems=0
 report=""
