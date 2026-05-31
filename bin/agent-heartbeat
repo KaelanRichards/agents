@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# agent-heartbeat — emit ONE heartbeat line for the external fleet-monitor (Phase A / A2-A3).
+#
+# Called by each agent's runner at the END of a tick (success OR failure), so the absence of a
+# fresh line is the dead-man's-switch signal fleet-monitor watches for. Writes to a state file
+# OUTSIDE the brain repo so it isn't entangled with the agent's own commits.
+#
+# Usage:
+#   agent-heartbeat <agent-name> <tick_rc> [degraded-csv] [mode] [mcps-csv]
+# Example (from run-tick.sh):
+#   agent-heartbeat kaelan-pa "$rc" "$DEGRADED" explore "datadog,slack-dm"
+#
+# Deliberately dependency-free (no jq) and best-effort: it must never break a tick.
+set -uo pipefail
+name="${1:-unknown}"
+rc="${2:-0}"
+degraded="${3:-}"
+mode="${4:-}"
+mcps="${5:-}"
+
+AGENTS_HOME="${AGENTS_HOME:-$HOME/.config/agents}"
+STATE_DIR="${FLEET_STATE_DIR:-$AGENTS_HOME/state/heartbeats}"
+mkdir -p "$STATE_DIR" 2>/dev/null || exit 0
+hb="$STATE_DIR/$name.jsonl"
+
+# JSON-encode a comma-separated list into ["a","b"]; empty -> [].
+csv_to_json_array() {
+	local csv="$1" out="" IFS=','
+	[ -z "$csv" ] && { printf '[]'; return; }
+	for item in $csv; do
+		item="${item## }"; item="${item%% }"
+		[ -z "$item" ] && continue
+		out="$out,\"$item\""
+	done
+	printf '[%s]' "${out#,}"
+}
+
+ts=$(date -u +%FT%TZ)
+printf '{"ts":"%s","agent":"%s","tick_rc":%s,"mode":"%s","degraded":%s,"mcps_loaded":%s}\n' \
+	"$ts" "$name" "${rc:-0}" "$mode" "$(csv_to_json_array "$degraded")" "$(csv_to_json_array "$mcps")" \
+	>> "$hb" 2>/dev/null || exit 0
+
+# Keep the file bounded (last 500 ticks) without needing logrotate.
+if [ "$(wc -l < "$hb" 2>/dev/null || echo 0)" -gt 600 ]; then
+	tail -n 500 "$hb" > "$hb.tmp" 2>/dev/null && mv "$hb.tmp" "$hb" 2>/dev/null || true
+fi
+exit 0

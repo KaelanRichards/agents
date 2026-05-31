@@ -1,0 +1,17 @@
+# fleet-monitor.service — the external observer for the agent fleet (Phase A).
+# Runs out-of-process from every agent so a degraded/dead agent cannot hide. On non-zero exit
+# (any agent stale/dead/degraded/unpushed) systemd records a failure; pair with an OnFailure=
+# alerter unit, or have fleet-monitor itself DM on problems (kept here as detect-only).
+#
+# Install (Linux VM / `agents` host):
+#   cp ~/.config/agents/systemd/fleet-monitor.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now fleet-monitor.timer
+[Unit]
+Description=Agent fleet external health monitor (dead-man's-switch + unpushed-brain + degraded)
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Adjust AGENTS_HOME if not the default. fleet-monitor needs NO agent credentials (read-only).
+ExecStart=%h/.config/agents/bin/fleet-monitor
+Nice=10

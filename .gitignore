@@ -19,3 +19,6 @@ __pycache__/
 .ruff_cache/
 .playwright-cli/
 .DS_Store
+
+# fleet-monitor runtime heartbeats (rebuildable; README tracked)
+state/heartbeats/*.jsonl

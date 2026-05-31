@@ -1,0 +1,12 @@
+# fleet-monitor.timer — run the external fleet health check every 15 minutes.
+# Cadence is shorter than the agents' ~25-30min tick so a hung loop is caught within one window.
+[Unit]
+Description=Run the agent fleet health monitor every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

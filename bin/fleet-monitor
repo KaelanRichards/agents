@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# fleet-monitor — the EXTERNAL observer for the recommend-only agent fleet (Phase A / A1-A3,A5,A10).
+#
+# WHY: every self-report this fleet emits comes from the same process that can silently die — so a
+# "send-path verified" / "tick OK" line is structurally untrustworthy (see the 44-tick dead-Slack
+# outage and the 4-day clock drift). This script runs OUT OF PROCESS (its own cron/timer, separate
+# from any agent) and judges each agent from artifacts the agent cannot fake: the mtime + contents
+# of its heartbeat file, and the agent's git/jj push state. It uses ITS OWN wall clock (never an
+# agent-derived "now"), so a drifted brain cannot satisfy its own freshness pin.
+#
+# It is a DETECTOR, not an actor: it prints a report and exits non-zero if any agent is unhealthy.
+# Wire it to a cron/launchd timer that surfaces non-zero (email / Slack / log) to the human. It
+# performs NO mutation and needs no agent credentials.
+#
+# Heartbeat contract (each agent's runner appends one JSON line per tick to its heartbeat file):
+#   {"ts":"<ISO8601 UTC>","agent":"<name>","tick_rc":0,"mode":"explore|triage|...",
+#    "degraded":["slack_read",...],"mcps_loaded":["datadog",...]}
+# Absence/staleness of that line is the dead-man's-switch signal.
+#
+# Usage: fleet-monitor [--json]
+set -uo pipefail
+for _brew in /opt/homebrew/bin /home/linuxbrew/.linuxbrew/bin /usr/local/bin; do
+	[ -d "$_brew" ] && case ":$PATH:" in *":$_brew:"*) ;; *) PATH="$_brew:$PATH" ;; esac
+done
+unset _brew
+export PATH
+
+AGENTS_HOME="${AGENTS_HOME:-$HOME/.config/agents}"
+STATE_DIR="${FLEET_STATE_DIR:-$AGENTS_HOME/state/heartbeats}"
+NOW_EPOCH=$(date -u +%s)              # OUR clock — the whole point. Never an agent's "now".
+JSON=0
+[ "${1:-}" = "--json" ] && JSON=1
+
+# Per-agent expectations: name | repo path | max heartbeat age (seconds) | max unpushed commits.
+# Cadence ~25-30min, so a stale threshold of ~2x catches a hung/dead loop. vizcom-sre is on the VM
+# (heartbeat synced or checked there); listed for completeness — skipped cleanly if no state file.
+AGENTS="
+kaelan-pa|$HOME/code/kaelan-pa|4500|3
+vizcom-pm|$HOME/code/vizcom-pm|9000|3
+vizcom-sre|$HOME/code/vizcom-sre|4500|3
+vizcom-review|$HOME/code/vizcom-review|0|3
+"
+
+problems=0
+report=""
+
+emit() { report="${report}$1"$'\n'; }
+
+for row in $AGENTS; do
+	[ -z "$row" ] && continue
+	name="${row%%|*}"; rest="${row#*|}"
+	repo="${rest%%|*}"; rest="${rest#*|}"
+	max_age="${rest%%|*}"; max_unpushed="${rest##*|}"
+
+	# --- heartbeat / dead-man's-switch (skip agents with no cadence, e.g. event-triggered review) ---
+	hb="$STATE_DIR/$name.jsonl"
+	if [ "$max_age" -gt 0 ]; then
+		if [ ! -r "$hb" ]; then
+			emit "DEAD   $name: no heartbeat file ($hb) — never reported, or state dir not wired"
+			problems=$((problems+1))
+		else
+			hb_mtime=$(stat -f %m "$hb" 2>/dev/null || stat -c %Y "$hb" 2>/dev/null || echo 0)
+			age=$((NOW_EPOCH - hb_mtime))
+			if [ "$age" -gt "$max_age" ]; then
+				emit "STALE  $name: last heartbeat ${age}s ago (> ${max_age}s) — loop hung or stopped"
+				problems=$((problems+1))
+			else
+				# Inspect the most recent heartbeat line for degraded capabilities / nonzero rc.
+				last=$(tail -n 1 "$hb" 2>/dev/null)
+				rc=$(printf '%s' "$last" | (command -v jq >/dev/null 2>&1 && jq -r '.tick_rc // 0' 2>/dev/null || echo 0))
+				deg=$(printf '%s' "$last" | (command -v jq >/dev/null 2>&1 && jq -r '(.degraded // []) | join(",")' 2>/dev/null || echo ""))
+				if [ "${rc:-0}" != "0" ]; then
+					emit "ERR    $name: last tick exited rc=$rc"
+					problems=$((problems+1))
+				elif [ -n "$deg" ]; then
+					emit "DEGRADED $name: running but degraded [$deg] — announcing-only state"
+					problems=$((problems+1))
+				else
+					emit "ok     $name: heartbeat ${age}s ago, healthy"
+				fi
+			fi
+		fi
+	fi
+
+	# --- unpushed-brain alarm (disk-loss risk: brains sat 38+ ticks unpushed this session) ---
+	if [ -d "$repo/.jj" ] || [ -d "$repo/.git" ]; then
+		# Count local commits on main not on origin/main (best-effort; never fail the script on a VCS hiccup).
+		unpushed=$(git -C "$repo" rev-list --count origin/main..main 2>/dev/null || echo 0)
+		if [ "${unpushed:-0}" -gt "$max_unpushed" ]; then
+			emit "UNPUSHED $name: $unpushed commits ahead of origin/main (> $max_unpushed) — disk-loss risk, push the brain"
+			problems=$((problems+1))
+		fi
+	fi
+done
+
+if [ "$JSON" -eq 1 ]; then
+	# Minimal machine-readable summary for a downstream alerter.
+	printf '{"checked_utc":"%s","problems":%d}\n' "$(date -u +%FT%TZ)" "$problems"
+fi
+printf '%s' "$report"
+if [ "$problems" -gt 0 ]; then
+	echo "fleet-monitor: $problems problem(s) — investigate above" >&2
+	exit 1
+fi
+echo "fleet-monitor: all agents healthy"
+exit 0
