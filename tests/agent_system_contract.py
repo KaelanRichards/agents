@@ -202,6 +202,7 @@ def main() -> None:
         "dashboard-smoke",
         "queue-smoke",
         "policy-enforcement",
+        "enforcement-e2e",
     }.issubset(eval_tasks)
     assert (ROOT / "systemd" / "agentq-worker.service").exists()
     assert (ROOT / "systemd" / "agentq-worker.timer").exists()

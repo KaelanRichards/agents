@@ -49,6 +49,7 @@ test:
     ruff check .
     toolbelt-diff
     bash tests/sync-roundtrip.sh
+    bash tests/enforcement_e2e.sh
     uv run --script tests/agent_system_contract.py
     uv run --script tests/agent_control_smoke.py
     uv run --script tests/bigquery_mcp_smoke.py

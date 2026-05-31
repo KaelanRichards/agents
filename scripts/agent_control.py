@@ -1493,7 +1493,24 @@ def cmd_broker_hook(args: argparse.Namespace) -> int:
     tool_name = str(data.get("tool_name", ""))
     try:
         decision = broker_hook_decision(profile, tool_name)
-    except (SystemExit, Exception):  # noqa: BLE001 — corrupt/unknown profile must never wedge a session
+    except (SystemExit, Exception) as exc:  # noqa: BLE001 — a corrupt/unknown profile must never wedge a session
+        # Fail open so the session keeps moving (Claude's compiled deny-list + --strict-mcp-config
+        # remain the primary gate), but never silently: a broken broker hook must be observable in
+        # the ledger rather than invisible. Best-effort; the failure path must not itself raise.
+        try:
+            append_ledger(
+                {
+                    "kind": "broker",
+                    "status": "hook-error",
+                    "profile": profile,
+                    "agent": "hook",
+                    "repo": "",
+                    "prompt": tool_name,
+                    "details": {"error": repr(exc)},
+                }
+            )
+        except Exception:  # noqa: BLE001
+            pass
         return 0
     if decision is None:
         return 0

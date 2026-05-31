@@ -1,0 +1,9 @@
+{
+	"id": "enforcement-e2e",
+	"description": "End-to-end PreToolUse hook enforcement: guard-bash blocks destructive/RCE/managed-device commands; profile-broker denies/asks/defers and fails open observably.",
+	"profile": "plan-readonly",
+	"agent": "noop",
+	"repo": "~/.config/agents",
+	"prompt": "The real guard-bash and profile-broker hook scripts enforce policy over their stdin/stdout contract, not just the broker function in isolation.",
+	"success_command": "bash tests/enforcement_e2e.sh"
+}

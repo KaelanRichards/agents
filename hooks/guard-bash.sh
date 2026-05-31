@@ -39,7 +39,7 @@ printf '%s' "$c" | grep -Eq ':\(\) *\{ *:\|' &&
 	deny "Blocked: fork bomb."
 printf '%s' "$c" | grep -Eq '\b(mkfs|newfs)\b|diskutil +(eraseDisk|eraseVolume|reformat)' &&
 	deny "Blocked: disk formatting."
-printf '%s' "$c" | grep -Eq '\bdd\b[^|]* of=/dev/r?(disk|sd)' &&
+printf '%s' "$c" | grep -Eq '\bdd\b[^|]* of=/dev/r?(disk|sd|nvme|vd|mmcblk|xvd|hd|loop)' &&
 	deny "Blocked: raw write to a block device."
 printf '%s' "$c" | grep -Eq 'chmod +-R +0?777 +/( |$)' &&
 	deny "Blocked: chmod -R 777 on /."
