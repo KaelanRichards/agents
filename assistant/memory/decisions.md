@@ -111,3 +111,35 @@ round-trip test for agents-sync/hermes-sync first so the refactor is regression-
 **Timeline.**
 - 2026-05-30 — Reviewed and deliberately deferred the sync-helper refactor (net-negative churn on
   stable, partially-untested infra); recorded the trigger condition instead of doing it.
+
+## Never do VCS history surgery on a live agent-loop repo without pausing the loop
+
+**Current truth.** An agent brain repo with a running loop (`kaelan-pa` on the Mac launchd every
+25 min; `vizcom-sre` on the VM systemd every 30 min) is a **live `jj` mutator**: each tick runs
+`jj new main` / `jj describe` / commits. Any `git` *or* `jj` history operation (push, branch delete,
+bookmark move, rebase) performed concurrently races those ticks and corrupts state — diverged
+change-ids and conflicted bookmarks. **Before any history work on such a repo, stop its loop first**
+(`launchctl bootout …` for the Mac PA; `systemctl --user stop <svc>.timer` for VM agents), do the
+work, then restart. Plain reads (`git log`, `git status`) are fine; mutations are not. (Note: even a
+backgrounded `jj` *read* can make a concurrent `jj` mutation diverge — see the jj rule in AGENTS.md.)
+
+**Details.** 2026-05-30 incident: during the "merge everything into main" pass I ran `git push` +
+`git branch -D` + `git push --delete` on `~/code/kaelan-pa` while the Mac PA loop was live (the
+auto-mode guard had — correctly — blocked me from disabling it earlier, so it kept ticking). Result:
+`kaelan-pa` `main` went **3-head conflicted** (`b481e72` base + tick lineage `b9fb7af4` + eval head
+`5e93f49a`) and change `tllzxknl` went 5-way divergent. The PA itself detected it, refused bookmark
+surgery ("reconcile=Kaelan"), and kept ticking safely in CALM mode (no bad sends) — good defensive
+design. Fix (with explicit auth to pause the loop): `launchctl bootout` the PA → `jj new 5e93f49a` +
+`jj restore --from <tick> frontier.md incidents/_audit.jsonl recommendations.md` to fold the tick
+brain delta onto origin/main as one clean commit → delete stale bookmarks → abandon the orphaned
+tick commit → verify `jj new main` rc=0 → push (`origin/main 5e93f49a→2c57bb1e`) → `launchctl
+bootstrap`+`enable` to restart. No content lost.
+
+**Open questions.** The Mac PA retires at the ~2026-06-06 cutover, removing the Mac-side instance of
+this hazard; the VM agents remain live-loop repos, so the pause-first rule still applies there. A
+guardrail worth considering: a tiny pre-push/pre-rebase check that refuses if the repo's agent loop
+is active (or that takes the same `flock` the VM ticks use).
+
+**Timeline.**
+- 2026-05-30 — Corrupted `kaelan-pa` `main` (3-head conflict) by running git history ops against the
+  live Mac PA loop; reconciled after pausing the loop. Recorded the pause-first rule.
