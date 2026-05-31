@@ -102,3 +102,55 @@ Ubuntu 24.04) via `systemd --user` timer `vizcom-sre.{service,timer}` (~7 min). 
   `agents`, documented in `deploy/AWS_READONLY.md`, updated `deploy/run-tick.sh` prompt, and verified
   live canaries: STS identity assumes the read-only role, EKS cluster listing works, Secrets Manager
   read is denied, and the base user cannot read EKS directly.
+
+## kaelan-pa — agentic personal assistant (`~/code/kaelan-pa`, GitHub `KaelanRichards/kaelan-pa` private)
+
+> Read-only/recommend-only PA mirroring the vizcom-sre pattern. Brain is a jj repo; loops headless
+> every 25 min. Was Mac-only (launchd); now also promoted to VM `agents` (systemd), in week-1 dry-run.
+
+**Current truth.** Recommend/draft-only PA whose brain is the `kaelan-pa` repo (`inbox/ people/
+projects/ baselines/ runbooks/ incidents/ frontier.md` + `LOOP.md`/`policy.md`). Each tick: read
+brain → sense work+personal Gmail/Calendar/Drive/Slack-DM (via `pa-diagnostician` subagent) →
+triage (draft reply / add label / DM Kaelan `U04E9M9235G`) or explore one area → commit. **Send-
+restricted** (`.claude/settings.json` deny-list): may only write brain files, a Slack DM to Kaelan,
+a Gmail draft, and Gmail label-add/trash — **never** Gmail send, Slack-channel post, calendar/Linear
+writes.
+- **Two runtimes now:** (a) **Mac** via launchd `com.kaelan.kaelan-pa` (`StartInterval` 1500s,
+  `KAELAN_PA_DRY_RUN=0` → live) — still running as the week-1 safety net; (b) **VM `agents`** via
+  `systemd --user` `kaelan-pa.{service,timer}` (`OnUnitActiveSec=25min`, `OnBootSec=15min` offset
+  from sre's tick; `Linger=yes`), in **dry-run** (`KAELAN_PA_DRY_RUN=1` + facade
+  `PERSONAL_ACTIONS_DRY_RUN=1` hard floor).
+
+**Details.**
+- VM senses via `deploy/mcp.vm.json` + `--strict-mcp-config`: **slack-dm + personal-actions only**
+  (full mcp-sync set hangs `claude -p` headless — same lesson as vizcom-sre). **Linear omitted**
+  (OAuth-only remote, hangs headless; senses dark until auth added).
+- Auth on VM: Claude **subscription** token (`CLAUDE_CODE_OAUTH_TOKEN`, reused from the sre
+  `runner.env`); Slack bot token + Gmail compose/modify refresh tokens (personal+work) copied from
+  Mac `~/.config/agents-secrets/{kaelan-pa-slack.env,personal-actions.env}` (chmod 600). Provider =
+  `webhook` (Pipedream/Zapier); refresh tokens are portable so **no interactive OAuth needed on the
+  VM**. `runner.env` at `~/.config/kaelan-pa/runner.env`. `uv` installed (`~/.local/bin`) for the
+  `personal-actions-mcp` (`uv run --script server.py`).
+- `run-tick.sh` made host-portable: `KAELAN_PA_MCP_CONFIG` adds `--strict-mcp-config/--mcp-config`
+  on the VM; unset on the Mac → inherits default mcp-sync config (prior behavior preserved).
+- First VM tick (systemd path) verified clean: preflight Slack OK (all 5 scopes), MCP started under
+  strict config (no hang), facade confirmed `dry_run=true`, DM channel canary live, brain audit
+  committed. ~11 min wall (one-time `uv` dep resolution; 35s CPU).
+- `DRY_RUN` is **behavioral-only** (no guard enforces it) — hence the facade `PERSONAL_ACTIONS_DRY_
+  RUN=1` hard floor for week 1. The `.claude/settings.json` deny-list is the always-on hard guard.
+
+**Open questions.**
+- **Cutover (~2026-06-06, after a clean dry-run week):** sync Mac's latest brain → VM, flip both
+  `KAELAN_PA_DRY_RUN` and `PERSONAL_ACTIONS_DRY_RUN` to 0, then retire the Mac launchd job
+  (`launchctl bootout`). Until then Mac stays live and owns the real P1s (e.g. Morita final-demand
+  due 6/04, Andrei last day 6/02).
+- Brain divergence while both run: VM clone is from GitHub `main` (b481e72) and commits dry-run
+  audits locally; Mac brain is authoritative. Need a `jj git fetch`+rebase sync at cutover (and
+  ideally a sync timer, per PROMOTION.md).
+- Add Linear auth on the VM (read-only senses) — currently dark.
+- VM deploy commit is **local only** (not pushed to GitHub).
+
+**Timeline.**
+- 2026-05-30 — Promoted kaelan-pa to VM `agents`: authored systemd units + scoped `mcp.vm.json`,
+  cloned repo, installed `uv`, provisioned `runner.env` + secrets, verified one clean dry-run tick
+  via systemd, enabled `kaelan-pa.timer` (25 min, dry-run). Mac launchd kept live in parallel.
