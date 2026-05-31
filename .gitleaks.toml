@@ -7,10 +7,12 @@
 useDefault = true
 
 [allowlist]
-description = "Build artifacts and lockfiles are not secret material."
+description = "Build artifacts, lockfiles, and vendored third-party libs are not secret material."
 paths = [
   '''.*/target/.*''',
   '''.*\.rmeta$''',
   '''.*\.rlib$''',
   '''.*Cargo\.lock$''',
+  # Vendored minified browser libs (xterm.js etc.) — high-entropy minified strings, not secrets.
+  '''desktop/dist/vendor/.*''',
 ]

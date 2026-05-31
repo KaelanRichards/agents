@@ -14,6 +14,8 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 
+mod pty;
+
 const KEYRING_SERVICE: &str = "dev.kaelan.agents";
 
 /// A reachable agentd backend (local laptop or remote VM).
@@ -404,6 +406,7 @@ pub fn run() {
                 store: Mutex::new(store),
                 last_pending: Mutex::new(0),
             });
+            app.manage(pty::PtyState::default());
 
             // Tray menu
             let open = MenuItem::with_id(app, "open", "Open Agents", true, None::<&str>)?;
@@ -441,6 +444,10 @@ pub fn run() {
             read_doc,
             write_doc,
             list_memory,
+            pty_spawn,
+            pty_write,
+            pty_resize,
+            pty_kill,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -223,7 +223,8 @@ async function renderAgents() {
       <div class="row" style="margin-top:12px">
         ${
 					a.launchable
-						? `<button class="btn primary" data-launch="${esc(a.name)}">Launch…</button>`
+						? `<button class="btn primary" data-launch="${esc(a.name)}">Launch…</button>
+           <button class="btn" data-attach="${esc(a.name)}">Attach ▸</button>`
 						: `<span class="label" title="${esc(a.note || "")}">runs inside a Claude session — not standalone</span>`
 				}
       </div>
@@ -246,6 +247,98 @@ async function renderAgents() {
 	content()
 		.querySelectorAll("[data-launch]")
 		.forEach((b) => (b.onclick = () => openLaunch(b.dataset.launch, profiles)));
+	content()
+		.querySelectorAll("[data-attach]")
+		.forEach((b) => (b.onclick = () => attachAgent(b.dataset.attach)));
+}
+
+// ---- Attach: interactive PTY session in an embedded xterm ------------------
+
+const term = { id: null, xterm: null, fit: null, unlisten: [] };
+
+async function attachAgent(profile) {
+	const overlay = $("#term-overlay");
+	const host = $("#term-host");
+	overlay.hidden = false;
+	host.innerHTML = "";
+	$("#term-title").textContent = `agentp ${profile} — ${activeConnName()}`;
+
+	const x = new window.Terminal({
+		fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+		fontSize: 12,
+		theme: { background: "#0e0d16", foreground: "#e7e6f0", cursor: "#7cc4ff" },
+		cursorBlink: true,
+	});
+	const fit = new window.FitAddon.FitAddon();
+	x.loadAddon(fit);
+	x.open(host);
+	fit.fit();
+	term.xterm = x;
+	term.fit = fit;
+	term.id = `pty-${Date.now()}`;
+
+	const { listen } = window.__TAURI__.event;
+	// Output + exit streams from Rust, filtered to this session id.
+	term.unlisten.push(
+		await listen("pty://output", (e) => {
+			if (e.payload && e.payload.id === term.id) x.write(e.payload.chunk);
+		}),
+	);
+	term.unlisten.push(
+		await listen("pty://exit", (e) => {
+			if (e.payload && e.payload.id === term.id) {
+				x.write("\r\n\x1b[2m[session ended]\x1b[0m\r\n");
+			}
+		}),
+	);
+
+	// Keystrokes → PTY.
+	x.onData((d) => invoke("pty_write", { id: term.id, data: d }));
+	// Resize → PTY (debounced via the fit addon's dims).
+	const sendResize = () => {
+		fit.fit();
+		invoke("pty_resize", {
+			id: term.id,
+			cols: x.cols,
+			rows: x.rows,
+		});
+	};
+	window.addEventListener("resize", sendResize);
+	term._onWinResize = sendResize;
+
+	try {
+		await invoke("pty_spawn", {
+			id: term.id,
+			profile,
+			engine: "claude",
+			cols: x.cols,
+			rows: x.rows,
+		});
+		x.focus();
+	} catch (e) {
+		x.write(`\r\n\x1b[31mfailed to start: ${esc(String(e))}\x1b[0m\r\n`);
+	}
+}
+
+function closeTerm(kill) {
+	if (term.id && kill) invoke("pty_kill", { id: term.id }).catch(() => {});
+	for (const u of term.unlisten) {
+		try {
+			u();
+		} catch {}
+	}
+	term.unlisten = [];
+	if (term._onWinResize)
+		window.removeEventListener("resize", term._onWinResize);
+	if (term.xterm) term.xterm.dispose();
+	term.xterm = null;
+	term.id = null;
+	$("#term-overlay").hidden = true;
+}
+
+function activeConnName() {
+	const sel = $("#conn-select");
+	return sel && sel.value ? sel.value : "local";
 }
 
 function openLaunch(name, profiles) {
@@ -663,6 +756,10 @@ async function main() {
 		$("#conn-status").textContent = "● offline";
 		$("#conn-status").className = "status err";
 	});
+
+	// Terminal overlay controls.
+	$("#term-kill").onclick = () => closeTerm(true);
+	$("#term-close").onclick = () => closeTerm(false);
 }
 
 main();

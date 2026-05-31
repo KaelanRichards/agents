@@ -22,6 +22,7 @@ serde_json = "1"
 reqwest = { version = "0.12", features = ["json", "blocking", "cookies"] }
 keyring = { version = "3", features = ["apple-native"] }
 anyhow = "1"
+portable-pty = "0.8"
 
 [features]
 default = []
