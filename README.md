@@ -47,16 +47,22 @@ at `https://<vm>.<tailnet>.ts.net` (see below), or Claude Code's `/remote-contro
 
 ## Dashboards & control
 
-Three views over the same data (machines+cost, health, MCP, CI/PRs, sessions) — pick by context:
+All surfaces read the same data (machines+cost, health, MCP, CI/PRs, sessions, queue, approvals)
+from one typed backend — **`agentd`** (`web/agentd.py`), which imports `scripts/agent_control.py`
+directly so the ledger + event log fire identically no matter which surface triggers an action.
+Pick a surface by context:
 - **`agents-status`** — one-shot text overview.
 - **`dash`** — live TUI control center (panels + keys: `r` refresh · `s` sync · `d` doctor · `g` grafana · `q` quit).
 - **`dashweb`** — live HTML control center: SSE cards, streamed action logs, control buttons
   (sync/doctor/provision/teardown/reboot, MCP add/remove), embedded Grafana + terminal.
+- **desktop app** (`desktop/`) — native macOS Tauri app: tray status pill, native approval
+  notifications, Keychain-stored tokens, PTY attach. See `desktop/README.md`.
 
-> Maintenance note: three surfaces over one data model is a known cost. `dashweb` is the
-> long-term primary (phone/tailnet access, mutation controls). `dash` and `agents-status`
-> stay as quick local views; before extending any of them, prefer adding the feature to
-> `dashweb` first.
+> Maintenance note: four surfaces over one data model is a known cost, kept honest by the single
+> `agentd` backend. The **desktop app is the primary macOS surface** and **`dashweb` is the primary
+> remote/phone surface** (tailnet access, mutation controls). `dash` and `agents-status` stay as
+> quick local views. Before adding a feature, put it in the `agentd` read model / action set first
+> (so every surface inherits it), then wire the UI — preferring the desktop app and `dashweb`.
 
 ```bash
 dashweb     # local: http://localhost:8787 (read-only without WEBDASH_TOKEN)

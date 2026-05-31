@@ -165,6 +165,57 @@ def main() -> None:
     check("sandbox enabled", sb["enabled"] is True)
     check("sandbox hides ssh creds from bash", "~/.ssh" in sb["filesystem"]["denyRead"])
 
+    # 9) Per-profile grant enumeration — drift guard. Walks the authoritative effect registry
+    #    against EVERY profile and asserts the security contract that must never silently weaken
+    #    as profiles/tools change (not a restatement of the JSON — these are the invariants).
+    profiles = [p["name"] for p in c.query_profiles()]
+    write_tools = [t for t, e in c.TOOL_EFFECTS.items() if e in c.WRITE_EFFECTS]
+
+    # 9a) No profile ever ALLOWS a mutation without forcing confirmation (no silent writes).
+    for prof in profiles:
+        p = c.load_profile(prof)
+        for server in p["mcp_servers"]:
+            for tool in write_tools:
+                d = auth(prof, server, tool, False)
+                if d["allowed"]:
+                    check(
+                        f"{prof}: allowed write {server}.{tool} requires confirmation",
+                        d["needs_confirmation"] is True,
+                    )
+
+    # 9b) The read-only profiles allow ZERO writes on any server they can reach.
+    for prof in ("plan-readonly", "prod-observer"):
+        p = c.load_profile(prof)
+        for server in p["mcp_servers"]:
+            for tool in write_tools:
+                check(
+                    f"{prof} refuses write {server}.{tool}",
+                    auth(prof, server, tool, False)["allowed"] is False,
+                )
+
+    # 9c) personal-actions writes are reachable ONLY from personal-assistant.
+    for prof in profiles:
+        if prof == "personal-assistant":
+            continue
+        d = auth(prof, "personal-actions", "personal_gmail_send_email", False)
+        check(f"{prof} cannot reach personal email send", d["allowed"] is False)
+
+    # 9d) The critical prod-mutator DOES permit mutations, but every one needs confirmation.
+    pm = c.load_profile("prod-mutator-confirmed")
+    confirmed_writes = 0
+    for server in pm["mcp_servers"]:
+        for tool in ("create_monitor", "mute_monitor", "update_issue"):
+            d = auth("prod-mutator-confirmed", server, tool, False)
+            if d["allowed"]:
+                confirmed_writes += 1
+                check(
+                    f"prod-mutator confirms {server}.{tool}",
+                    d["needs_confirmation"] is True,
+                )
+    check(
+        "prod-mutator-confirmed permits some confirmed mutation", confirmed_writes > 0
+    )
+
     print("behavioral policy OK")
 
 
