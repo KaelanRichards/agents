@@ -39,7 +39,12 @@ printf '%s' "$c" | grep -Eq ':\(\) *\{ *:\|' &&
 	deny "Blocked: fork bomb."
 printf '%s' "$c" | grep -Eq '\b(mkfs|newfs)\b|diskutil +(eraseDisk|eraseVolume|reformat)' &&
 	deny "Blocked: disk formatting."
-printf '%s' "$c" | grep -Eq '\bdd\b[^|]* of=/dev/r?(disk|sd|nvme|vd|mmcblk|xvd|hd|loop)' &&
+# Require a real device suffix so this matches actual block devices (sda, nvme0n1, vda, disk0,
+# mmcblk0, loop0, rdisk0) without over-blocking lookalikes: digit-suffixed families (disk/nvme/
+# mmcblk/loop) need a digit — so /dev/loopback is NOT a device write — and SCSI/virtio/Xen families
+# (sd/vd/xvd) need a drive letter. (No legacy /dev/hd* — modern kernels don't use it, and it would
+# false-match /dev/hdmi.)
+printf '%s' "$c" | grep -Eq '\bdd\b[^|]* of=/dev/r?((disk|nvme|mmcblk|loop)[0-9]|(sd|vd|xvd)[a-z])' &&
 	deny "Blocked: raw write to a block device."
 printf '%s' "$c" | grep -Eq 'chmod +-R +0?777 +/( |$)' &&
 	deny "Blocked: chmod -R 777 on /."

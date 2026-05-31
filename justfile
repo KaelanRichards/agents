@@ -43,7 +43,7 @@ test:
     # shellcheck only real shell scripts — bin/ also holds Python CLIs (page-precision, slack-dm-mcp).
     for f in bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh; do \
       [ -f "$f" ] || continue; \
-      head -1 "$f" | grep -Eq 'env (ba)?sh$|/(ba)?sh$' || continue; \
+      head -1 "$f" | grep -Eq '(/|env )(ba)?sh( |$)' || continue; \
       shellcheck -S error -x "$f"; \
     done
     actionlint

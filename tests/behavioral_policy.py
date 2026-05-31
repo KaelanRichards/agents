@@ -201,17 +201,21 @@ def main() -> None:
         check(f"{prof} cannot reach personal email send", d["allowed"] is False)
 
     # 9d) The critical prod-mutator DOES permit mutations, but every one needs confirmation.
-    pm = c.load_profile("prod-mutator-confirmed")
+    #     Each write tool is tested against the server it actually belongs to (not a cross-product).
     confirmed_writes = 0
-    for server in pm["mcp_servers"]:
-        for tool in ("create_monitor", "mute_monitor", "update_issue"):
-            d = auth("prod-mutator-confirmed", server, tool, False)
-            if d["allowed"]:
-                confirmed_writes += 1
-                check(
-                    f"prod-mutator confirms {server}.{tool}",
-                    d["needs_confirmation"] is True,
-                )
+    for server, tool in (
+        ("datadog", "create_monitor"),
+        ("datadog", "mute_monitor"),
+        ("sentry", "update_issue"),
+        ("github", "create_pull_request"),
+    ):
+        d = auth("prod-mutator-confirmed", server, tool, False)
+        if d["allowed"]:
+            confirmed_writes += 1
+            check(
+                f"prod-mutator confirms {server}.{tool}",
+                d["needs_confirmation"] is True,
+            )
     check(
         "prod-mutator-confirmed permits some confirmed mutation", confirmed_writes > 0
     )

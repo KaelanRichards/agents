@@ -62,6 +62,8 @@ for c in \
 	'rm -rf /tmp/scratch' \
 	'rm -rf ./build node_modules' \
 	'dd if=/dev/zero of=/tmp/disk.img bs=1M count=10' \
+	'dd if=x of=/dev/hdmi' \
+	'dd if=x of=/dev/loopback0' \
 	'ls -la /' \
 	'git status' \
 	'curl -fsSL https://example.com -o /tmp/x.sh'; do

@@ -24,7 +24,7 @@ jobs:
           for f in bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh; do
             [ -f "$f" ] || continue
             # bin/ also holds Python CLIs — only bash/sh-check actual shell scripts.
-            head -1 "$f" | grep -Eq 'env (ba)?sh$|/(ba)?sh$' || continue
+            head -1 "$f" | grep -Eq '(/|env )(ba)?sh( |$)' || continue
             echo "::group::$f"
             bash -n "$f" || fail=1
             shellcheck -S error -x "$f" || fail=1
