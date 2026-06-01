@@ -84,4 +84,9 @@ agent-ledger record --kind launch --status started --profile "$profile" --agent 
 	--prompt "agentp $profile" >/dev/null 2>&1 || true
 # AGENTS_PROFILE activates the profile-broker PreToolUse hook for this session.
 export AGENTS_PROFILE="$profile"
-exec claude --settings "$settings" --mcp-config "$mcpcfg" --strict-mcp-config "$@"
+exec claude \
+	--settings "$settings" \
+	--mcp-config "$mcpcfg" \
+	--strict-mcp-config \
+	--append-system-prompt "$(cat "$GEN/$profile.md")" \
+	"$@"

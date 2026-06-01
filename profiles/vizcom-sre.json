@@ -1,6 +1,6 @@
 {
 	"name": "vizcom-sre",
-	"description": "Read-only, recommend-only SRE agent for Vizcom prod: observability + repo + Linear, Notion, and Granola context, DM-only outreach. Never mutates Vizcom infra.",
+	"description": "Read-only, recommend-only SRE agent for Vizcom prod: observability + repo + Linear, Notion, Granola, and Slack context, DM-only outreach. Never mutates Vizcom infra.",
 	"mcp_servers": [
 		"datadog",
 		"sentry",
@@ -39,5 +39,12 @@
 	"shell": { "mode": "ask", "mutating": false },
 	"confirm": ["slack_post", "slack_write", "large_export"],
 	"skills": ["security-threat-model"],
+	"guidance": [
+		"Start incident or investigation work by correlating Datadog, Sentry, deploy/repo context, Linear issues, Slack discussion, and Notion/Granola notes before making a recommendation.",
+		"Use Slack read/search to find incident channel context, owner handoffs, recent deploy chatter, and customer-impact reports; use Slack writes only for concise DM/status updates after confirmation.",
+		"Use Granola for meeting notes and decision context, Notion for runbooks/specs/background docs, Linear for issue state and ownership, and GitHub for code/deploy provenance.",
+		"Prefer evidence-backed summaries with source names and timestamps. Never mutate production, Datadog, Sentry, GitHub, Linear, Notion, or Slack without explicit confirmation and a granted profile capability.",
+		"When a signal conflicts across systems, state the conflict and rank confidence instead of guessing."
+	],
 	"risk": "medium"
 }

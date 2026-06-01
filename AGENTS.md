@@ -131,9 +131,17 @@ This is the single source of truth for both agents. Canonical file lives at
 - **Profile-scoped sessions**: **`agentp <profile>`** (or `agentp --codex <profile>`) launches a
   coding agent under a canonical profile as a real boundary, built on each harness's *native*
   enforcement — Claude: `--strict-mcp-config` + compiled `--settings` (deny/ask + OS Bash sandbox)
-  + a `profile-broker` PreToolUse hook for per-tool read/write policy; Codex: native `--sandbox` +
-  `--ask-for-approval`. Use it (not bare `claude`/`codex`) when you want least-privilege enforced,
-  not just declared. The broker logic is the *backend of the native hook*, not a parallel system.
+  + a `profile-broker` PreToolUse hook for per-tool read/write policy + appended profile guidance
+  from `generated/profiles/claude/<profile>.md`; Codex: native `--sandbox` + `--ask-for-approval`.
+  Use it (not bare `claude`/`codex`) when you want least-privilege enforced, not just declared. The
+  broker logic is the *backend of the native hook*, not a parallel system.
+- **Profile playbooks**:
+  - `vizcom-sre` should correlate Datadog, Sentry, GitHub, Linear, Slack, Notion, and Granola before
+    recommending an operational action. Slack write paths are for confirmed concise updates only;
+    production mutation remains out of scope.
+  - `personal-assistant` / Kaelan PA should combine Slack, Granola, Notion, Linear, Cloudflare, and
+    local agent state for personal/project context. Cloudflare and Slack writes require explicit
+    confirmation with the exact intended change.
 - **Hooks (active in both tools)**: edits are auto-formatted (ruff/biome/shfmt/rustfmt);
   a Bash guard blocks destructive/security-sensitive commands.
   - Because the format hook **rewrites the file after every Write/Edit**, a follow-up `Edit` whose

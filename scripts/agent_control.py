@@ -174,6 +174,8 @@ def validate_profile(data: dict[str, Any], path: Path) -> None:
         raise SystemExit(f"{path}: name must match filename")
     if data["risk"] not in {"low", "medium", "high", "critical"}:
         raise SystemExit(f"{path}: risk must be low|medium|high|critical")
+    if "guidance" in data and not isinstance(data["guidance"], list):
+        raise SystemExit(f"{path}: guidance must be list")
 
 
 def cmd_profile(args: argparse.Namespace) -> int:
@@ -222,6 +224,11 @@ def compile_profile(profile: dict[str, Any]) -> None:
         Skills: {", ".join(profile["skills"])}
         """
     )
+    guidance = profile.get("guidance") or []
+    if guidance:
+        summary += "\nOperational guidance:\n" + "\n".join(
+            f"- {item}" for item in guidance
+        ) + "\n"
     (GENERATED / "claude").mkdir(parents=True, exist_ok=True)
     (GENERATED / "claude" / f"{name}.md").write_text(summary, encoding="utf-8")
     (GENERATED / "gemini" / name).mkdir(parents=True, exist_ok=True)
@@ -238,6 +245,7 @@ def compile_profile(profile: dict[str, Any]) -> None:
         "disallowed_tools = " + json.dumps(profile["disallowed_tools"]),
         "confirm = " + json.dumps(profile["confirm"]),
         "skills = " + json.dumps(profile["skills"]),
+        "guidance = " + json.dumps(guidance),
         "",
     ]
     (GENERATED / "codex").mkdir(parents=True, exist_ok=True)
@@ -1094,6 +1102,7 @@ def agent_command(agent: str, task: str, profile: str = "") -> str:
                     f"AGENTS_PROFILE={shlex.quote(profile)} claude "
                     f"--settings {shlex.quote(str(settings))} "
                     f"--mcp-config {shlex.quote(str(mcpcfg))} --strict-mcp-config "
+                    f"--append-system-prompt {shlex.quote(profile_system_prompt(profile))} "
                     f"-p --permission-mode auto {quoted}"
                 )
         return f"claude -p --permission-mode auto {quoted}"
@@ -1110,6 +1119,13 @@ def agent_command(agent: str, task: str, profile: str = "") -> str:
     if agent == "qwen":
         return f"qwen -p {quoted}"
     raise SystemExit(f"unsupported agent: {agent}")
+
+
+def profile_system_prompt(profile: str) -> str:
+    path = GENERATED / "claude" / f"{profile}.md"
+    if not path.exists():
+        compile_profile(load_profile(profile))
+    return path.read_text(encoding="utf-8")
 
 
 MUTATING_TOOL_WORDS = {
