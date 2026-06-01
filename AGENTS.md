@@ -84,6 +84,11 @@ This is the single source of truth for both agents. Canonical file lives at
   `~/.codex/config.toml` (TOML).
 - To add/remove a server, use:
   `mcp-sync add <name> -- <cmd...>` · `mcp-sync add-http <name> <url> [BEARER_ENV]` · `mcp-sync remove <name>`.
+- OAuth-backed remote MCP auth is tracked in `~/.config/agents/mcp.auth.json`. Notion and Granola
+  use `mcp-remote` stdio bridges, so `mcp-auth login <server>` authenticates once per host into
+  `~/.mcp-auth`, and every synced stdio-compatible client on that host reuses it. For a VM, use
+  `mcp-auth vm-login <server> <host>` from the laptop. Do **not** copy opaque OAuth token stores
+  between machines unless a server-specific runbook explicitly authorizes it.
 - **Do not** hand-edit `~/.claude.json` or the managed block in `~/.codex/config.toml`,
   and do not use `claude mcp add` / `codex mcp add` directly — the next `mcp-sync` run
   overwrites manual entries.
@@ -94,7 +99,10 @@ This is the single source of truth for both agents. Canonical file lives at
   (PRs/issues/repos; complements the `gh` CLI), `linear` (Linear issues/projects/comments via
   the official remote MCP server), `datadog` (official Datadog US5 remote MCP server for
   read-first observability investigation), `sentry` (official Sentry remote MCP server for
-  read-first app error/performance debugging), `bigquery` (local read-only BigQuery facade using
+  read-first app error/performance debugging), `notion` (official hosted Notion MCP via
+  `mcp-remote` OAuth bridge), `granola` (official hosted Granola meeting-notes MCP via
+  `mcp-remote` OAuth bridge), `bigquery` (local read-only
+  BigQuery facade using
   `gcloud`/`bq` auth; use `bigquery_execute_sql_readonly` for SQL), `playwright` (drive a real
   browser for web testing/scraping), `filesystem` (file access scoped to `~/code`),
   `sequential-thinking` (structured step-by-step reasoning), and `agents` (this environment's own

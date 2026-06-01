@@ -1,6 +1,6 @@
 {
 	"_doc": "Reliability manifest for the MCP fleet — consumed by `mcp-sync verify` and per-repo deploy/preflight.sh. For each server: whether a loop that lists it should treat it as REQUIRED (fail loud / exit non-zero at preflight) or optional (record degraded, continue); the credential it needs and where that cred lives; the token type; and the cheap auth probe to run at startup. Server *definitions* live in mcp.json; this file is the operational contract. See the deep-research report (2026-05-30) for rationale.",
-	"updated_at": "2026-05-30",
+	"updated_at": "2026-06-01",
 	"servers": {
 		"slack-dm": {
 			"transport": "stdio",
@@ -45,6 +45,20 @@
 			"endpoint": "https://mcp.linear.app/mcp",
 			"token_type": "OAuth (interactive)",
 			"notes": "Remote OAuth — read-only use. Headless agents that can't complete OAuth should omit it from their strict config (it was a startup-hang contributor)."
+		},
+		"notion": {
+			"transport": "stdio",
+			"endpoint": "https://mcp.notion.com/mcp",
+			"token_type": "OAuth (interactive)",
+			"preflight": "mcp-remote OAuth/account probe when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official hosted Notion MCP bridged through mcp-remote for all stdio clients. It acts with the connected user's Notion permissions. Auth once per host with `mcp-auth login notion`; VM auth uses `mcp-auth vm-login notion <host>`."
+		},
+		"granola": {
+			"transport": "stdio",
+			"endpoint": "https://mcp.granola.ai/mcp",
+			"token_type": "OAuth (interactive)",
+			"preflight": "mcp-remote/get_account_info when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official Granola MCP bridged through mcp-remote for all stdio clients. Browser OAuth only; no API key or service-account MCP auth. Auth once per host with `mcp-auth login granola`; VM auth uses `mcp-auth vm-login granola <host>`."
 		},
 		"npx-stdio": {
 			"_group": ["context7", "playwright", "filesystem", "sequential-thinking"],

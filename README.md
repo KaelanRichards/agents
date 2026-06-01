@@ -7,8 +7,10 @@ and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
 
 The shared MCP set includes the official Linear remote MCP server (`https://mcp.linear.app/mcp`),
 the official Datadog US5 remote MCP server, the official Sentry remote MCP server
-(`https://mcp.sentry.dev/mcp`), and a local read-only BigQuery facade (`bigquery-mcp`) that uses
-the machine's existing `gcloud`/`bq` auth. The Datadog endpoint is pinned to
+(`https://mcp.sentry.dev/mcp`), official OAuth-backed Notion/Granola MCPs bridged through
+`mcp-remote`, and a local read-only BigQuery facade (`bigquery-mcp`) that uses the machine's
+existing `gcloud`/`bq` auth.
+The Datadog endpoint is pinned to
 `https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery`.
 The active BigQuery project is `vizcom-web`; it needs the BigQuery API enabled and MCP Tool User,
 BigQuery Job User, and BigQuery Data Viewer for the signed-in identity.
@@ -29,8 +31,12 @@ prints the planned `(type / image / location)` before it calls `hcloud server cr
 1. Provision Ubuntu 24.04, ≥ 2 GB RAM (Hetzner / DigitalOcean / Fly); add your SSH key.
 2. On the VM: `git clone <repo-url> ~/.config/agents && bash ~/.config/agents/bootstrap.sh`
 
-**Then authenticate** on the VM: `claude` → `/login`, `codex login`, `gh auth login`,
-and set `GITHUB_PAT` (GitHub MCP). Run `agents-doctor` to confirm it's healthy.
+**Then authenticate** on the VM: `claude` -> `/login`, `codex login`, `gh auth login`,
+and set `GITHUB_PAT` (GitHub MCP). For OAuth-backed Notion/Granola, run
+`mcp-auth login notion` and `mcp-auth login granola` once per host; every synced stdio client on
+that host reuses `~/.mcp-auth`. For a VM, run `mcp-auth vm-login <server> <vm-host>` from the
+laptop so your local browser can complete the VM-side OAuth callback.
+Run `agents-doctor` to confirm it's healthy.
 
 ## Daily workflow
 
@@ -148,6 +154,9 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,
   then report upstream drift without modifying files. `skills.lock.json` is the source of truth.
 - **`mcp-update`** — report npm drift for pinned stdio MCP packages without modifying `mcp.json`.
+- **`mcp-auth`** — status/setup helper for OAuth-backed remote MCPs. It validates
+  `mcp.auth.json`, runs `mcp-remote` login probes, prints the clean VM auth plan, and checks
+  local client status without exporting tokens.
 - **`hermes-sync`** — generate the managed Hermes personal-assistant profile at
   `~/.hermes/config.yaml`. Hermes uses the shared local `personal-actions-mcp` facade for Slack,
   Gmail, and Calendar writes plus read-only `agents` MCP tools. Gmail trash is recoverable only:
