@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 import sys
@@ -205,7 +206,7 @@ def login(args: argparse.Namespace) -> int:
 def vm_login(args: argparse.Namespace) -> int:
     meta = require_server(args.server)
     port = str(meta["callback_port"])
-    remote = f"mcp-auth login {args.server}"
+    remote = "zsh -lc " + shlex.quote(f"mcp-auth login {shlex.quote(args.server)}")
     cmd = ["ssh", "-L", f"{port}:127.0.0.1:{port}", args.host, remote]
     print(f"Forwarding local 127.0.0.1:{port} to {args.host}:127.0.0.1:{port}.")
     print("Open the browser URL printed by the remote login; the callback will come back through SSH.")
