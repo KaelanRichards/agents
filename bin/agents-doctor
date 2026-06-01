@@ -45,13 +45,17 @@ if command -v jq >/dev/null 2>&1; then
 	cl=$(jq '.mcpServers // {} | length' "$HOME/.claude.json" 2>/dev/null || echo -1)
 	cx=$(grep -cE '^\[mcp_servers\.[^.]+\]$' "$HOME/.codex/config.toml" 2>/dev/null || echo -1)
 	[ "$c" = "$cl" ] && [ "$c" = "$cx" ] && ok "MCP servers in sync ($c)" || bad "MCP parity mismatch: canonical=$c claude=$cl codex=$cx (run mcp-sync)"
-	required_mcp="context7 playwright filesystem sequential-thinking github datadog sentry bigquery agents agent-broker personal-actions linear"
+	required_mcp="context7 playwright filesystem sequential-thinking github datadog sentry bigquery agents agent-broker personal-actions linear notion granola cloudflare slack"
 	for s in $required_mcp; do
 		jq -e --arg s "$s" '.mcpServers[$s]' "$AH/mcp.json" >/dev/null 2>&1 && ok "MCP required server present: $s" || bad "missing required MCP server: $s"
 	done
-	jq -e '.mcpServers.linear.url == "https://mcp.linear.app/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP URL pinned" || bad "Linear MCP URL mismatch"
 	jq -e '.mcpServers.datadog.url == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Datadog MCP US5 URL pinned" || bad "Datadog MCP URL mismatch"
-	jq -e '.mcpServers.sentry.url == "https://mcp.sentry.dev/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Sentry MCP URL pinned" || bad "Sentry MCP URL mismatch"
+	jq -e '.mcpServers.linear.type == "stdio" and .mcpServers.linear.command == "npx" and .mcpServers.linear.args == ["-y","mcp-remote@latest","https://mcp.linear.app/mcp","3336","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP mcp-remote bridge pinned" || bad "Linear MCP bridge mismatch"
+	jq -e '.mcpServers.sentry.type == "stdio" and .mcpServers.sentry.command == "npx" and .mcpServers.sentry.args == ["-y","mcp-remote@latest","https://mcp.sentry.dev/mcp","3337","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Sentry MCP mcp-remote bridge pinned" || bad "Sentry MCP bridge mismatch"
+	jq -e '.mcpServers.notion.type == "stdio" and .mcpServers.notion.command == "npx" and .mcpServers.notion.args == ["-y","mcp-remote@latest","https://mcp.notion.com/mcp","3334","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Notion MCP mcp-remote bridge pinned" || bad "Notion MCP bridge mismatch"
+	jq -e '.mcpServers.granola.type == "stdio" and .mcpServers.granola.command == "npx" and .mcpServers.granola.args == ["-y","mcp-remote@latest","https://mcp.granola.ai/mcp","3335","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Granola MCP mcp-remote bridge pinned" || bad "Granola MCP bridge mismatch"
+	jq -e '.mcpServers.cloudflare.type == "stdio" and .mcpServers.cloudflare.command == "npx" and .mcpServers.cloudflare.args == ["-y","mcp-remote@latest","https://mcp.cloudflare.com/mcp","3338","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Cloudflare MCP mcp-remote bridge pinned" || bad "Cloudflare MCP bridge mismatch"
+	jq -e '.mcpServers.slack.type == "stdio" and .mcpServers.slack.command == "$AGENTS_HOME/bin/slack-official-mcp" and .mcpServers.slack.args == []' "$AH/mcp.json" >/dev/null 2>&1 && ok "Slack MCP wrapper pinned" || bad "Slack MCP wrapper mismatch"
 	# Accept either an $AGENTS_HOME placeholder (portable canonical) or an absolute path to $AH/bin/bigquery-mcp.
 	bq_cmd=$(jq -r '.mcpServers.bigquery.command // ""' "$AH/mcp.json" 2>/dev/null)
 	if [ "$bq_cmd" = "\$AGENTS_HOME/bin/bigquery-mcp" ] || [ "$bq_cmd" = "$AH/bin/bigquery-mcp" ]; then
@@ -63,6 +67,12 @@ fi
 
 echo "== config validity =="
 jq -e . "$AH/mcp.json" >/dev/null 2>&1 && ok "mcp.json" || bad "mcp.json invalid JSON"
+jq -e . "$AH/mcp.auth.json" >/dev/null 2>&1 && ok "mcp.auth.json" || bad "mcp.auth.json invalid JSON"
+if [ -x "$AH/bin/mcp-auth" ]; then
+	"$AH/bin/mcp-auth" check >/dev/null 2>&1 && ok "MCP auth contract" || bad "MCP auth contract mismatch"
+else
+	bad "mcp-auth helper missing"
+fi
 [ -f "$HOME/.claude/settings.json" ] && { jq -e . "$HOME/.claude/settings.json" >/dev/null 2>&1 && ok "claude settings.json" || bad "claude settings.json invalid"; }
 if command -v yq >/dev/null 2>&1 && [ -f "$HOME/.codex/config.toml" ]; then
 	yq -p toml "$HOME/.codex/config.toml" >/dev/null 2>&1 && ok "codex config.toml" || bad "codex config.toml invalid TOML"

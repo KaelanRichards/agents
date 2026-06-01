@@ -163,6 +163,40 @@ awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1;next} $0==e{skip=0;next} skip!=1{pri
   ' "$EFFECTIVE"
   echo "$END"
 } >> "$CODEX_TOML"
+
+# Remote HTTP MCP support is required for any remaining direct HTTP servers and is harmless for
+# stdio bridges. Keep this outside the managed MCP block so other config survives mcp-sync.
+features_tmp=$(mktemp)
+awk '
+  BEGIN { in_features=0; seen_features=0; seen_key=0 }
+  /^\[features\]$/ {
+    if (in_features && !seen_key) print "experimental_use_rmcp_client = true"
+    in_features=1
+    seen_features=1
+    seen_key=0
+    print
+    next
+  }
+  /^\[/ {
+    if (in_features && !seen_key) print "experimental_use_rmcp_client = true"
+    in_features=0
+  }
+  in_features && /^experimental_use_rmcp_client[[:space:]]*=/ {
+    print "experimental_use_rmcp_client = true"
+    seen_key=1
+    next
+  }
+  { print }
+  END {
+    if (in_features && !seen_key) print "experimental_use_rmcp_client = true"
+    if (!seen_features) {
+      print ""
+      print "[features]"
+      print "experimental_use_rmcp_client = true"
+    }
+  }
+' "$CODEX_TOML" > "$features_tmp" && mv "$features_tmp" "$CODEX_TOML"
+
 # Validate Codex TOML; roll back if broken so a parse error doesn't disable Codex.
 if command -v yq >/dev/null 2>&1 && ! yq -p toml "$CODEX_TOML" >/dev/null 2>&1; then
   echo "ERROR: generated Codex TOML is invalid — restoring backup" >&2

@@ -84,6 +84,15 @@ This is the single source of truth for both agents. Canonical file lives at
   `~/.codex/config.toml` (TOML).
 - To add/remove a server, use:
   `mcp-sync add <name> -- <cmd...>` · `mcp-sync add-http <name> <url> [BEARER_ENV]` · `mcp-sync remove <name>`.
+- OAuth-backed remote MCP auth is tracked in `~/.config/agents/mcp.auth.json`. Linear, Sentry,
+  Notion, Granola, Cloudflare, and Slack use `mcp-remote` stdio bridges or a narrow wrapper, so
+  `mcp-auth login <server>` authenticates once per host into `~/.mcp-auth`, and every synced
+  stdio-compatible client on that host reuses it. For a VM, use `mcp-auth vm-login <server>
+  <host>` from the laptop. Slack additionally needs host-local `SLACK_MCP_CLIENT_ID` and
+  `SLACK_MCP_CLIENT_SECRET`, or `SLACK_MCP_CLIENT_INFO_FILE`, because Slack does not support
+  Dynamic Client Registration; its Slack app must allow `http://127.0.0.1:3339/oauth/callback`.
+  Do **not** copy opaque OAuth token stores between machines unless a server-specific runbook
+  explicitly authorizes it.
 - **Do not** hand-edit `~/.claude.json` or the managed block in `~/.codex/config.toml`,
   and do not use `claude mcp add` / `codex mcp add` directly — the next `mcp-sync` run
   overwrites manual entries.
@@ -92,9 +101,13 @@ This is the single source of truth for both agents. Canonical file lives at
 - **Available MCP servers** (run `mcp-sync list` for the live set) — use when relevant:
   `context7` (pull up-to-date docs before coding against a library/API), `github`
   (PRs/issues/repos; complements the `gh` CLI), `linear` (Linear issues/projects/comments via
-  the official remote MCP server), `datadog` (official Datadog US5 remote MCP server for
-  read-first observability investigation), `sentry` (official Sentry remote MCP server for
-  read-first app error/performance debugging), `bigquery` (local read-only BigQuery facade using
+  `mcp-remote` OAuth bridge), `datadog` (official Datadog US5 remote MCP server for
+  read-first observability investigation), `sentry` (official Sentry MCP via `mcp-remote`
+  OAuth bridge for read-first app error/performance debugging), `notion` (official hosted Notion MCP via
+  `mcp-remote` OAuth bridge), `granola` (official hosted Granola meeting-notes MCP via
+  `mcp-remote` OAuth bridge), `cloudflare` (official Cloudflare API MCP via `mcp-remote` OAuth
+  bridge), `slack` (official Slack MCP via the `slack-official-mcp` wrapper), `bigquery` (local read-only
+  BigQuery facade using
   `gcloud`/`bq` auth; use `bigquery_execute_sql_readonly` for SQL), `playwright` (drive a real
   browser for web testing/scraping), `filesystem` (file access scoped to `~/code`),
   `sequential-thinking` (structured step-by-step reasoning), and `agents` (this environment's own
@@ -118,9 +131,17 @@ This is the single source of truth for both agents. Canonical file lives at
 - **Profile-scoped sessions**: **`agentp <profile>`** (or `agentp --codex <profile>`) launches a
   coding agent under a canonical profile as a real boundary, built on each harness's *native*
   enforcement — Claude: `--strict-mcp-config` + compiled `--settings` (deny/ask + OS Bash sandbox)
-  + a `profile-broker` PreToolUse hook for per-tool read/write policy; Codex: native `--sandbox` +
-  `--ask-for-approval`. Use it (not bare `claude`/`codex`) when you want least-privilege enforced,
-  not just declared. The broker logic is the *backend of the native hook*, not a parallel system.
+  + a `profile-broker` PreToolUse hook for per-tool read/write policy + appended profile guidance
+  from `generated/profiles/claude/<profile>.md`; Codex: native `--sandbox` + `--ask-for-approval`.
+  Use it (not bare `claude`/`codex`) when you want least-privilege enforced, not just declared. The
+  broker logic is the *backend of the native hook*, not a parallel system.
+- **Profile playbooks**:
+  - `vizcom-sre` should correlate Datadog, Sentry, GitHub, Linear, Slack, Notion, and Granola before
+    recommending an operational action. Slack write paths are for confirmed concise updates only;
+    production mutation remains out of scope.
+  - `personal-assistant` / Kaelan PA should combine Slack, Granola, Notion, Linear, Cloudflare, and
+    local agent state for personal/project context. Cloudflare and Slack writes require explicit
+    confirmation with the exact intended change.
 - **Hooks (active in both tools)**: edits are auto-formatted (ruff/biome/shfmt/rustfmt);
   a Bash guard blocks destructive/security-sensitive commands.
   - Because the format hook **rewrites the file after every Write/Edit**, a follow-up `Edit` whose
@@ -134,6 +155,9 @@ This is the single source of truth for both agents. Canonical file lives at
   agent-CLI version drift — run it after changes or on a new machine.
 - **Overview**: `agents-status` — read-only single pane (VMs + cost, health, MCP servers,
   repo/CI + open PRs, tmux sessions).
+- **VM self-heal**: `agents-reconcile --apply` stashes local drift, resets a plain-git VM clone to
+  `origin/main`, relinks helpers, and regenerates MCP/agent config. `agents-reconcile
+  install-user-timer` installs the periodic user timer.
 - **Interactive dashboard**: `dash` — live Textual TUI with panels + action keys
   (`r` refresh · `s` sync · `d` doctor · `g` grafana · `q` quit).
 - **Web dashboard**: `dashweb` — live HTML control center at `localhost:8787`: SSE cards,

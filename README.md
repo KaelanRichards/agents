@@ -5,10 +5,11 @@ Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md
 for all shells plus `zsh/agents.zsh` for interactive extras), dashboards, observability, CI,
 and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
 
-The shared MCP set includes the official Linear remote MCP server (`https://mcp.linear.app/mcp`),
-the official Datadog US5 remote MCP server, the official Sentry remote MCP server
-(`https://mcp.sentry.dev/mcp`), and a local read-only BigQuery facade (`bigquery-mcp`) that uses
-the machine's existing `gcloud`/`bq` auth. The Datadog endpoint is pinned to
+The shared MCP set includes official OAuth-backed Linear, Sentry, Notion, Granola, Cloudflare,
+and Slack MCPs bridged through `mcp-remote` or a narrow wrapper, the official Datadog US5 remote
+MCP server, and a local read-only BigQuery facade (`bigquery-mcp`) that uses the machine's
+existing `gcloud`/`bq` auth.
+The Datadog endpoint is pinned to
 `https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery`.
 The active BigQuery project is `vizcom-web`; it needs the BigQuery API enabled and MCP Tool User,
 BigQuery Job User, and BigQuery Data Viewer for the signed-in identity.
@@ -29,8 +30,16 @@ prints the planned `(type / image / location)` before it calls `hcloud server cr
 1. Provision Ubuntu 24.04, ≥ 2 GB RAM (Hetzner / DigitalOcean / Fly); add your SSH key.
 2. On the VM: `git clone <repo-url> ~/.config/agents && bash ~/.config/agents/bootstrap.sh`
 
-**Then authenticate** on the VM: `claude` → `/login`, `codex login`, `gh auth login`,
-and set `GITHUB_PAT` (GitHub MCP). Run `agents-doctor` to confirm it's healthy.
+**Then authenticate** on the VM: `claude` -> `/login`, `codex login`, `gh auth login`,
+and set `GITHUB_PAT` (GitHub MCP). For OAuth-backed hosted MCPs, run `mcp-auth plan`, then
+`mcp-auth login <server>` once per host; every synced stdio client on that host reuses
+`~/.mcp-auth`. For a VM, run `mcp-auth vm-login <server> <vm-host>` from the laptop so your
+local browser can complete the VM-side OAuth callback.
+Slack's official MCP additionally needs host-local `SLACK_MCP_CLIENT_ID` and
+`SLACK_MCP_CLIENT_SECRET`, or `SLACK_MCP_CLIENT_INFO_FILE`, because Slack does not support Dynamic
+Client Registration. The Slack app must allow the local callback URL
+`http://127.0.0.1:3339/oauth/callback`.
+Run `agents-doctor` to confirm it's healthy.
 
 ## Daily workflow
 
@@ -93,6 +102,11 @@ git -C ~/.config/agents pull && mcp-sync && agents-sync
 systemctl --user restart webdash.service    # if the dashboard changed
 ```
 
+If the VM has local drift, use `agents-reconcile --apply` instead. It stashes tracked and
+untracked changes, resets the clone to `origin/main`, relinks helpers, and regenerates MCP/agent
+configs. On an always-on VM, `agents-reconcile install-user-timer` installs the self-healing user
+timer.
+
 ## Reproducible env (Nix, optional)
 
 A hermetic, pinned alternative to the brew toolbelt — additive, doesn't replace `bootstrap.sh`.
@@ -114,6 +128,8 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 ## Maintenance & health
 - **`agents-doctor`** — verify tools, symlinks, MCP parity, configs, and agent-CLI version drift
   (run anytime, or on a new machine).
+- **`agents-reconcile`** — VM/plain-git self-healing sync: stash drift, reset to `origin/main`,
+  regenerate MCP/agent config, and optionally install a periodic user timer.
 - **Agent control plane** — local orchestration primitives layered on top of jj, tmux, MCP, and
   the shared profile/policy model:
   - `agent-profile list|validate|compile` manages canonical permission profiles in `profiles/`
@@ -148,6 +164,9 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,
   then report upstream drift without modifying files. `skills.lock.json` is the source of truth.
 - **`mcp-update`** — report npm drift for pinned stdio MCP packages without modifying `mcp.json`.
+- **`mcp-auth`** — status/setup helper for OAuth-backed remote MCPs. It validates
+  `mcp.auth.json`, runs `mcp-remote` login probes, prints the clean VM auth plan, and checks
+  local client status without exporting tokens.
 - **`hermes-sync`** — generate the managed Hermes personal-assistant profile at
   `~/.hermes/config.yaml`. Hermes uses the shared local `personal-actions-mcp` facade for Slack,
   Gmail, and Calendar writes plus read-only `agents` MCP tools. Gmail trash is recoverable only:

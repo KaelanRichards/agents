@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# slack-official-mcp — mcp-remote bridge for Slack's official MCP server.
+#
+# Slack does not support dynamic client registration for MCP. Keep the app
+# credentials host-local, either as env vars or as a JSON file:
+#
+#   SLACK_MCP_CLIENT_ID=x...
+#   SLACK_MCP_CLIENT_SECRET=...
+#   # optional:
+#   SLACK_MCP_SCOPES="search:read.public ..."
+#
+# Or:
+#   SLACK_MCP_CLIENT_INFO_FILE=~/.config/agents-secrets/slack-mcp-client-info.json
+#
+# The Slack app must allow http://127.0.0.1:3339/oauth/callback as an OAuth
+# redirect URL, or set SLACK_MCP_CALLBACK_PORT to match the app.
+set -euo pipefail
+
+url="${SLACK_MCP_URL:-https://mcp.slack.com/mcp}"
+port="${SLACK_MCP_CALLBACK_PORT:-3339}"
+host="${SLACK_MCP_CALLBACK_HOST:-127.0.0.1}"
+scope="${SLACK_MCP_SCOPES:-search:read.public search:read.private search:read.mpim search:read.im search:read.files files:read emoji:read search:read.users chat:write channels:history groups:history mpim:history im:history channels:write groups:write im:write mpim:write reactions:write canvases:read canvases:write users:read users:read.email channels:read groups:read mpim:read}"
+
+cleanup() {
+	[ -n "${info_file_tmp:-}" ] && rm -f "$info_file_tmp"
+	[ -n "${metadata_file_tmp:-}" ] && rm -f "$metadata_file_tmp"
+}
+trap cleanup EXIT INT TERM
+
+if [ -n "${SLACK_MCP_CLIENT_INFO_FILE:-}" ]; then
+	info_file="$SLACK_MCP_CLIENT_INFO_FILE"
+else
+	if [ -z "${SLACK_MCP_CLIENT_ID:-}" ] || [ -z "${SLACK_MCP_CLIENT_SECRET:-}" ]; then
+		echo "slack-official-mcp: set SLACK_MCP_CLIENT_ID and SLACK_MCP_CLIENT_SECRET, or SLACK_MCP_CLIENT_INFO_FILE" >&2
+		exit 2
+	fi
+	info_file_tmp=$(mktemp)
+	jq -n \
+		--arg client_id "$SLACK_MCP_CLIENT_ID" \
+		--arg client_secret "$SLACK_MCP_CLIENT_SECRET" \
+		'{client_id:$client_id, client_secret:$client_secret}' >"$info_file_tmp"
+	chmod 600 "$info_file_tmp"
+	info_file="$info_file_tmp"
+fi
+
+metadata_file_tmp=$(mktemp)
+jq -n --arg scope "$scope" '{
+  token_endpoint_auth_method: "client_secret_post",
+  grant_types: ["authorization_code", "refresh_token"],
+  response_types: ["code"],
+  scope: $scope
+}' >"$metadata_file_tmp"
+chmod 600 "$metadata_file_tmp"
+
+npx -y mcp-remote@latest "$url" "$port" \
+	--host "$host" \
+	--static-oauth-client-info "@$info_file" \
+	--static-oauth-client-metadata "@$metadata_file_tmp" \
+	"$@"

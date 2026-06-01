@@ -26,10 +26,27 @@ fi
 _agents_path_prepend "$HOME/.local/bin"                    # agent helper scripts
 _agents_path_prepend "$HOME/.local/share/mise/shims"       # node/pnpm/python (+ per-repo versions)
 _agents_path_prepend "$HOME/.orbstack/bin"                 # OrbStack docker CLI (macOS)
+_agents_path_prepend "/home/linuxbrew/.linuxbrew/share/google-cloud-sdk/bin" # gcloud components (Linuxbrew)
 [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"          # rustup / cargo
 
 export PATH
 unset -f _agents_path_prepend 2>/dev/null
+
+# Host-local secrets. These files are gitignored and must be mode 0600. Keep them narrow:
+# shared agent env gets only the service credentials intended for all local MCP clients.
+for _agents_secret_env in \
+  "$HOME/.config/agents-secrets/datadog.env" \
+  "$HOME/.config/agents-secrets/slack-mcp.env"
+do
+  [ -f "$_agents_secret_env" ] || continue
+  _agents_secret_mode="$(stat -c '%a' "$_agents_secret_env" 2>/dev/null || stat -f '%Lp' "$_agents_secret_env" 2>/dev/null || true)"
+  if [ "$_agents_secret_mode" = "600" ]; then
+    set -a
+    . "$_agents_secret_env"
+    set +a
+  fi
+done
+unset _agents_secret_env _agents_secret_mode
 
 # Agent telemetry: when the local OTel stack is marked on (`obs on` / `obs up`, or `serve` on the
 # VM), stream Claude Code metrics/logs to it. Reaches the non-interactive shells agents spawn, so

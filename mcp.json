@@ -1,76 +1,143 @@
 {
-	"mcpServers": {
-		"context7": {
-			"type": "stdio",
-			"command": "npx",
-			"args": ["-y", "@upstash/context7-mcp@3.0.0"]
-		},
-		"playwright": {
-			"type": "stdio",
-			"command": "npx",
-			"args": ["-y", "@playwright/mcp@0.0.75"]
-		},
-		"filesystem": {
-			"type": "stdio",
-			"command": "npx",
-			"args": [
-				"-y",
-				"@modelcontextprotocol/server-filesystem@2026.1.14",
-				"$HOME/code"
-			]
-		},
-		"sequential-thinking": {
-			"type": "stdio",
-			"command": "npx",
-			"args": [
-				"-y",
-				"@modelcontextprotocol/server-sequential-thinking@2025.12.18"
-			]
-		},
-		"github": {
-			"type": "http",
-			"url": "https://api.githubcopilot.com/mcp/",
-			"bearer_token_env_var": "GITHUB_PAT"
-		},
-		"agents": {
-			"type": "stdio",
-			"command": "agents-mcp",
-			"args": []
-		},
-		"slack-dm": {
-			"type": "stdio",
-			"command": "$AGENTS_HOME/bin/slack-dm-mcp",
-			"args": [],
-			"env": {
-				"SLACK_DM_TARGET": "U04E9M9235G"
-			}
-		},
-		"agent-broker": {
-			"type": "stdio",
-			"command": "$AGENTS_HOME/bin/agent-broker-mcp",
-			"args": []
-		},
-		"personal-actions": {
-			"type": "stdio",
-			"command": "$AGENTS_HOME/bin/personal-actions-mcp",
-			"args": []
-		},
-		"linear": {
-			"type": "http",
-			"url": "https://mcp.linear.app/mcp"
-		},
-		"bigquery": {
-			"type": "stdio",
-			"command": "$AGENTS_HOME/bin/bigquery-mcp",
-			"args": []
-		},
-		"datadog": {
-			"type": "http",
-			"url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
-		},
-		"sentry": {
-			"type": "http",
-			"url": "https://mcp.sentry.dev/mcp"
-		}
-	}
+  "mcpServers": {
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@3.0.0"
+      ]
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@0.0.75"
+      ]
+    },
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem@2026.1.14",
+        "$HOME/code"
+      ]
+    },
+    "sequential-thinking": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking@2025.12.18"
+      ]
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "bearer_token_env_var": "GITHUB_PAT"
+    },
+    "agents": {
+      "type": "stdio",
+      "command": "agents-mcp",
+      "args": []
+    },
+    "slack-dm": {
+      "type": "stdio",
+      "command": "$AGENTS_HOME/bin/slack-dm-mcp",
+      "args": [],
+      "env": {
+        "SLACK_DM_TARGET": "U04E9M9235G"
+      }
+    },
+    "slack": {
+      "type": "stdio",
+      "command": "$AGENTS_HOME/bin/slack-official-mcp",
+      "args": []
+    },
+    "agent-broker": {
+      "type": "stdio",
+      "command": "$AGENTS_HOME/bin/agent-broker-mcp",
+      "args": []
+    },
+    "personal-actions": {
+      "type": "stdio",
+      "command": "$AGENTS_HOME/bin/personal-actions-mcp",
+      "args": []
+    },
+    "linear": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.linear.app/mcp",
+        "3336",
+        "--host",
+        "127.0.0.1"
+      ]
+    },
+    "bigquery": {
+      "type": "stdio",
+      "command": "$AGENTS_HOME/bin/bigquery-mcp",
+      "args": []
+    },
+    "datadog": {
+      "type": "http",
+      "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery",
+      "headers": {
+        "DD_API_KEY": "${DD_API_KEY}",
+        "DD_APPLICATION_KEY": "${DD_APPLICATION_KEY}"
+      }
+    },
+    "sentry": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.sentry.dev/mcp",
+        "3337",
+        "--host",
+        "127.0.0.1"
+      ]
+    },
+    "notion": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.notion.com/mcp",
+        "3334",
+        "--host",
+        "127.0.0.1"
+      ]
+    },
+    "granola": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.granola.ai/mcp",
+        "3335",
+        "--host",
+        "127.0.0.1"
+      ]
+    },
+    "cloudflare": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.cloudflare.com/mcp",
+        "3338",
+        "--host",
+        "127.0.0.1"
+      ]
+    }
+  }
 }

@@ -1,6 +1,6 @@
 {
 	"_doc": "Reliability manifest for the MCP fleet — consumed by `mcp-sync verify` and per-repo deploy/preflight.sh. For each server: whether a loop that lists it should treat it as REQUIRED (fail loud / exit non-zero at preflight) or optional (record degraded, continue); the credential it needs and where that cred lives; the token type; and the cheap auth probe to run at startup. Server *definitions* live in mcp.json; this file is the operational contract. See the deep-research report (2026-05-30) for rationale.",
-	"updated_at": "2026-05-30",
+	"updated_at": "2026-06-01",
 	"servers": {
 		"slack-dm": {
 			"transport": "stdio",
@@ -29,22 +29,51 @@
 			"transport": "http",
 			"credential_env": "DD_API_KEY + DD_APP_KEY",
 			"token_type": "scoped read-only API + application keys",
-			"preflight": "any read with both header keys -> 200",
-			"notes": "US5. Use ?toolsets= to limit exposed tools (already core,apm,error-tracking,software-delivery)."
+			"preflight": "any read with DD_API_KEY and DD_APPLICATION_KEY headers -> 200",
+			"notes": "US5. Use ?toolsets= to limit exposed tools (already core,apm,error-tracking,software-delivery). VM env maps existing DD_APP_KEY to DD_APPLICATION_KEY for the official remote MCP header contract."
 		},
 		"sentry": {
-			"transport": "http",
+			"transport": "stdio",
 			"endpoint": "https://mcp.sentry.dev/mcp",
-			"credential_env": "SENTRY_AUTH_TOKEN",
-			"token_type": "Sentry user auth token (org:read project:read event:read member:read)",
-			"preflight": "whoami -> identity",
-			"notes": "Remote OAuth server. Headless: pre-mint the auth token once and store in the secrets env file; do NOT rely on interactive OAuth in cron/systemd. If absent, strict-config it out rather than hang startup."
+			"token_type": "OAuth (interactive)",
+			"preflight": "mcp-remote/whoami when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official hosted Sentry MCP bridged through mcp-remote for all stdio clients. Auth once per host with `mcp-auth login sentry`; VM auth uses `mcp-auth vm-login sentry <host>`."
 		},
 		"linear": {
-			"transport": "http",
+			"transport": "stdio",
 			"endpoint": "https://mcp.linear.app/mcp",
 			"token_type": "OAuth (interactive)",
-			"notes": "Remote OAuth — read-only use. Headless agents that can't complete OAuth should omit it from their strict config (it was a startup-hang contributor)."
+			"preflight": "mcp-remote OAuth/account probe when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official hosted Linear MCP bridged through mcp-remote for all stdio clients. Auth once per host with `mcp-auth login linear`; VM auth uses `mcp-auth vm-login linear <host>`."
+		},
+		"notion": {
+			"transport": "stdio",
+			"endpoint": "https://mcp.notion.com/mcp",
+			"token_type": "OAuth (interactive)",
+			"preflight": "mcp-remote OAuth/account probe when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official hosted Notion MCP bridged through mcp-remote for all stdio clients. It acts with the connected user's Notion permissions. Auth once per host with `mcp-auth login notion`; VM auth uses `mcp-auth vm-login notion <host>`."
+		},
+		"granola": {
+			"transport": "stdio",
+			"endpoint": "https://mcp.granola.ai/mcp",
+			"token_type": "OAuth (interactive)",
+			"preflight": "mcp-remote/get_account_info when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official Granola MCP bridged through mcp-remote for all stdio clients. Browser OAuth only; no API key or service-account MCP auth. Auth once per host with `mcp-auth login granola`; VM auth uses `mcp-auth vm-login granola <host>`."
+		},
+		"cloudflare": {
+			"transport": "stdio",
+			"endpoint": "https://mcp.cloudflare.com/mcp",
+			"token_type": "OAuth (interactive) or scoped Cloudflare API token",
+			"preflight": "mcp-remote OAuth/account probe when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official Cloudflare API MCP bridged through mcp-remote for all stdio clients. Auth once per host with `mcp-auth login cloudflare`; VM auth uses `mcp-auth vm-login cloudflare <host>`."
+		},
+		"slack": {
+			"transport": "stdio",
+			"endpoint": "https://mcp.slack.com/mcp",
+			"credential_env": "SLACK_MCP_CLIENT_ID + SLACK_MCP_CLIENT_SECRET, or SLACK_MCP_CLIENT_INFO_FILE",
+			"token_type": "Slack confidential OAuth via a directory-published or internal Slack app",
+			"preflight": "wrapper starts and mcp-remote OAuth succeeds when Slack app credentials and ~/.mcp-auth are present; otherwise treat as optional/degraded.",
+			"notes": "Official Slack MCP bridged through bin/slack-official-mcp because Slack does not support Dynamic Client Registration. Auth once per host with `mcp-auth login slack`; VM auth uses `mcp-auth vm-login slack <host>` after installing host-local Slack app credentials."
 		},
 		"npx-stdio": {
 			"_group": ["context7", "playwright", "filesystem", "sequential-thinking"],

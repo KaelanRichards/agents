@@ -8,7 +8,9 @@ import asyncio
 import importlib.util
 import pathlib
 
-path = pathlib.Path.home() / ".config/agents/tui/dash.py"
+# Resolve dash.py relative to this checkout, not ~/.config/agents — the repo isn't at the canonical
+# path on a CI runner.
+path = pathlib.Path(__file__).resolve().parents[1] / "tui" / "dash.py"
 spec = importlib.util.spec_from_file_location("dashmod", path)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)

@@ -1,11 +1,26 @@
 {
 	"name": "personal-assistant",
-	"description": "Hermes-style personal assistant with constrained Gmail, Calendar, Slack, Drive, and read-only agent context.",
-	"mcp_servers": ["personal-actions", "agents", "agent-broker", "slack-dm"],
+	"description": "Hermes-style personal assistant with constrained Gmail, Calendar, Slack, Drive, Linear, Notion, Granola, Cloudflare, and read-only agent context.",
+	"mcp_servers": [
+		"personal-actions",
+		"agents",
+		"agent-broker",
+		"slack-dm",
+		"slack",
+		"linear",
+		"notion",
+		"granola",
+		"cloudflare"
+	],
 	"allowed_tools": [
 		"personal_search",
 		"personal_gmail_draft",
 		"personal_calendar_list",
+		"linear_read",
+		"notion_read",
+		"granola_read",
+		"slack_read",
+		"cloudflare_read",
 		"repo_status",
 		"repo_log"
 	],
@@ -21,9 +36,18 @@
 		"gmail_send",
 		"gmail_trash",
 		"slack_post",
+		"slack_write",
+		"cloudflare_write",
 		"calendar_create",
 		"calendar_update"
 	],
 	"skills": [],
+	"guidance": [
+		"Use Slack, Granola, Notion, Linear, and agent memory together to build context before answering questions about people, meetings, projects, commitments, or open loops.",
+		"Use Notion for durable knowledge and project docs, Granola for meeting memory, Slack for recent conversations, Linear for commitments/tasks, and agents for repo/config state.",
+		"Use Cloudflare read tools for DNS, zone, tunnel, Worker, or infra context. Cloudflare writes require explicit confirmation and should include the exact intended change and rollback path.",
+		"Prefer doing the useful next step: draft emails/messages/calendar changes, create concise task lists, and propose automations. Outward-facing sends/posts/calendar writes still require confirmation unless the user explicitly asks to do them now.",
+		"When information comes from Slack/Notion/Granola/Linear, cite the source system and timestamp or page/title when available."
+	],
 	"risk": "high"
 }

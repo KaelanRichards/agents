@@ -105,8 +105,9 @@ Ubuntu 24.04) via `systemd --user` timer `vizcom-sre.{service,timer}` (~7 min). 
 
 ## kaelan-pa — agentic personal assistant (`~/code/kaelan-pa`, GitHub `KaelanRichards/kaelan-pa` private)
 
-> Read-only/recommend-only PA mirroring the vizcom-sre pattern. Brain is a jj repo; loops headless
-> every 25 min. Was Mac-only (launchd); now also promoted to VM `agents` (systemd), in week-1 dry-run.
+> Read-only/recommend-only PA mirroring the vizcom-sre pattern. **Runs VM-only** (`agents`, systemd,
+> 25 min), live, committing+pushing its brain each tick; Mac launchd **retired** (single writer). VM
+> clone is plain **git** (not jj). Cutover done 2026-05-31 — see decisions.md "kaelan-pa VM cutover".
 
 **Current truth.** Recommend/draft-only PA whose brain is the `kaelan-pa` repo (`inbox/ people/
 projects/ baselines/ runbooks/ incidents/ frontier.md` + `LOOP.md`/`policy.md`). Each tick: read
@@ -115,11 +116,13 @@ triage (draft reply / add label / DM Kaelan `U04E9M9235G`) or explore one area �
 restricted** (`.claude/settings.json` deny-list): may only write brain files, a Slack DM to Kaelan,
 a Gmail draft, and Gmail label-add/trash — **never** Gmail send, Slack-channel post, calendar/Linear
 writes.
-- **Two runtimes now:** (a) **Mac** via launchd `com.kaelan.kaelan-pa` (`StartInterval` 1500s,
-  `KAELAN_PA_DRY_RUN=0` → live) — still running as the week-1 safety net; (b) **VM `agents`** via
-  `systemd --user` `kaelan-pa.{service,timer}` (`OnUnitActiveSec=25min`, `OnBootSec=15min` offset
-  from sre's tick; `Linger=yes`), in **dry-run** (`KAELAN_PA_DRY_RUN=1` + facade
-  `PERSONAL_ACTIONS_DRY_RUN=1` hard floor).
+- **Single runtime (since 2026-05-31 cutover):** **VM `agents`** only, via `systemd --user`
+  `kaelan-pa.{service,timer}` (`OnUnitActiveSec=25min`, `OnBootSec=15min` offset from sre's tick;
+  `Linger=yes`), **live** (`KAELAN_PA_DRY_RUN=0` + facade live), committing+pushing each tick. The
+  **Mac launchd `com.kaelan.kaelan-pa` is RETIRED** (`launchctl bootout`) — single writer to
+  `origin/main`. ⚠ The VM clone is plain **git** (not jj), so the brain push is git, not `jj git
+  push`; the push block is gated `KAELAN_PA_MCP_CONFIG set && KAELAN_PA_DRY_RUN!=1`. See decisions.md
+  "kaelan-pa VM cutover" for the full architecture + the four gotchas.
 
 **Details.**
 - VM senses via `deploy/mcp.vm.json` + `--strict-mcp-config`: **slack-dm + personal-actions only**

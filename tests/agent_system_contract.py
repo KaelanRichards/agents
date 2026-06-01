@@ -25,6 +25,10 @@ REQUIRED_MCP = {
     "personal-actions",
     "linear",
     "slack-dm",
+    "slack",
+    "notion",
+    "granola",
+    "cloudflare",
 }
 
 PERSONAL_ACTION_TOOLS = {
@@ -41,6 +45,18 @@ PERSONAL_ACTION_TOOLS = {
     "personal_drive_search_files",
 }
 
+MCP_REMOTE_BRIDGES = {
+    "notion": ("https://mcp.notion.com/mcp", "3334"),
+    "granola": ("https://mcp.granola.ai/mcp", "3335"),
+    "linear": ("https://mcp.linear.app/mcp", "3336"),
+    "sentry": ("https://mcp.sentry.dev/mcp", "3337"),
+    "cloudflare": ("https://mcp.cloudflare.com/mcp", "3338"),
+}
+
+MCP_REMOTE_WRAPPERS = {
+    "slack": "$AGENTS_HOME/bin/slack-official-mcp",
+}
+
 
 def read(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -54,6 +70,20 @@ def assert_contains(text: str, needle: str, label: str) -> None:
     assert needle in text, f"{label} missing {needle!r}"
 
 
+def assert_mcp_remote_bridge(server: dict, name: str) -> None:
+    url, port = MCP_REMOTE_BRIDGES[name]
+    assert server.get("type", "stdio") == "stdio"
+    assert server["command"] == "npx"
+    assert server["args"] == [
+        "-y",
+        "mcp-remote@latest",
+        url,
+        port,
+        "--host",
+        "127.0.0.1",
+    ]
+
+
 def main() -> None:
     mcp = load_json(ROOT / "mcp.json")
     assert isinstance(mcp, dict)
@@ -61,21 +91,51 @@ def main() -> None:
     assert isinstance(servers, dict)
     assert set(servers) == REQUIRED_MCP
 
-    assert servers["linear"]["type"] == "http"
-    assert servers["linear"]["url"] == "https://mcp.linear.app/mcp"
+    auth = load_json(ROOT / "mcp.auth.json")
+    assert auth["policy"]["token_copying"] == "forbidden-by-default"
+    auth_servers = auth["servers"]
+    assert set(auth_servers) == set(MCP_REMOTE_BRIDGES) | set(MCP_REMOTE_WRAPPERS)
+    for name, (url, _port) in MCP_REMOTE_BRIDGES.items():
+        assert auth_servers[name]["url"] == url
+        assert auth_servers[name]["strategy"] == "mcp-remote-stdio"
+        assert auth_servers[name]["token_store"] == "~/.mcp-auth"
+        assert auth_servers[name]["callback_host"] == "127.0.0.1"
+        assert auth_servers[name]["clients"]["claude"]["support"] == "supported-via-stdio-bridge"
+        assert auth_servers[name]["clients"]["opencode"]["support"] == "supported-via-stdio-bridge"
+        assert auth_servers[name]["clients"]["codex"]["support"] == "supported-via-stdio-bridge"
+    for name, command in MCP_REMOTE_WRAPPERS.items():
+        assert auth_servers[name]["url"] == "https://mcp.slack.com/mcp"
+        assert auth_servers[name]["strategy"] == "mcp-remote-wrapper"
+        assert auth_servers[name]["command"] == command
+        assert auth_servers[name]["token_store"] == "~/.mcp-auth"
+        assert auth_servers[name]["callback_host"] == "127.0.0.1"
+        assert auth_servers[name]["clients"]["claude"]["support"] == "supported-via-stdio-bridge"
+        assert auth_servers[name]["clients"]["opencode"]["support"] == "supported-via-stdio-bridge"
+        assert auth_servers[name]["clients"]["codex"]["support"] == "supported-via-stdio-bridge"
+
     assert servers["datadog"]["type"] == "http"
     assert (
         servers["datadog"]["url"]
         == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
     )
-    assert servers["sentry"]["type"] == "http"
-    assert servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
+    assert servers["datadog"]["headers"] == {
+        "DD_API_KEY": "${DD_API_KEY}",
+        "DD_APPLICATION_KEY": "${DD_APPLICATION_KEY}",
+    }
+    for name in MCP_REMOTE_BRIDGES:
+        assert_mcp_remote_bridge(servers[name], name)
+    for name, command in MCP_REMOTE_WRAPPERS.items():
+        assert servers[name]["type"] == "stdio"
+        assert servers[name]["command"] == command
+        assert servers[name]["args"] == []
     assert servers["bigquery"]["type"] == "stdio"
     assert servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
     assert servers["bigquery"]["args"] == []
     assert servers["github"]["bearer_token_env_var"] == "GITHUB_PAT"
     assert servers["personal-actions"]["command"].endswith("/bin/personal-actions-mcp")
     assert servers["agent-broker"]["command"].endswith("/bin/agent-broker-mcp")
+    assert (ROOT / "bin" / "mcp-auth").exists()
+    assert (ROOT / "scripts" / "mcp_auth.py").exists()
 
     profiles_dir = ROOT / "profiles"
     required_profiles = {
@@ -103,12 +163,14 @@ def main() -> None:
         assert REQUIRED_MCP.issubset(set(codex_servers)), (
             "Codex config missing required MCP servers"
         )
-        assert codex_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
         assert (
             codex_servers["datadog"]["url"]
             == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
         )
-        assert codex_servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
+        for name in MCP_REMOTE_BRIDGES:
+            assert_mcp_remote_bridge(codex_servers[name], name)
+        assert codex_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
+        assert codex_servers["slack"]["args"] == []
         assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
         assert codex_servers["bigquery"]["args"] == []
         assert codex.get("features", {}).get("experimental_use_rmcp_client") is True
@@ -121,12 +183,13 @@ def main() -> None:
         assert REQUIRED_MCP.issubset(set(claude_servers)), (
             "Claude config missing required MCP servers"
         )
-        assert claude_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
         assert (
             claude_servers["datadog"]["url"]
             == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
         )
-        assert claude_servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
+        for name in MCP_REMOTE_BRIDGES:
+            assert_mcp_remote_bridge(claude_servers[name], name)
+        assert claude_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
         assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
 
     hermes_config = HOME / ".hermes" / "config.yaml"

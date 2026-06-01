@@ -13,6 +13,10 @@ broker="$repo/hooks/profile-broker.sh"
 tmp="$(mktemp -d)"
 cleanup() { rm -rf -- "${tmp:?}"; }
 trap cleanup EXIT
+# Pin AGENTS_HOME to this checkout so agent_control.py resolves profiles/ from here rather than the
+# default ~/.config/agents — otherwise on a CI runner (repo checked out elsewhere) the broker can't
+# load the profile, fails open, and the deny assertions silently regress.
+export AGENTS_HOME="$repo"
 # Isolate ledger writes so the broker hook never appends to live state/runs.
 export AGENTS_STATE="$tmp/state"
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Reconcile ~/.config/agents with origin/main
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=%h/.local/bin:%h/.local/share/mise/shims:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/bin:/bin
+WorkingDirectory=%h/.config/agents
+ExecStart=%h/.local/bin/agents-reconcile --apply --no-doctor

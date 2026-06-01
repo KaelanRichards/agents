@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# agents-reconcile — converge a VM/plain git clone to origin/main without dropping drift.
+set -euo pipefail
+
+AH="${AGENTS_HOME:-$HOME/.config/agents}"
+REMOTE="${AGENTS_RECONCILE_REMOTE:-origin}"
+BRANCH="${AGENTS_RECONCILE_BRANCH:-main}"
+MODE="check"
+RUN_DOCTOR=1
+
+usage() {
+  sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+  cat <<'EOF'
+
+Usage:
+  agents-reconcile check
+  agents-reconcile --apply [--no-doctor]
+  agents-reconcile install-user-timer
+
+`--apply` stashes tracked + untracked drift, hard-resets to origin/main, relinks
+helpers into ~/.local/bin, runs mcp-sync and agents-sync, then runs agents-doctor.
+Ignored files are left alone.
+EOF
+}
+
+case "${1:-check}" in
+check) MODE="check" ;;
+--apply | apply) MODE="apply" ;;
+install-user-timer) MODE="install" ;;
+-h | --help | help)
+  usage
+  exit 0
+  ;;
+*)
+  echo "agents-reconcile: unknown argument '$1'" >&2
+  usage >&2
+  exit 2
+  ;;
+esac
+shift || true
+for arg in "$@"; do
+  case "$arg" in
+  --no-doctor) RUN_DOCTOR=0 ;;
+  *)
+    echo "agents-reconcile: unknown argument '$arg'" >&2
+    exit 2
+    ;;
+  esac
+done
+
+run() {
+  printf '==> %s\n' "$*"
+  "$@"
+}
+
+ensure_repo() {
+  [ -d "$AH/.git" ] || {
+    echo "agents-reconcile: $AH is not a git clone" >&2
+    exit 1
+  }
+}
+
+gitc() {
+  git -C "$AH" "$@"
+}
+
+dirty_count() {
+  gitc status --porcelain=v1 --untracked-files=all | wc -l | tr -d ' '
+}
+
+relink_helpers() {
+  mkdir -p "$HOME/.local/bin"
+  for s in "$AH"/bin/*; do
+    [ -f "$s" ] || continue
+    [ -x "$s" ] || continue
+    ln -sfn "$s" "$HOME/.local/bin/$(basename "$s")"
+  done
+}
+
+sync_generated() {
+  PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/opt/homebrew/bin:$PATH"
+  export PATH
+  if command -v mcp-sync >/dev/null 2>&1; then
+    run mcp-sync
+  else
+    echo "agents-reconcile: mcp-sync missing after relink" >&2
+    exit 1
+  fi
+  if command -v agents-sync >/dev/null 2>&1; then
+    run agents-sync
+  else
+    echo "agents-reconcile: agents-sync missing after relink" >&2
+    exit 1
+  fi
+  if command -v hermes-sync >/dev/null 2>&1; then
+    run hermes-sync
+  fi
+  if [ "$RUN_DOCTOR" = 1 ] && command -v agents-doctor >/dev/null 2>&1; then
+    run agents-doctor
+  fi
+}
+
+install_timer() {
+  ensure_repo
+  mkdir -p "$HOME/.config/systemd/user"
+  cp "$AH/systemd/agents-reconcile.service" "$HOME/.config/systemd/user/agents-reconcile.service"
+  cp "$AH/systemd/agents-reconcile.timer" "$HOME/.config/systemd/user/agents-reconcile.timer"
+  systemctl --user daemon-reload
+  systemctl --user enable --now agents-reconcile.timer
+  systemctl --user list-timers agents-reconcile.timer --no-pager
+}
+
+ensure_repo
+case "$MODE" in
+check)
+  run git -C "$AH" fetch "$REMOTE" "$BRANCH"
+  local_head="$(gitc rev-parse --short HEAD)"
+  remote_head="$(gitc rev-parse --short "$REMOTE/$BRANCH")"
+  dirty="$(dirty_count)"
+  echo "repo: $AH"
+  echo "HEAD: $local_head"
+  echo "$REMOTE/$BRANCH: $remote_head"
+  echo "dirty paths: $dirty"
+  if [ "$local_head" = "$remote_head" ] && [ "$dirty" = "0" ]; then
+    echo "agents-reconcile: already converged"
+  else
+    echo "agents-reconcile: run 'agents-reconcile --apply' to converge"
+  fi
+  ;;
+apply)
+  run git -C "$AH" fetch "$REMOTE" "$BRANCH"
+  dirty="$(dirty_count)"
+  if [ "$dirty" != "0" ]; then
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    run git -C "$AH" stash push --include-untracked -m "agents-reconcile $stamp before $REMOTE/$BRANCH"
+  fi
+  run git -C "$AH" reset --hard "$REMOTE/$BRANCH"
+  relink_helpers
+  sync_generated
+  echo "agents-reconcile: converged to $(gitc rev-parse --short HEAD)"
+  ;;
+install)
+  install_timer
+  ;;
+esac
