@@ -5,6 +5,7 @@
     "allowed_sources": [
       "openai/skills",
       "anthropics/skills",
+      "makenotion/claude-code-notion-plugin",
       "vercel-labs/agent-skills",
       "supabase/agent-skills",
       "local"
@@ -18,6 +19,10 @@
     "gh-fix-ci": {"source": "openai/skills", "path": "skills/.curated/gh-fix-ci", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
     "jupyter-notebook": {"source": "openai/skills", "path": "skills/.curated/jupyter-notebook", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
     "mcp-builder": {"source": "anthropics/skills", "path": "skills/mcp-builder", "ref": "main", "commit": "690f15cac7f7b4c055c5ab109c79ed9259934081", "trust": "official"},
+    "notion-knowledge-capture": {"source": "makenotion/claude-code-notion-plugin", "path": "skills/notion/knowledge-capture", "ref": "main", "commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651", "trust": "official"},
+    "notion-meeting-intelligence": {"source": "makenotion/claude-code-notion-plugin", "path": "skills/notion/meeting-intelligence", "ref": "main", "commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651", "trust": "official"},
+    "notion-research-documentation": {"source": "makenotion/claude-code-notion-plugin", "path": "skills/notion/research-documentation", "ref": "main", "commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651", "trust": "official"},
+    "notion-spec-to-implementation": {"source": "makenotion/claude-code-notion-plugin", "path": "skills/notion/spec-to-implementation", "ref": "main", "commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651", "trust": "official"},
     "pdf": {"source": "openai/skills", "path": "skills/.curated/pdf", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
     "playwright": {"source": "openai/skills", "path": "skills/.curated/playwright", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
     "pptx": {"source": "anthropics/skills", "path": "skills/pptx", "ref": "main", "commit": "690f15cac7f7b4c055c5ab109c79ed9259934081", "trust": "official"},

@@ -10,7 +10,7 @@ bash ~/.config/agents/bootstrap.sh    # toolbelt + languages + sync (Linux/macOS
 agents-doctor                         # verify everything is healthy
 ```
 Then authenticate: `claude` (`/login`), `codex login`, `gh auth login`, set `GITHUB_PAT`, and
-run `mcp-auth login notion` / `mcp-auth login granola` if you want those MCPs on the host.
+run `mcp-auth plan` for OAuth-backed hosted MCPs you want on the host.
 
 ## Architecture
 - **Instructions** — `AGENTS.md` is canonical; symlinked to `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`.

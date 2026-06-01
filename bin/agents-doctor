@@ -49,9 +49,9 @@ if command -v jq >/dev/null 2>&1; then
 	for s in $required_mcp; do
 		jq -e --arg s "$s" '.mcpServers[$s]' "$AH/mcp.json" >/dev/null 2>&1 && ok "MCP required server present: $s" || bad "missing required MCP server: $s"
 	done
-	jq -e '.mcpServers.linear.url == "https://mcp.linear.app/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP URL pinned" || bad "Linear MCP URL mismatch"
 	jq -e '.mcpServers.datadog.url == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Datadog MCP US5 URL pinned" || bad "Datadog MCP URL mismatch"
-	jq -e '.mcpServers.sentry.url == "https://mcp.sentry.dev/mcp"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Sentry MCP URL pinned" || bad "Sentry MCP URL mismatch"
+	jq -e '.mcpServers.linear.type == "stdio" and .mcpServers.linear.command == "npx" and .mcpServers.linear.args == ["-y","mcp-remote@latest","https://mcp.linear.app/mcp","3336","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP mcp-remote bridge pinned" || bad "Linear MCP bridge mismatch"
+	jq -e '.mcpServers.sentry.type == "stdio" and .mcpServers.sentry.command == "npx" and .mcpServers.sentry.args == ["-y","mcp-remote@latest","https://mcp.sentry.dev/mcp","3337","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Sentry MCP mcp-remote bridge pinned" || bad "Sentry MCP bridge mismatch"
 	jq -e '.mcpServers.notion.type == "stdio" and .mcpServers.notion.command == "npx" and .mcpServers.notion.args == ["-y","mcp-remote@latest","https://mcp.notion.com/mcp","3334","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Notion MCP mcp-remote bridge pinned" || bad "Notion MCP bridge mismatch"
 	jq -e '.mcpServers.granola.type == "stdio" and .mcpServers.granola.command == "npx" and .mcpServers.granola.args == ["-y","mcp-remote@latest","https://mcp.granola.ai/mcp","3335","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Granola MCP mcp-remote bridge pinned" || bad "Granola MCP bridge mismatch"
 	# Accept either an $AGENTS_HOME placeholder (portable canonical) or an absolute path to $AH/bin/bigquery-mcp.

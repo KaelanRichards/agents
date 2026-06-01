@@ -62,8 +62,16 @@
       "args": []
     },
     "linear": {
-      "type": "http",
-      "url": "https://mcp.linear.app/mcp"
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.linear.app/mcp",
+        "3336",
+        "--host",
+        "127.0.0.1"
+      ]
     },
     "bigquery": {
       "type": "stdio",
@@ -75,8 +83,16 @@
       "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
     },
     "sentry": {
-      "type": "http",
-      "url": "https://mcp.sentry.dev/mcp"
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.sentry.dev/mcp",
+        "3337",
+        "--host",
+        "127.0.0.1"
+      ]
     },
     "notion": {
       "type": "stdio",

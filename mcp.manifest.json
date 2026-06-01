@@ -33,18 +33,18 @@
 			"notes": "US5. Use ?toolsets= to limit exposed tools (already core,apm,error-tracking,software-delivery)."
 		},
 		"sentry": {
-			"transport": "http",
+			"transport": "stdio",
 			"endpoint": "https://mcp.sentry.dev/mcp",
-			"credential_env": "SENTRY_AUTH_TOKEN",
-			"token_type": "Sentry user auth token (org:read project:read event:read member:read)",
-			"preflight": "whoami -> identity",
-			"notes": "Remote OAuth server. Headless: pre-mint the auth token once and store in the secrets env file; do NOT rely on interactive OAuth in cron/systemd. If absent, strict-config it out rather than hang startup."
+			"token_type": "OAuth (interactive)",
+			"preflight": "mcp-remote/whoami when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official hosted Sentry MCP bridged through mcp-remote for all stdio clients. Auth once per host with `mcp-auth login sentry`; VM auth uses `mcp-auth vm-login sentry <host>`."
 		},
 		"linear": {
-			"transport": "http",
+			"transport": "stdio",
 			"endpoint": "https://mcp.linear.app/mcp",
 			"token_type": "OAuth (interactive)",
-			"notes": "Remote OAuth — read-only use. Headless agents that can't complete OAuth should omit it from their strict config (it was a startup-hang contributor)."
+			"preflight": "mcp-remote OAuth/account probe when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official hosted Linear MCP bridged through mcp-remote for all stdio clients. Auth once per host with `mcp-auth login linear`; VM auth uses `mcp-auth vm-login linear <host>`."
 		},
 		"notion": {
 			"transport": "stdio",

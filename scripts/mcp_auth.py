@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """MCP auth control-plane helper.
 
-This intentionally does not export/import OAuth tokens. Notion and Granola use mcp-remote as a
-stdio bridge, so auth state is host-local in ~/.mcp-auth and shared by every stdio-compatible
-client that launches the same bridge.
+This intentionally does not export/import OAuth tokens. OAuth-backed remote MCPs use mcp-remote
+as a stdio bridge, so auth state is host-local in ~/.mcp-auth and shared by every
+stdio-compatible client that launches the same bridge.
 """
 
 from __future__ import annotations

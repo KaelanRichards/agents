@@ -5,11 +5,9 @@ Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md
 for all shells plus `zsh/agents.zsh` for interactive extras), dashboards, observability, CI,
 and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
 
-The shared MCP set includes the official Linear remote MCP server (`https://mcp.linear.app/mcp`),
-the official Datadog US5 remote MCP server, the official Sentry remote MCP server
-(`https://mcp.sentry.dev/mcp`), official OAuth-backed Notion/Granola MCPs bridged through
-`mcp-remote`, and a local read-only BigQuery facade (`bigquery-mcp`) that uses the machine's
-existing `gcloud`/`bq` auth.
+The shared MCP set includes official OAuth-backed Linear, Sentry, Notion, and Granola MCPs
+bridged through `mcp-remote`, the official Datadog US5 remote MCP server, and a local read-only
+BigQuery facade (`bigquery-mcp`) that uses the machine's existing `gcloud`/`bq` auth.
 The Datadog endpoint is pinned to
 `https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery`.
 The active BigQuery project is `vizcom-web`; it needs the BigQuery API enabled and MCP Tool User,
@@ -32,10 +30,10 @@ prints the planned `(type / image / location)` before it calls `hcloud server cr
 2. On the VM: `git clone <repo-url> ~/.config/agents && bash ~/.config/agents/bootstrap.sh`
 
 **Then authenticate** on the VM: `claude` -> `/login`, `codex login`, `gh auth login`,
-and set `GITHUB_PAT` (GitHub MCP). For OAuth-backed Notion/Granola, run
-`mcp-auth login notion` and `mcp-auth login granola` once per host; every synced stdio client on
-that host reuses `~/.mcp-auth`. For a VM, run `mcp-auth vm-login <server> <vm-host>` from the
-laptop so your local browser can complete the VM-side OAuth callback.
+and set `GITHUB_PAT` (GitHub MCP). For OAuth-backed hosted MCPs, run `mcp-auth plan`, then
+`mcp-auth login <server>` once per host; every synced stdio client on that host reuses
+`~/.mcp-auth`. For a VM, run `mcp-auth vm-login <server> <vm-host>` from the laptop so your
+local browser can complete the VM-side OAuth callback.
 Run `agents-doctor` to confirm it's healthy.
 
 ## Daily workflow

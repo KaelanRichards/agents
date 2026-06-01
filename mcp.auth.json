@@ -9,6 +9,62 @@
     "preferred_long_term": "use official hosted MCPs through mcp-remote first; graduate to a narrow local facade only if hosted MCP behavior is insufficient"
   },
   "servers": {
+    "linear": {
+      "url": "https://mcp.linear.app/mcp",
+      "strategy": "mcp-remote-stdio",
+      "callback_port": 3336,
+      "callback_host": "127.0.0.1",
+      "token_store": "~/.mcp-auth",
+      "login_command": "mcp-auth login linear",
+      "account_boundary": "acts with the connected user's Linear workspace permissions",
+      "clients": {
+        "claude": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Run `mcp-auth login linear` once on the target host, then use the synced Linear MCP entry normally.",
+          "verify_command": "claude mcp get linear"
+        },
+        "opencode": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Use the synced stdio MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login linear`.",
+          "verify_command": "opencode mcp list"
+        },
+        "codex": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Use the synced stdio MCP entry; Codex does not need native remote OAuth support for this server.",
+          "verify_command": "codex mcp list"
+        }
+      },
+      "vm_setup": "Run `mcp-auth vm-login linear <vm-host>` from the laptop. It opens an SSH local-forward for the OAuth callback and runs the VM-side login command.",
+      "rollback": "Use the client's disconnect/logout flow; remove the server with mcp-sync only if the connector should disappear from all clients."
+    },
+    "sentry": {
+      "url": "https://mcp.sentry.dev/mcp",
+      "strategy": "mcp-remote-stdio",
+      "callback_port": 3337,
+      "callback_host": "127.0.0.1",
+      "token_store": "~/.mcp-auth",
+      "login_command": "mcp-auth login sentry",
+      "account_boundary": "acts with the connected user's Sentry organization and project permissions",
+      "clients": {
+        "claude": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Run `mcp-auth login sentry` once on the target host, then use the synced Sentry MCP entry normally.",
+          "verify_command": "claude mcp get sentry"
+        },
+        "opencode": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Use the synced stdio MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login sentry`.",
+          "verify_command": "opencode mcp list"
+        },
+        "codex": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Use the synced stdio MCP entry; Codex does not need native remote OAuth support for this server.",
+          "verify_command": "codex mcp list"
+        }
+      },
+      "vm_setup": "Run `mcp-auth vm-login sentry <vm-host>` from the laptop. It opens an SSH local-forward for the OAuth callback and runs the VM-side login command.",
+      "rollback": "Use the client's disconnect/logout flow; remove the server with mcp-sync only if the connector should disappear from all clients."
+    },
     "notion": {
       "url": "https://mcp.notion.com/mcp",
       "strategy": "mcp-remote-stdio",

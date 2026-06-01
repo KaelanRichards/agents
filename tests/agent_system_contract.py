@@ -43,6 +43,13 @@ PERSONAL_ACTION_TOOLS = {
     "personal_drive_search_files",
 }
 
+MCP_REMOTE_BRIDGES = {
+    "notion": ("https://mcp.notion.com/mcp", "3334"),
+    "granola": ("https://mcp.granola.ai/mcp", "3335"),
+    "linear": ("https://mcp.linear.app/mcp", "3336"),
+    "sentry": ("https://mcp.sentry.dev/mcp", "3337"),
+}
+
 
 def read(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -56,6 +63,20 @@ def assert_contains(text: str, needle: str, label: str) -> None:
     assert needle in text, f"{label} missing {needle!r}"
 
 
+def assert_mcp_remote_bridge(server: dict, name: str) -> None:
+    url, port = MCP_REMOTE_BRIDGES[name]
+    assert server.get("type", "stdio") == "stdio"
+    assert server["command"] == "npx"
+    assert server["args"] == [
+        "-y",
+        "mcp-remote@latest",
+        url,
+        port,
+        "--host",
+        "127.0.0.1",
+    ]
+
+
 def main() -> None:
     mcp = load_json(ROOT / "mcp.json")
     assert isinstance(mcp, dict)
@@ -66,10 +87,9 @@ def main() -> None:
     auth = load_json(ROOT / "mcp.auth.json")
     assert auth["policy"]["token_copying"] == "forbidden-by-default"
     auth_servers = auth["servers"]
-    assert set(auth_servers) == {"notion", "granola"}
-    assert auth_servers["notion"]["url"] == "https://mcp.notion.com/mcp"
-    assert auth_servers["granola"]["url"] == "https://mcp.granola.ai/mcp"
-    for name in ("notion", "granola"):
+    assert set(auth_servers) == set(MCP_REMOTE_BRIDGES)
+    for name, (url, _port) in MCP_REMOTE_BRIDGES.items():
+        assert auth_servers[name]["url"] == url
         assert auth_servers[name]["strategy"] == "mcp-remote-stdio"
         assert auth_servers[name]["token_store"] == "~/.mcp-auth"
         assert auth_servers[name]["callback_host"] == "127.0.0.1"
@@ -77,35 +97,13 @@ def main() -> None:
         assert auth_servers[name]["clients"]["opencode"]["support"] == "supported-via-stdio-bridge"
         assert auth_servers[name]["clients"]["codex"]["support"] == "supported-via-stdio-bridge"
 
-    assert servers["linear"]["type"] == "http"
-    assert servers["linear"]["url"] == "https://mcp.linear.app/mcp"
     assert servers["datadog"]["type"] == "http"
     assert (
         servers["datadog"]["url"]
         == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
     )
-    assert servers["sentry"]["type"] == "http"
-    assert servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
-    assert servers["notion"]["type"] == "stdio"
-    assert servers["notion"]["command"] == "npx"
-    assert servers["notion"]["args"] == [
-        "-y",
-        "mcp-remote@latest",
-        "https://mcp.notion.com/mcp",
-        "3334",
-        "--host",
-        "127.0.0.1",
-    ]
-    assert servers["granola"]["type"] == "stdio"
-    assert servers["granola"]["command"] == "npx"
-    assert servers["granola"]["args"] == [
-        "-y",
-        "mcp-remote@latest",
-        "https://mcp.granola.ai/mcp",
-        "3335",
-        "--host",
-        "127.0.0.1",
-    ]
+    for name in MCP_REMOTE_BRIDGES:
+        assert_mcp_remote_bridge(servers[name], name)
     assert servers["bigquery"]["type"] == "stdio"
     assert servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
     assert servers["bigquery"]["args"] == []
@@ -141,30 +139,12 @@ def main() -> None:
         assert REQUIRED_MCP.issubset(set(codex_servers)), (
             "Codex config missing required MCP servers"
         )
-        assert codex_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
         assert (
             codex_servers["datadog"]["url"]
             == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
         )
-        assert codex_servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
-        assert codex_servers["notion"]["command"] == "npx"
-        assert codex_servers["notion"]["args"] == [
-            "-y",
-            "mcp-remote@latest",
-            "https://mcp.notion.com/mcp",
-            "3334",
-            "--host",
-            "127.0.0.1",
-        ]
-        assert codex_servers["granola"]["command"] == "npx"
-        assert codex_servers["granola"]["args"] == [
-            "-y",
-            "mcp-remote@latest",
-            "https://mcp.granola.ai/mcp",
-            "3335",
-            "--host",
-            "127.0.0.1",
-        ]
+        for name in MCP_REMOTE_BRIDGES:
+            assert_mcp_remote_bridge(codex_servers[name], name)
         assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
         assert codex_servers["bigquery"]["args"] == []
         assert codex.get("features", {}).get("experimental_use_rmcp_client") is True
@@ -177,30 +157,12 @@ def main() -> None:
         assert REQUIRED_MCP.issubset(set(claude_servers)), (
             "Claude config missing required MCP servers"
         )
-        assert claude_servers["linear"]["url"] == "https://mcp.linear.app/mcp"
         assert (
             claude_servers["datadog"]["url"]
             == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
         )
-        assert claude_servers["sentry"]["url"] == "https://mcp.sentry.dev/mcp"
-        assert claude_servers["notion"]["command"] == "npx"
-        assert claude_servers["notion"]["args"] == [
-            "-y",
-            "mcp-remote@latest",
-            "https://mcp.notion.com/mcp",
-            "3334",
-            "--host",
-            "127.0.0.1",
-        ]
-        assert claude_servers["granola"]["command"] == "npx"
-        assert claude_servers["granola"]["args"] == [
-            "-y",
-            "mcp-remote@latest",
-            "https://mcp.granola.ai/mcp",
-            "3335",
-            "--host",
-            "127.0.0.1",
-        ]
+        for name in MCP_REMOTE_BRIDGES:
+            assert_mcp_remote_bridge(claude_servers[name], name)
         assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
 
     hermes_config = HOME / ".hermes" / "config.yaml"
