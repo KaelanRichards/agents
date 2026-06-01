@@ -1,11 +1,22 @@
 {
 	"name": "personal-assistant",
-	"description": "Hermes-style personal assistant with constrained Gmail, Calendar, Slack, Drive, and read-only agent context.",
-	"mcp_servers": ["personal-actions", "agents", "agent-broker", "slack-dm"],
+	"description": "Hermes-style personal assistant with constrained Gmail, Calendar, Slack, Drive, Linear, Notion, Granola, and read-only agent context.",
+	"mcp_servers": [
+		"personal-actions",
+		"agents",
+		"agent-broker",
+		"slack-dm",
+		"linear",
+		"notion",
+		"granola"
+	],
 	"allowed_tools": [
 		"personal_search",
 		"personal_gmail_draft",
 		"personal_calendar_list",
+		"linear_read",
+		"notion_read",
+		"granola_read",
 		"repo_status",
 		"repo_log"
 	],

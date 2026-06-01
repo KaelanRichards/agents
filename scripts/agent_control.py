@@ -1180,6 +1180,8 @@ READ_CAPABILITY_SERVERS = {
     "sentry_read": "sentry",
     "github_read": "github",
     "linear_read": "linear",
+    "notion_read": "notion",
+    "granola_read": "granola",
 }
 
 

@@ -1,11 +1,13 @@
 {
 	"name": "vizcom-sre",
-	"description": "Read-only, recommend-only SRE agent for Vizcom prod: observability + repo + Linear context, DM-only outreach. Never mutates Vizcom infra.",
+	"description": "Read-only, recommend-only SRE agent for Vizcom prod: observability + repo + Linear, Notion, and Granola context, DM-only outreach. Never mutates Vizcom infra.",
 	"mcp_servers": [
 		"datadog",
 		"sentry",
 		"github",
 		"linear",
+		"notion",
+		"granola",
 		"agent-broker",
 		"slack-dm"
 	],
@@ -14,6 +16,8 @@
 		"sentry_read",
 		"github_read",
 		"linear_read",
+		"notion_read",
+		"granola_read",
 		"slack_post"
 	],
 	"disallowed_tools": [
