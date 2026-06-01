@@ -29,8 +29,8 @@
 			"transport": "http",
 			"credential_env": "DD_API_KEY + DD_APP_KEY",
 			"token_type": "scoped read-only API + application keys",
-			"preflight": "any read with both header keys -> 200",
-			"notes": "US5. Use ?toolsets= to limit exposed tools (already core,apm,error-tracking,software-delivery)."
+			"preflight": "any read with DD_API_KEY and DD_APPLICATION_KEY headers -> 200",
+			"notes": "US5. Use ?toolsets= to limit exposed tools (already core,apm,error-tracking,software-delivery). VM env maps existing DD_APP_KEY to DD_APPLICATION_KEY for the official remote MCP header contract."
 		},
 		"sentry": {
 			"transport": "stdio",

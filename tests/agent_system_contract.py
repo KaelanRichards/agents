@@ -118,6 +118,10 @@ def main() -> None:
         servers["datadog"]["url"]
         == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
     )
+    assert servers["datadog"]["headers"] == {
+        "DD_API_KEY": "${DD_API_KEY}",
+        "DD_APPLICATION_KEY": "${DD_APPLICATION_KEY}",
+    }
     for name in MCP_REMOTE_BRIDGES:
         assert_mcp_remote_bridge(servers[name], name)
     for name, command in MCP_REMOTE_WRAPPERS.items():

@@ -90,8 +90,9 @@ This is the single source of truth for both agents. Canonical file lives at
   stdio-compatible client on that host reuses it. For a VM, use `mcp-auth vm-login <server>
   <host>` from the laptop. Slack additionally needs host-local `SLACK_MCP_CLIENT_ID` and
   `SLACK_MCP_CLIENT_SECRET`, or `SLACK_MCP_CLIENT_INFO_FILE`, because Slack does not support
-  Dynamic Client Registration. Do **not** copy opaque OAuth token stores between machines unless a
-  server-specific runbook explicitly authorizes it.
+  Dynamic Client Registration; its Slack app must allow `http://127.0.0.1:3339/oauth/callback`.
+  Do **not** copy opaque OAuth token stores between machines unless a server-specific runbook
+  explicitly authorizes it.
 - **Do not** hand-edit `~/.claude.json` or the managed block in `~/.codex/config.toml`,
   and do not use `claude mcp add` / `codex mcp add` directly — the next `mcp-sync` run
   overwrites manual entries.

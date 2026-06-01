@@ -37,7 +37,8 @@ and set `GITHUB_PAT` (GitHub MCP). For OAuth-backed hosted MCPs, run `mcp-auth p
 local browser can complete the VM-side OAuth callback.
 Slack's official MCP additionally needs host-local `SLACK_MCP_CLIENT_ID` and
 `SLACK_MCP_CLIENT_SECRET`, or `SLACK_MCP_CLIENT_INFO_FILE`, because Slack does not support Dynamic
-Client Registration.
+Client Registration. The Slack app must allow the local callback URL
+`http://127.0.0.1:3339/oauth/callback`.
 Run `agents-doctor` to confirm it's healthy.
 
 ## Daily workflow
