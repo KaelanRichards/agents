@@ -39,7 +39,7 @@ for _agents_secret_env in \
   "$HOME/.config/agents-secrets/slack-mcp.env"
 do
   [ -f "$_agents_secret_env" ] || continue
-  _agents_secret_mode="$(stat -f '%Lp' "$_agents_secret_env" 2>/dev/null || stat -c '%a' "$_agents_secret_env" 2>/dev/null || true)"
+  _agents_secret_mode="$(stat -c '%a' "$_agents_secret_env" 2>/dev/null || stat -f '%Lp' "$_agents_secret_env" 2>/dev/null || true)"
   if [ "$_agents_secret_mode" = "600" ]; then
     set -a
     . "$_agents_secret_env"
