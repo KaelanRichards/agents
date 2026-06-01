@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically reconcile ~/.config/agents with origin/main
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

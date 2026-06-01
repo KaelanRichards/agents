@@ -30,6 +30,7 @@ run `mcp-auth plan` for OAuth-backed hosted MCPs you want on the host.
 | `agents-sync` | regenerate subagents / skills / hooks |
 | `agents-doctor` | full health check |
 | `agents-status` | read-only overview: VMs, health, MCP, CI/PRs, sessions |
+| `agents-reconcile --apply` | converge a VM/plain git clone to `origin/main`, preserving drift in git stash |
 | `dash` | interactive TUI dashboard (live panels + action keys) |
 | `dashweb` | HTML dashboard (local :8787; VM always-on via `serve` + Tailscale) |
 | `serve` | (VM) run webdash always-on + expose via `tailscale serve` |

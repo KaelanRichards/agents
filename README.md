@@ -97,6 +97,11 @@ git -C ~/.config/agents pull && mcp-sync && agents-sync
 systemctl --user restart webdash.service    # if the dashboard changed
 ```
 
+If the VM has local drift, use `agents-reconcile --apply` instead. It stashes tracked and
+untracked changes, resets the clone to `origin/main`, relinks helpers, and regenerates MCP/agent
+configs. On an always-on VM, `agents-reconcile install-user-timer` installs the self-healing user
+timer.
+
 ## Reproducible env (Nix, optional)
 
 A hermetic, pinned alternative to the brew toolbelt — additive, doesn't replace `bootstrap.sh`.
@@ -118,6 +123,8 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 ## Maintenance & health
 - **`agents-doctor`** — verify tools, symlinks, MCP parity, configs, and agent-CLI version drift
   (run anytime, or on a new machine).
+- **`agents-reconcile`** — VM/plain-git self-healing sync: stash drift, reset to `origin/main`,
+  regenerate MCP/agent config, and optionally install a periodic user timer.
 - **Agent control plane** — local orchestration primitives layered on top of jj, tmux, MCP, and
   the shared profile/policy model:
   - `agent-profile list|validate|compile` manages canonical permission profiles in `profiles/`

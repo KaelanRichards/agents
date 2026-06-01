@@ -142,6 +142,9 @@ This is the single source of truth for both agents. Canonical file lives at
   agent-CLI version drift — run it after changes or on a new machine.
 - **Overview**: `agents-status` — read-only single pane (VMs + cost, health, MCP servers,
   repo/CI + open PRs, tmux sessions).
+- **VM self-heal**: `agents-reconcile --apply` stashes local drift, resets a plain-git VM clone to
+  `origin/main`, relinks helpers, and regenerates MCP/agent config. `agents-reconcile
+  install-user-timer` installs the periodic user timer.
 - **Interactive dashboard**: `dash` — live Textual TUI with panels + action keys
   (`r` refresh · `s` sync · `d` doctor · `g` grafana · `q` quit).
 - **Web dashboard**: `dashweb` — live HTML control center at `localhost:8787`: SSE cards,
