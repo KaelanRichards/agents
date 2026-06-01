@@ -79,21 +79,28 @@ def check_contract() -> int:
             errors.append(f"{name}: present in mcp.auth.json but missing from mcp.json")
             continue
         entry = mcp[name]
-        expected_args = [
-            "-y",
-            "mcp-remote@latest",
-            meta.get("url"),
-            str(meta.get("callback_port")),
-            "--host",
-            meta.get("callback_host"),
-        ]
+        strategy = meta.get("strategy")
         if entry.get("type") != "stdio":
             errors.append(f"{name}: expected stdio bridge, got {entry.get('type')!r}")
-        if entry.get("command") != "npx":
-            errors.append(f"{name}: expected npx command, got {entry.get('command')!r}")
-        if entry.get("args") != expected_args:
-            errors.append(f"{name}: bridge args mismatch auth={expected_args!r} mcp={entry.get('args')!r}")
-        if meta.get("strategy") != "mcp-remote-stdio":
+        if strategy == "mcp-remote-stdio":
+            expected_args = [
+                "-y",
+                "mcp-remote@latest",
+                meta.get("url"),
+                str(meta.get("callback_port")),
+                "--host",
+                meta.get("callback_host"),
+            ]
+            if entry.get("command") != "npx":
+                errors.append(f"{name}: expected npx command, got {entry.get('command')!r}")
+            if entry.get("args") != expected_args:
+                errors.append(f"{name}: bridge args mismatch auth={expected_args!r} mcp={entry.get('args')!r}")
+        elif strategy == "mcp-remote-wrapper":
+            if entry.get("command") != meta.get("command"):
+                errors.append(f"{name}: wrapper command mismatch auth={meta.get('command')!r} mcp={entry.get('command')!r}")
+            if entry.get("args", []) != meta.get("args", []):
+                errors.append(f"{name}: wrapper args mismatch auth={meta.get('args', [])!r} mcp={entry.get('args', [])!r}")
+        else:
             errors.append(f"{name}: unsupported strategy {meta.get('strategy')!r}")
         if meta.get("token_store") != "~/.mcp-auth":
             errors.append(f"{name}: token_store must be ~/.mcp-auth")
@@ -123,9 +130,14 @@ def status_one(name: str) -> None:
     print(f"== {name} ==")
     print(f"url: {meta.get('url')}")
     print(f"strategy: {meta.get('strategy')}")
-    print(f"bridge: npx -y mcp-remote@latest {meta.get('url')} {meta.get('callback_port')} --host {meta.get('callback_host')}")
+    if meta.get("strategy") == "mcp-remote-wrapper":
+        print(f"bridge: {meta.get('command')}")
+    else:
+        print(f"bridge: npx -y mcp-remote@latest {meta.get('url')} {meta.get('callback_port')} --host {meta.get('callback_host')}")
     print(f"token_store: {AUTH_STORE} ({'present' if AUTH_STORE.exists() else 'missing'})")
     print(f"boundary: {meta.get('account_boundary')}")
+    if meta.get("host_requirements"):
+        print(f"host_requirements: {meta.get('host_requirements')}")
     print()
     for client in ("claude", "opencode", "codex"):
         cfg = meta.get("clients", {}).get(client, {})
@@ -179,7 +191,18 @@ def plan(args: argparse.Namespace) -> int:
     return 0
 
 
-def remote_args(meta: dict) -> list[str]:
+def expand_host_path(value: str) -> str:
+    return (
+        value.replace("$AGENTS_HOME", str(ROOT))
+        .replace("$HOME", str(pathlib.Path.home()))
+    )
+
+
+def remote_args(name: str, meta: dict) -> list[str]:
+    if meta.get("strategy") == "mcp-remote-wrapper":
+        entry = canonical_servers()[name]
+        command = expand_host_path(entry["command"])
+        return [command, *entry.get("args", [])]
     return [
         "npx",
         "-y",
@@ -195,7 +218,7 @@ def remote_args(meta: dict) -> list[str]:
 
 def login(args: argparse.Namespace) -> int:
     meta = require_server(args.server)
-    cmd = remote_args(meta)
+    cmd = remote_args(args.server, meta)
     print(f"Starting OAuth login for {args.server}.")
     print("Open the browser URL that mcp-remote prints. Stop this command after it lists tools.")
     print(f"token_store: {AUTH_STORE}")

@@ -6,9 +6,11 @@
 		"agents",
 		"agent-broker",
 		"slack-dm",
+		"slack",
 		"linear",
 		"notion",
-		"granola"
+		"granola",
+		"cloudflare"
 	],
 	"allowed_tools": [
 		"personal_search",
@@ -17,6 +19,8 @@
 		"linear_read",
 		"notion_read",
 		"granola_read",
+		"slack_read",
+		"cloudflare_read",
 		"repo_status",
 		"repo_log"
 	],
@@ -32,6 +36,8 @@
 		"gmail_send",
 		"gmail_trash",
 		"slack_post",
+		"slack_write",
+		"cloudflare_write",
 		"calendar_create",
 		"calendar_update"
 	],

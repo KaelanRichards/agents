@@ -1182,6 +1182,13 @@ READ_CAPABILITY_SERVERS = {
     "linear_read": "linear",
     "notion_read": "notion",
     "granola_read": "granola",
+    "slack_read": "slack",
+    "cloudflare_read": "cloudflare",
+}
+
+WRITE_CAPABILITY_SERVERS = {
+    "slack_write": "slack",
+    "cloudflare_write": "cloudflare",
 }
 
 
@@ -1296,6 +1303,9 @@ def capability_matches(
     if capability in READ_CAPABILITY_SERVERS:
         expected_server = READ_CAPABILITY_SERVERS[capability]
         return server == expected_server and not inferred_mutation
+    if capability in WRITE_CAPABILITY_SERVERS:
+        expected_server = WRITE_CAPABILITY_SERVERS[capability]
+        return server == expected_server and inferred_mutation
     if capability == "read":
         return not inferred_mutation
     if capability == "confirmed_mutation":

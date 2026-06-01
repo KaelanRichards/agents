@@ -25,8 +25,10 @@ REQUIRED_MCP = {
     "personal-actions",
     "linear",
     "slack-dm",
+    "slack",
     "notion",
     "granola",
+    "cloudflare",
 }
 
 PERSONAL_ACTION_TOOLS = {
@@ -48,6 +50,11 @@ MCP_REMOTE_BRIDGES = {
     "granola": ("https://mcp.granola.ai/mcp", "3335"),
     "linear": ("https://mcp.linear.app/mcp", "3336"),
     "sentry": ("https://mcp.sentry.dev/mcp", "3337"),
+    "cloudflare": ("https://mcp.cloudflare.com/mcp", "3338"),
+}
+
+MCP_REMOTE_WRAPPERS = {
+    "slack": "$AGENTS_HOME/bin/slack-official-mcp",
 }
 
 
@@ -87,10 +94,19 @@ def main() -> None:
     auth = load_json(ROOT / "mcp.auth.json")
     assert auth["policy"]["token_copying"] == "forbidden-by-default"
     auth_servers = auth["servers"]
-    assert set(auth_servers) == set(MCP_REMOTE_BRIDGES)
+    assert set(auth_servers) == set(MCP_REMOTE_BRIDGES) | set(MCP_REMOTE_WRAPPERS)
     for name, (url, _port) in MCP_REMOTE_BRIDGES.items():
         assert auth_servers[name]["url"] == url
         assert auth_servers[name]["strategy"] == "mcp-remote-stdio"
+        assert auth_servers[name]["token_store"] == "~/.mcp-auth"
+        assert auth_servers[name]["callback_host"] == "127.0.0.1"
+        assert auth_servers[name]["clients"]["claude"]["support"] == "supported-via-stdio-bridge"
+        assert auth_servers[name]["clients"]["opencode"]["support"] == "supported-via-stdio-bridge"
+        assert auth_servers[name]["clients"]["codex"]["support"] == "supported-via-stdio-bridge"
+    for name, command in MCP_REMOTE_WRAPPERS.items():
+        assert auth_servers[name]["url"] == "https://mcp.slack.com/mcp"
+        assert auth_servers[name]["strategy"] == "mcp-remote-wrapper"
+        assert auth_servers[name]["command"] == command
         assert auth_servers[name]["token_store"] == "~/.mcp-auth"
         assert auth_servers[name]["callback_host"] == "127.0.0.1"
         assert auth_servers[name]["clients"]["claude"]["support"] == "supported-via-stdio-bridge"
@@ -104,6 +120,10 @@ def main() -> None:
     )
     for name in MCP_REMOTE_BRIDGES:
         assert_mcp_remote_bridge(servers[name], name)
+    for name, command in MCP_REMOTE_WRAPPERS.items():
+        assert servers[name]["type"] == "stdio"
+        assert servers[name]["command"] == command
+        assert servers[name]["args"] == []
     assert servers["bigquery"]["type"] == "stdio"
     assert servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
     assert servers["bigquery"]["args"] == []
@@ -145,6 +165,8 @@ def main() -> None:
         )
         for name in MCP_REMOTE_BRIDGES:
             assert_mcp_remote_bridge(codex_servers[name], name)
+        assert codex_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
+        assert codex_servers["slack"]["args"] == []
         assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
         assert codex_servers["bigquery"]["args"] == []
         assert codex.get("features", {}).get("experimental_use_rmcp_client") is True
@@ -163,6 +185,7 @@ def main() -> None:
         )
         for name in MCP_REMOTE_BRIDGES:
             assert_mcp_remote_bridge(claude_servers[name], name)
+        assert claude_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
         assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
 
     hermes_config = HOME / ".hermes" / "config.yaml"

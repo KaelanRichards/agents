@@ -60,6 +60,21 @@
 			"preflight": "mcp-remote/get_account_info when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
 			"notes": "Official Granola MCP bridged through mcp-remote for all stdio clients. Browser OAuth only; no API key or service-account MCP auth. Auth once per host with `mcp-auth login granola`; VM auth uses `mcp-auth vm-login granola <host>`."
 		},
+		"cloudflare": {
+			"transport": "stdio",
+			"endpoint": "https://mcp.cloudflare.com/mcp",
+			"token_type": "OAuth (interactive) or scoped Cloudflare API token",
+			"preflight": "mcp-remote OAuth/account probe when ~/.mcp-auth is present; otherwise treat as optional/degraded.",
+			"notes": "Official Cloudflare API MCP bridged through mcp-remote for all stdio clients. Auth once per host with `mcp-auth login cloudflare`; VM auth uses `mcp-auth vm-login cloudflare <host>`."
+		},
+		"slack": {
+			"transport": "stdio",
+			"endpoint": "https://mcp.slack.com/mcp",
+			"credential_env": "SLACK_MCP_CLIENT_ID + SLACK_MCP_CLIENT_SECRET, or SLACK_MCP_CLIENT_INFO_FILE",
+			"token_type": "Slack confidential OAuth via a directory-published or internal Slack app",
+			"preflight": "wrapper starts and mcp-remote OAuth succeeds when Slack app credentials and ~/.mcp-auth are present; otherwise treat as optional/degraded.",
+			"notes": "Official Slack MCP bridged through bin/slack-official-mcp because Slack does not support Dynamic Client Registration. Auth once per host with `mcp-auth login slack`; VM auth uses `mcp-auth vm-login slack <host>` after installing host-local Slack app credentials."
+		},
 		"npx-stdio": {
 			"_group": ["context7", "playwright", "filesystem", "sequential-thinking"],
 			"notes": "npx-launched stdio servers need node and a (possibly cold) network fetch on first run — keep them OUT of headless/VM strict configs (they contributed to the claude -p first-turn hang). Versions are pinned in mcp.json; run `mcp-sync drift` in CI."

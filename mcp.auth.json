@@ -120,6 +120,64 @@
       },
       "vm_setup": "Run `mcp-auth vm-login granola <vm-host>` from the laptop. It opens an SSH local-forward for the OAuth callback and runs the VM-side login command.",
       "rollback": "Use the client's disconnect/logout flow; remove the server with mcp-sync only if the connector should disappear from all clients."
+    },
+    "cloudflare": {
+      "url": "https://mcp.cloudflare.com/mcp",
+      "strategy": "mcp-remote-stdio",
+      "callback_port": 3338,
+      "callback_host": "127.0.0.1",
+      "token_store": "~/.mcp-auth",
+      "login_command": "mcp-auth login cloudflare",
+      "account_boundary": "acts with the connected user's Cloudflare account permissions or the configured Cloudflare API token scopes",
+      "clients": {
+        "claude": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Run `mcp-auth login cloudflare` once on the target host, then use the synced Cloudflare MCP entry normally.",
+          "verify_command": "claude mcp get cloudflare"
+        },
+        "opencode": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Use the synced stdio MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login cloudflare`.",
+          "verify_command": "opencode mcp list"
+        },
+        "codex": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Use the synced stdio MCP entry; Codex does not need native remote OAuth support for this server.",
+          "verify_command": "codex mcp list"
+        }
+      },
+      "vm_setup": "Run `mcp-auth vm-login cloudflare <vm-host>` from the laptop. It opens an SSH local-forward for the OAuth callback and runs the VM-side login command.",
+      "rollback": "Use the client's disconnect/logout flow; remove the server with mcp-sync only if the connector should disappear from all clients."
+    },
+    "slack": {
+      "url": "https://mcp.slack.com/mcp",
+      "strategy": "mcp-remote-wrapper",
+      "command": "$AGENTS_HOME/bin/slack-official-mcp",
+      "callback_port": 3339,
+      "callback_host": "127.0.0.1",
+      "token_store": "~/.mcp-auth",
+      "login_command": "mcp-auth login slack",
+      "account_boundary": "acts with the connected Slack user's workspace permissions and the Slack app scopes configured in SLACK_MCP_SCOPES",
+      "host_requirements": "Set SLACK_MCP_CLIENT_ID and SLACK_MCP_CLIENT_SECRET, or SLACK_MCP_CLIENT_INFO_FILE, on each host. The Slack app must include http://127.0.0.1:3339/oauth/callback as an OAuth redirect URL unless SLACK_MCP_CALLBACK_PORT is overridden.",
+      "clients": {
+        "claude": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Configure the host-local Slack MCP app credentials, run `mcp-auth login slack` once on the target host, then use the synced Slack MCP entry normally.",
+          "verify_command": "claude mcp get slack"
+        },
+        "opencode": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Use the synced wrapper MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login slack`.",
+          "verify_command": "opencode mcp list"
+        },
+        "codex": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Use the synced wrapper MCP entry; Codex does not need native remote OAuth support for this server.",
+          "verify_command": "codex mcp list"
+        }
+      },
+      "vm_setup": "Install host-local Slack MCP app credentials on the VM, then run `mcp-auth vm-login slack <vm-host>` from the laptop. It opens an SSH local-forward for the OAuth callback and runs the VM-side login command.",
+      "rollback": "Use the client's disconnect/logout flow; remove the server with mcp-sync only if the connector should disappear from all clients."
     }
   }
 }

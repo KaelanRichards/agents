@@ -85,10 +85,13 @@ This is the single source of truth for both agents. Canonical file lives at
 - To add/remove a server, use:
   `mcp-sync add <name> -- <cmd...>` · `mcp-sync add-http <name> <url> [BEARER_ENV]` · `mcp-sync remove <name>`.
 - OAuth-backed remote MCP auth is tracked in `~/.config/agents/mcp.auth.json`. Linear, Sentry,
-  Notion, and Granola use `mcp-remote` stdio bridges, so `mcp-auth login <server>` authenticates
-  once per host into `~/.mcp-auth`, and every synced stdio-compatible client on that host reuses
-  it. For a VM, use `mcp-auth vm-login <server> <host>` from the laptop. Do **not** copy opaque
-  OAuth token stores between machines unless a server-specific runbook explicitly authorizes it.
+  Notion, Granola, Cloudflare, and Slack use `mcp-remote` stdio bridges or a narrow wrapper, so
+  `mcp-auth login <server>` authenticates once per host into `~/.mcp-auth`, and every synced
+  stdio-compatible client on that host reuses it. For a VM, use `mcp-auth vm-login <server>
+  <host>` from the laptop. Slack additionally needs host-local `SLACK_MCP_CLIENT_ID` and
+  `SLACK_MCP_CLIENT_SECRET`, or `SLACK_MCP_CLIENT_INFO_FILE`, because Slack does not support
+  Dynamic Client Registration. Do **not** copy opaque OAuth token stores between machines unless a
+  server-specific runbook explicitly authorizes it.
 - **Do not** hand-edit `~/.claude.json` or the managed block in `~/.codex/config.toml`,
   and do not use `claude mcp add` / `codex mcp add` directly — the next `mcp-sync` run
   overwrites manual entries.
@@ -101,7 +104,8 @@ This is the single source of truth for both agents. Canonical file lives at
   read-first observability investigation), `sentry` (official Sentry MCP via `mcp-remote`
   OAuth bridge for read-first app error/performance debugging), `notion` (official hosted Notion MCP via
   `mcp-remote` OAuth bridge), `granola` (official hosted Granola meeting-notes MCP via
-  `mcp-remote` OAuth bridge), `bigquery` (local read-only
+  `mcp-remote` OAuth bridge), `cloudflare` (official Cloudflare API MCP via `mcp-remote` OAuth
+  bridge), `slack` (official Slack MCP via the `slack-official-mcp` wrapper), `bigquery` (local read-only
   BigQuery facade using
   `gcloud`/`bq` auth; use `bigquery_execute_sql_readonly` for SQL), `playwright` (drive a real
   browser for web testing/scraping), `filesystem` (file access scoped to `~/code`),

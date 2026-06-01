@@ -51,6 +51,11 @@
         "SLACK_DM_TARGET": "U04E9M9235G"
       }
     },
+    "slack": {
+      "type": "stdio",
+      "command": "$AGENTS_HOME/bin/slack-official-mcp",
+      "args": []
+    },
     "agent-broker": {
       "type": "stdio",
       "command": "$AGENTS_HOME/bin/agent-broker-mcp",
@@ -114,6 +119,18 @@
         "mcp-remote@latest",
         "https://mcp.granola.ai/mcp",
         "3335",
+        "--host",
+        "127.0.0.1"
+      ]
+    },
+    "cloudflare": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@latest",
+        "https://mcp.cloudflare.com/mcp",
+        "3338",
         "--host",
         "127.0.0.1"
       ]

@@ -5,9 +5,10 @@ Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md
 for all shells plus `zsh/agents.zsh` for interactive extras), dashboards, observability, CI,
 and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
 
-The shared MCP set includes official OAuth-backed Linear, Sentry, Notion, and Granola MCPs
-bridged through `mcp-remote`, the official Datadog US5 remote MCP server, and a local read-only
-BigQuery facade (`bigquery-mcp`) that uses the machine's existing `gcloud`/`bq` auth.
+The shared MCP set includes official OAuth-backed Linear, Sentry, Notion, Granola, Cloudflare,
+and Slack MCPs bridged through `mcp-remote` or a narrow wrapper, the official Datadog US5 remote
+MCP server, and a local read-only BigQuery facade (`bigquery-mcp`) that uses the machine's
+existing `gcloud`/`bq` auth.
 The Datadog endpoint is pinned to
 `https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery`.
 The active BigQuery project is `vizcom-web`; it needs the BigQuery API enabled and MCP Tool User,
@@ -34,6 +35,9 @@ and set `GITHUB_PAT` (GitHub MCP). For OAuth-backed hosted MCPs, run `mcp-auth p
 `mcp-auth login <server>` once per host; every synced stdio client on that host reuses
 `~/.mcp-auth`. For a VM, run `mcp-auth vm-login <server> <vm-host>` from the laptop so your
 local browser can complete the VM-side OAuth callback.
+Slack's official MCP additionally needs host-local `SLACK_MCP_CLIENT_ID` and
+`SLACK_MCP_CLIENT_SECRET`, or `SLACK_MCP_CLIENT_INFO_FILE`, because Slack does not support Dynamic
+Client Registration.
 Run `agents-doctor` to confirm it's healthy.
 
 ## Daily workflow
