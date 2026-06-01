@@ -181,6 +181,7 @@ def plan(args: argparse.Namespace) -> int:
 def remote_args(meta: dict) -> list[str]:
     return [
         "npx",
+        "-y",
         "-p",
         "mcp-remote@latest",
         "mcp-remote-client",
