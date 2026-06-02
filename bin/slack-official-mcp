@@ -31,8 +31,7 @@ if [ -n "${SLACK_MCP_CLIENT_INFO_FILE:-}" ]; then
 	info_file="$SLACK_MCP_CLIENT_INFO_FILE"
 else
 	if [ -z "${SLACK_MCP_CLIENT_ID:-}" ] || [ -z "${SLACK_MCP_CLIENT_SECRET:-}" ]; then
-		echo "slack-official-mcp: set SLACK_MCP_CLIENT_ID and SLACK_MCP_CLIENT_SECRET, or SLACK_MCP_CLIENT_INFO_FILE" >&2
-		exit 2
+		exec "$HOME/.config/agents/bin/empty-mcp" slack "set SLACK_MCP_CLIENT_ID and SLACK_MCP_CLIENT_SECRET, or SLACK_MCP_CLIENT_INFO_FILE"
 	fi
 	info_file_tmp=$(mktemp)
 	jq -n \

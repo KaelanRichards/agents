@@ -1,45 +1,41 @@
 #!/usr/bin/env python3
-"""Minimal Slack-DM MCP for the vizcom-sre VM runner (bot-token transport).
-
-Least-privilege: DMs exactly one user (Kaelan) and reads that one DM thread. No Windmill,
-no channels, no Gmail/Calendar. Mirrors the personal-actions ethos but Slack-only + direct.
-
-Tools:
-  slack_send_dm(text)          -> chat.postMessage to the configured DM target (a real send)
-  slack_read_dm_thread(limit)  -> recent messages in that DM (fold Kaelan's corrections back in)
-
-Env:
-  SLACK_BOT_TOKEN   xoxb-...   (required)
-  SLACK_DM_TARGET   Uxxxx      (default U04E9M9235G)
-
-Slack app bot scopes: chat:write, im:write, im:history.
-(im:history is what lets the bot read its OWN DM thread; search:read would need a user token.)
-Needs: pip install mcp
-"""
+"""Minimal Slack-DM MCP for the vizcom-sre VM runner (bot-token transport)."""
 
 from __future__ import annotations
 
 import json
 import os
+import sys
 import urllib.parse
 import urllib.request
 
-from mcp.server.fastmcp import FastMCP
-
 TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
 TARGET = os.environ.get("SLACK_DM_TARGET", "U04E9M9235G")
-mcp = FastMCP("slack-dm")
+
+
+def _read_message() -> dict | None:
+    line = sys.stdin.buffer.readline()
+    if not line:
+        return None
+
+    if line.startswith(b"Content-Length:"):
+        length = int(line.split(b":", 1)[1].strip())
+        while True:
+            line = sys.stdin.buffer.readline()
+            if line in {b"\n", b"\r\n", b""}:
+                break
+        return json.loads(sys.stdin.buffer.read(length).decode("utf-8"))
+
+    return json.loads(line.decode("utf-8"))
+
+
+def _write_message(message: dict) -> None:
+    body = json.dumps(message, separators=(",", ":")).encode("utf-8")
+    sys.stdout.buffer.write(b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
+    sys.stdout.buffer.flush()
 
 
 def _slack(method: str, payload: dict) -> dict:
-    """POST to Slack with form-encoded body.
-
-    Slack returns `missing_scope: channels:read` on conversations.list when the body is
-    JSON, even when `types=im` is set (server-side scope check ignores the filter on the
-    JSON path). Form-encoded respects the filter and accepts the narrower im:read scope.
-    Slack's own docs recommend form encoding for list endpoints, so we use it for all
-    calls — chat.postMessage accepts either.
-    """
     flat = {
         k: (json.dumps(v) if isinstance(v, (list, dict)) else str(v))
         for k, v in payload.items()
@@ -58,11 +54,6 @@ def _slack(method: str, payload: dict) -> dict:
 
 
 def _dm_channel() -> str:
-    """Find the existing DM channel with TARGET via conversations.list (needs im:read).
-
-    Avoids conversations.open (which needs im:write). The DM channel must already exist —
-    Kaelan must have DM'd the bot once to create it (Slack API does not let bots initiate).
-    """
     cursor = ""
     while True:
         params: dict = {"types": "im", "limit": 200}
@@ -71,9 +62,9 @@ def _dm_channel() -> str:
         res = _slack("conversations.list", params)
         if not res.get("ok"):
             raise RuntimeError(f"conversations.list failed: {res.get('error')}")
-        for c in res.get("channels", []):
-            if c.get("user") == TARGET:
-                return c["id"]
+        for channel in res.get("channels", []):
+            if channel.get("user") == TARGET:
+                return channel["id"]
         cursor = res.get("response_metadata", {}).get("next_cursor", "")
         if not cursor:
             break
@@ -82,48 +73,112 @@ def _dm_channel() -> str:
     )
 
 
-@mcp.tool()
-def slack_send_dm(text: str) -> str:
-    """Send ONE DM to Kaelan (SLACK_DM_TARGET). This is a real, live send."""
+def _send_dm(args: dict) -> dict:
     if not TOKEN:
-        return json.dumps({"ok": False, "error": "SLACK_BOT_TOKEN not set"})
-    res = _slack("chat.postMessage", {"channel": _dm_channel(), "text": text})
-    return json.dumps(
-        {"ok": bool(res.get("ok")), "ts": res.get("ts"), "error": res.get("error")}
-    )
+        return {"ok": False, "error": "SLACK_BOT_TOKEN not set"}
+    res = _slack("chat.postMessage", {"channel": _dm_channel(), "text": args.get("text", "")})
+    return {"ok": bool(res.get("ok")), "ts": res.get("ts"), "error": res.get("error")}
 
 
-@mcp.tool()
-def slack_read_dm_thread(limit: int = 20) -> str:
-    """Read recent messages + reactions in Kaelan's DM, to fold corrections into the brain.
-
-    Each returned message includes `reactions` (list of {name, users, count}) when set.
-    Kaelan ✅-ing or ❌-ing a bot digest line is the lowest-friction correction signal —
-    see runbooks/reaction-corrections.md for the mapping. Read-only.
-    """
+def _read_dm(args: dict) -> dict:
     if not TOKEN:
-        return json.dumps({"ok": False, "error": "SLACK_BOT_TOKEN not set"})
-    res = _slack("conversations.history", {"channel": _dm_channel(), "limit": limit})
-    msgs = [
+        return {"ok": False, "error": "SLACK_BOT_TOKEN not set", "messages": []}
+    res = _slack("conversations.history", {"channel": _dm_channel(), "limit": args.get("limit", 20)})
+    messages = [
         {
-            "user": m.get("user"),
-            "text": m.get("text"),
-            "ts": m.get("ts"),
+            "user": message.get("user"),
+            "text": message.get("text"),
+            "ts": message.get("ts"),
             "reactions": [
                 {
-                    "name": r.get("name"),
-                    "users": r.get("users", []),
-                    "count": r.get("count", 0),
+                    "name": reaction.get("name"),
+                    "users": reaction.get("users", []),
+                    "count": reaction.get("count", 0),
                 }
-                for r in m.get("reactions", [])
+                for reaction in message.get("reactions", [])
             ],
         }
-        for m in res.get("messages", [])
+        for message in res.get("messages", [])
     ]
-    return json.dumps(
-        {"ok": bool(res.get("ok")), "messages": msgs, "error": res.get("error")}
-    )
+    return {"ok": bool(res.get("ok")), "messages": messages, "error": res.get("error")}
+
+
+TOOLS = [
+    {
+        "name": "slack_send_dm",
+        "description": "Send one DM to Kaelan (SLACK_DM_TARGET). This is a real, live send.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "slack_read_dm_thread",
+        "description": "Read recent messages and reactions in Kaelan's DM.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}},
+            "additionalProperties": False,
+        },
+    },
+]
+
+
+def _tool_result(payload: dict) -> dict:
+    return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+
+
+def main() -> None:
+    while True:
+        message = _read_message()
+        if message is None:
+            return
+
+        message_id = message.get("id")
+        method = message.get("method")
+        if message_id is None:
+            continue
+
+        try:
+            if method == "initialize":
+                params = message.get("params") or {}
+                result = {
+                    "protocolVersion": params.get("protocolVersion", "2025-06-18"),
+                    "capabilities": {"tools": {"listChanged": False}},
+                    "serverInfo": {"name": "slack-dm", "version": "0.1.0"},
+                }
+            elif method == "tools/list":
+                result = {"tools": TOOLS}
+            elif method == "tools/call":
+                params = message.get("params") or {}
+                arguments = params.get("arguments") or {}
+                if params.get("name") == "slack_send_dm":
+                    result = _tool_result(_send_dm(arguments))
+                elif params.get("name") == "slack_read_dm_thread":
+                    result = _tool_result(_read_dm(arguments))
+                else:
+                    raise ValueError(f"unknown tool {params.get('name')}")
+            else:
+                _write_message(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message_id,
+                        "error": {"code": -32601, "message": f"unknown method {method}"},
+                    }
+                )
+                continue
+            _write_message({"jsonrpc": "2.0", "id": message_id, "result": result})
+        except Exception as exc:  # noqa: BLE001
+            _write_message(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message_id,
+                    "error": {"code": -32000, "message": str(exc)},
+                }
+            )
 
 
 if __name__ == "__main__":
-    mcp.run()
+    main()

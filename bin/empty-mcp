@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Tiny stdio MCP server used when an optional connector is locally disabled."""
+
+from __future__ import annotations
+
+import json
+import sys
+
+
+def _read_message() -> dict | None:
+    line = sys.stdin.buffer.readline()
+    if not line:
+        return None
+
+    if line.startswith(b"Content-Length:"):
+        length = int(line.split(b":", 1)[1].strip())
+        while True:
+            line = sys.stdin.buffer.readline()
+            if line in {b"\n", b"\r\n", b""}:
+                break
+        body = sys.stdin.buffer.read(length)
+        return json.loads(body.decode("utf-8"))
+
+    return json.loads(line.decode("utf-8"))
+
+
+def _write_message(message: dict) -> None:
+    body = json.dumps(message, separators=(",", ":")).encode("utf-8")
+    sys.stdout.buffer.write(b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
+    sys.stdout.buffer.flush()
+
+
+def main() -> None:
+    name = sys.argv[1] if len(sys.argv) > 1 else "disabled"
+    reason = sys.argv[2] if len(sys.argv) > 2 else "optional MCP connector is not configured on this host"
+
+    while True:
+        message = _read_message()
+        if message is None:
+            return
+
+        message_id = message.get("id")
+        method = message.get("method")
+        if message_id is None:
+            continue
+
+        if method == "initialize":
+            params = message.get("params") or {}
+            _write_message(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message_id,
+                    "result": {
+                        "protocolVersion": params.get("protocolVersion", "2025-06-18"),
+                        "capabilities": {"tools": {}},
+                        "serverInfo": {"name": name, "version": "0.1.0"},
+                        "instructions": reason,
+                    },
+                }
+            )
+        elif method == "tools/list":
+            _write_message({"jsonrpc": "2.0", "id": message_id, "result": {"tools": []}})
+        else:
+            _write_message(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message_id,
+                    "error": {
+                        "code": -32601,
+                        "message": f"{name} is disabled: {reason}",
+                    },
+                }
+            )
+
+
+if __name__ == "__main__":
+    main()
