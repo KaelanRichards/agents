@@ -20,7 +20,7 @@ set -euo pipefail
 # normal (interactive shells export these). The file fallback exists because the Codex runtime
 # does NOT pass the parent env to MCP children, so a Codex-spawned bridge would otherwise have
 # no client creds and fall through to empty-mcp. No secret enters tracked config.
-if [ -z "${SLACK_MCP_CLIENT_ID:-}" ] && [ -z "${SLACK_MCP_CLIENT_INFO_FILE:-}" ]; then
+if [ -z "${SLACK_MCP_CLIENT_INFO_FILE:-}" ]; then
 	for f in "$HOME/.config/agents-secrets/slack-mcp.env" "$HOME/.config/agents-secrets/slack.env"; do
 		# shellcheck source=/dev/null
 		[ -r "$f" ] && {
