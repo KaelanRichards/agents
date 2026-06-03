@@ -9,8 +9,36 @@ import sys
 import urllib.parse
 import urllib.request
 
-TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-TARGET = os.environ.get("SLACK_DM_TARGET", "U04E9M9235G")
+def _secret(key: str, default: str = "") -> str:
+    """Return key from env, else from the chmod-600 agents-secrets files.
+
+    The env path is normal (run-tick.sh exports these, and Claude propagates the
+    parent env to stdio MCP children). The file fallback exists because the Codex
+    fallback runtime does NOT pass the parent env to MCP children, so a
+    Codex-spawned slack-dm would otherwise start tokenless and every DM would
+    fail. No secret is stored in tracked config; env always wins when present.
+    """
+    val = os.environ.get(key, "")
+    if val:
+        return val
+    for name in ("kaelan-pa-slack.env", "kaelan-pa.env", "vizcom-sre.env"):
+        path = os.path.expanduser(f"~/.config/agents-secrets/{name}")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    name_, _, raw = line.partition("=")
+                    if name_.strip() == key:
+                        return raw.strip().strip("'\"")
+        except OSError:
+            continue
+    return default
+
+
+TOKEN = _secret("SLACK_BOT_TOKEN")
+TARGET = _secret("SLACK_DM_TARGET", "U04E9M9235G")
 
 
 def _read_message() -> dict | None:
