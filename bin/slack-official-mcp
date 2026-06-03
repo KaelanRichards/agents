@@ -16,6 +16,21 @@
 # redirect URL, or set SLACK_MCP_CALLBACK_PORT to match the app.
 set -euo pipefail
 
+# Self-source host-local Slack app creds + scopes when not already in env. The env path is
+# normal (interactive shells export these). The file fallback exists because the Codex runtime
+# does NOT pass the parent env to MCP children, so a Codex-spawned bridge would otherwise have
+# no client creds and fall through to empty-mcp. No secret enters tracked config.
+if [ -z "${SLACK_MCP_CLIENT_ID:-}" ] && [ -z "${SLACK_MCP_CLIENT_INFO_FILE:-}" ]; then
+	for f in "$HOME/.config/agents-secrets/slack-mcp.env" "$HOME/.config/agents-secrets/slack.env"; do
+		# shellcheck source=/dev/null
+		[ -r "$f" ] && {
+			set -a
+			. "$f"
+			set +a
+		}
+	done
+fi
+
 url="${SLACK_MCP_URL:-https://mcp.slack.com/mcp}"
 port="${SLACK_MCP_CALLBACK_PORT:-3339}"
 host="${SLACK_MCP_CALLBACK_HOST:-127.0.0.1}"
