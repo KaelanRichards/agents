@@ -3,18 +3,12 @@
     "context7": {
       "type": "stdio",
       "command": "npx",
-      "args": [
-        "-y",
-        "@upstash/context7-mcp@3.0.0"
-      ]
+      "args": ["-y", "@upstash/context7-mcp@3.0.0"]
     },
     "playwright": {
       "type": "stdio",
       "command": "npx",
-      "args": [
-        "-y",
-        "@playwright/mcp@0.0.75"
-      ]
+      "args": ["-y", "@playwright/mcp@0.0.75"]
     },
     "filesystem": {
       "type": "stdio",
@@ -85,11 +79,7 @@
     },
     "datadog": {
       "type": "http",
-      "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery",
-      "headers": {
-        "DD_API_KEY": "${DD_API_KEY}",
-        "DD_APPLICATION_KEY": "${DD_APPLICATION_KEY}"
-      }
+      "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
     },
     "sentry": {
       "type": "stdio",
