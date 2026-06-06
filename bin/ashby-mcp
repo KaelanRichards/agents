@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# ashby-mcp — launch the Ashby MCP server with ASHBY_API_KEY resolved at runtime from a host-local
+# secret file (chmod 600), so the live key is NEVER inlined into ~/.claude.json or
+# ~/.codex/config.toml (which mcp-sync would otherwise write in cleartext, invisible to gitleaks).
+set -euo pipefail
+
+secret_file="${ASHBY_ENV_FILE:-$HOME/.config/agents-secrets/ashby.env}"
+if [ -f "$secret_file" ]; then
+	# Strict parse: read ONLY ASHBY_API_KEY. Never source the file as shell (a tampered file must
+	# not be able to execute arbitrary code here) — mirrors agents-secrets-op-run.
+	while IFS= read -r line || [ -n "$line" ]; do
+		case "$line" in
+		ASHBY_API_KEY=*) ASHBY_API_KEY="${line#ASHBY_API_KEY=}" ;;
+		"export ASHBY_API_KEY="*) ASHBY_API_KEY="${line#export ASHBY_API_KEY=}" ;;
+		esac
+	done <"$secret_file"
+	case "${ASHBY_API_KEY:-}" in
+	\"*\")
+		ASHBY_API_KEY="${ASHBY_API_KEY#\"}"
+		ASHBY_API_KEY="${ASHBY_API_KEY%\"}"
+		;;
+	\'*\')
+		ASHBY_API_KEY="${ASHBY_API_KEY#\'}"
+		ASHBY_API_KEY="${ASHBY_API_KEY%\'}"
+		;;
+	esac
+	export ASHBY_API_KEY
+fi
+
+if [ -z "${ASHBY_API_KEY:-}" ]; then
+	echo "ashby-mcp: ASHBY_API_KEY not set (expected ASHBY_API_KEY=... in $secret_file)" >&2
+	exit 1
+fi
+
+exec uvx --from "git+https://github.com/plenishai/mcp-ashby.git@adaba31" ashby "$@"

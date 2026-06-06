@@ -83,23 +83,70 @@ def _identifier(name: str, value: str) -> str:
     return value
 
 
+def _blank_string_literals(sql: str) -> str:
+    """Return ``sql`` with the CONTENTS of string/backtick literals replaced by spaces, so the
+    statement-splitting and keyword guards in ``_sql`` don't trip on a ';' or a keyword that lives
+    inside a literal (e.g. ``WHERE note = 'drop; now'``). Quote delimiters are preserved so the
+    structure is intact; only inner characters are blanked. Handles ' " ` and triple-quoted forms,
+    optional r/b prefixes, and backslash escapes (no escapes inside raw strings or backticks).
+    Conservative by construction: it only ever blanks characters between matched delimiters, so it
+    can never hide a real (outside-literal) ';' from the multi-statement check."""
+    delimiters = ("'''", '"""', "'", '"', "`")
+    out: list[str] = []
+    i, n = 0, len(sql)
+    while i < n:
+        delim = next((d for d in delimiters if sql.startswith(d, i)), None)
+        if delim is None:
+            out.append(sql[i])
+            i += 1
+            continue
+        # Detect a raw prefix (r/R, possibly combined like rb/br) immediately before the quote.
+        prefix, j = "", i - 1
+        while j >= 0 and sql[j].isalpha() and (i - j) <= 2:
+            prefix = sql[j] + prefix
+            j -= 1
+        raw = "r" in prefix.lower()
+        backtick = delim == "`"
+        out.append(delim)
+        i += len(delim)
+        while i < n:
+            if not raw and not backtick and sql[i] == "\\" and i + 1 < n:
+                out.append(
+                    "  "
+                )  # blank the escaped pair so an escaped quote can't close early
+                i += 2
+                continue
+            if sql.startswith(delim, i):
+                out.append(delim)
+                i += len(delim)
+                break
+            out.append(" ")
+            i += 1
+        # Unterminated literal: loop ends with i>=n; remaining chars already blanked.
+    return "".join(out)
+
+
 def _sql(value: str) -> str:
     sql = _require("sql", value)
     if len(sql) > MAX_SQL_CHARS:
         raise BigQueryMcpError("sql is too long")
     stripped = _strip_sql_comments(sql).strip()
-    if ";" in stripped.rstrip(";"):
+    # Run the read-only guards against a copy with string/backtick literal contents blanked, so a
+    # ';' or keyword *inside a literal* doesn't cause a false rejection. The real query (literals
+    # intact) is what we return and execute. The blanker never hides an outside-literal ';'.
+    scan = _blank_string_literals(stripped)
+    if ";" in scan.rstrip(";"):
         raise BigQueryMcpError("multiple SQL statements are not allowed")
-    stripped = stripped.rstrip(";").strip()
-    if not re.match(r"(?is)^(select|with|explain)\b", stripped):
+    scan = scan.rstrip(";").strip()
+    if not re.match(r"(?is)^(select|with|explain)\b", scan):
         raise BigQueryMcpError(
             "only read-only SELECT, WITH, or EXPLAIN queries are allowed"
         )
-    if MUTATING_SQL.search(stripped):
+    if MUTATING_SQL.search(scan):
         raise BigQueryMcpError(
             "write-capable SQL keywords are not allowed in the read-only BigQuery MCP facade"
         )
-    return stripped
+    return stripped.rstrip(";").strip()
 
 
 def _strip_sql_comments(sql: str) -> str:
