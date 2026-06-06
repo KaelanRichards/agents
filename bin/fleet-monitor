@@ -55,11 +55,14 @@ report=""
 
 emit() { report="${report}$1"$'\n'; }
 
-for row in $AGENTS; do
-	[ -z "$row" ] && continue
-	name="${row%%|*}"; rest="${row#*|}"
-	repo="${rest%%|*}"; rest="${rest#*|}"
-	max_age="${rest%%|*}"; max_unpushed="${rest##*|}"
+# Read rows field-by-field so a space in a repo path can't word-split the row apart (which
+# previously fed a path fragment into the numeric thresholds and reported a stale agent HEALTHY).
+while IFS='|' read -r name repo max_age max_unpushed; do
+	[ -z "$name" ] && continue
+	case "$name" in \#*) continue ;; esac
+	# Floor the thresholds to integers so a malformed row can't break the arithmetic below.
+	case "$max_age" in '' | *[!0-9]*) max_age=0 ;; esac
+	case "$max_unpushed" in '' | *[!0-9]*) max_unpushed=0 ;; esac
 
 	# --- heartbeat / dead-man's-switch (skip agents with no cadence, e.g. event-triggered review) ---
 	hb="$STATE_DIR/$name.jsonl"
@@ -96,14 +99,19 @@ for row in $AGENTS; do
 
 	# --- unpushed-brain alarm (disk-loss risk: brains sat 38+ ticks unpushed this session) ---
 	if [ -d "$repo/.jj" ] || [ -d "$repo/.git" ]; then
-		# Count local commits on main not on origin/main (best-effort; never fail the script on a VCS hiccup).
-		unpushed=$(git -C "$repo" rev-list --count origin/main..main 2>/dev/null || echo 0)
+		# Count local-only commits across ALL local bookmarks/branches + the checked-out commit,
+		# not just `origin/main..main`. In a jj-colocated repo work lives on a bookmark (and the
+		# working copy), so the old main-only check reported 0 / healthy while real work sat
+		# unpushed. Best-effort; never fail the script on a VCS hiccup.
+		unpushed=$(git -C "$repo" rev-list --count --branches HEAD --not --remotes 2>/dev/null || echo 0)
 		if [ "${unpushed:-0}" -gt "$max_unpushed" ]; then
-			emit "UNPUSHED $name: $unpushed commits ahead of origin/main (> $max_unpushed) — disk-loss risk, push the brain"
+			emit "UNPUSHED $name: $unpushed local commit(s) not on any remote (> $max_unpushed) — disk-loss risk, push the brain"
 			problems=$((problems+1))
 		fi
 	fi
-done
+done <<EOF
+$AGENTS
+EOF
 
 if [ "$JSON" -eq 1 ]; then
 	# Minimal machine-readable summary for a downstream alerter.
