@@ -9,8 +9,10 @@
 #     generated/profiles/claude/<profile>.mcp.json / .settings.json
 #
 # Codex (--codex): launches `codex` with the profile's native --sandbox + --ask-for-approval
-#   (Codex's OS-enforced containment). Codex has no --strict-mcp-config, so server subsetting is
-#   not enforced there; containment is via sandbox + approval policy.
+#   (Codex's OS-enforced containment) AND `-c mcp_servers.<id>.enabled=false` for every server the
+#   profile does not grant — so the MCP server subset is a real boundary on Codex too (parity with
+#   Claude's --strict-mcp-config), not just advice. (Codex still lacks the per-tool read/write
+#   broker hook, so within an allowed server, tool-level policy is approval-gated rather than denied.)
 #
 # Usage:
 #   agentp <profile> [-- <extra claude args>]

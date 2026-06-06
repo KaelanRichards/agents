@@ -116,4 +116,17 @@ else
 	fail "broker should log a hook-error breadcrumb on an unknown profile"
 fi
 
+# Codex MCP subsetting (review #6): codex-flags must DISABLE a server the profile doesn't grant and
+# must NOT disable one it does — so the server subset is a real boundary on Codex, not just advice.
+codex_flags="$(python3 "$repo/scripts/agent_control.py" profile codex-flags plan-readonly)"
+case "$codex_flags" in
+*'mcp_servers."notion".enabled=false'*) : ;;
+*) fail "codex-flags should disable non-granted server 'notion' for plan-readonly" ;;
+esac
+case "$codex_flags" in
+*'mcp_servers."github".enabled=false'*) fail "codex-flags must NOT disable granted server 'github' for plan-readonly" ;;
+*) : ;;
+esac
+echo "codex MCP subsetting: non-granted servers disabled, granted servers kept -> ok"
+
 echo "enforcement e2e OK"

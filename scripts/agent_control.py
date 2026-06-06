@@ -385,15 +385,22 @@ def compile_sandbox(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def codex_sandbox_args(profile: dict[str, Any]) -> list[str]:
-    """Native Codex containment for a profile: --sandbox + --ask-for-approval. Codex's sandbox is
-    OS-enforced like Claude's; approval policy tightens with risk. (Codex has no --strict-mcp-config
-    equivalent, so server subsetting is not enforced there — containment is via sandbox+approval.)"""
+    """Native Codex containment for a profile: --sandbox + --ask-for-approval, PLUS per-profile MCP
+    server subsetting. Codex has no --strict-mcp-config, but it accepts `-c mcp_servers.<id>.enabled
+    =false` overrides, so we disable every MCP server the profile does not grant — making the server
+    subset a real boundary on Codex too (parity with Claude's --strict-mcp-config), not just advice."""
     fs_mode = (profile.get("filesystem") or {}).get("mode")
     sandbox = "workspace-write" if fs_mode == "workspace-write" else "read-only"
     approval = (
         "untrusted" if profile.get("risk") in {"high", "critical"} else "on-request"
     )
-    return ["--sandbox", sandbox, "--ask-for-approval", approval]
+    args = ["--sandbox", sandbox, "--ask-for-approval", approval]
+    # Disable every known MCP server not granted by the profile. Quote the server id so hyphenated
+    # names (slack-dm, agent-broker, …) parse as a single TOML key.
+    allow_servers = set(profile["mcp_servers"])
+    for srv in sorted(set(claude_mcp_servers()) - allow_servers):
+        args += ["-c", f'mcp_servers."{srv}".enabled=false']
+    return args
 
 
 def ledger_path() -> Path:
