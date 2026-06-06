@@ -35,6 +35,7 @@ url="${SLACK_MCP_URL:-https://mcp.slack.com/mcp}"
 port="${SLACK_MCP_CALLBACK_PORT:-3339}"
 host="${SLACK_MCP_CALLBACK_HOST:-127.0.0.1}"
 scope="${SLACK_MCP_SCOPES:-search:read.public search:read.private search:read.mpim search:read.im search:read.files files:read emoji:read search:read.users chat:write channels:history groups:history mpim:history im:history channels:write groups:write im:write mpim:write reactions:write canvases:read canvases:write users:read users:read.email channels:read groups:read mpim:read}"
+mcp_remote_pkg="${SLACK_MCP_REMOTE_PACKAGE:-mcp-remote@0.1.38}"
 
 cleanup() {
 	[ -n "${info_file_tmp:-}" ] && rm -f "$info_file_tmp"
@@ -66,7 +67,7 @@ jq -n --arg scope "$scope" '{
 }' >"$metadata_file_tmp"
 chmod 600 "$metadata_file_tmp"
 
-npx -y mcp-remote@latest "$url" "$port" \
+npx -y "$mcp_remote_pkg" "$url" "$port" \
 	--host "$host" \
 	--static-oauth-client-info "@$info_file" \
 	--static-oauth-client-metadata "@$metadata_file_tmp" \

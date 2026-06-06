@@ -57,6 +57,8 @@ MCP_REMOTE_WRAPPERS = {
     "slack": "$AGENTS_HOME/bin/slack-official-mcp",
 }
 
+PINNED_MCP_REMOTE = "mcp-remote@0.1.38"
+
 
 def read(path: pathlib.Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -147,6 +149,8 @@ def main() -> None:
         assert servers[name]["type"] == "stdio"
         assert servers[name]["command"] == command
         assert servers[name]["args"] == []
+        assert servers[name].get("startup_timeout_sec", 0) >= 60
+    assert servers["slack-dm"].get("startup_timeout_sec", 0) >= 60
     assert servers["bigquery"]["type"] == "stdio"
     assert servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
     assert servers["bigquery"]["args"] == []
@@ -155,6 +159,9 @@ def main() -> None:
     assert servers["agent-broker"]["command"].endswith("/bin/agent-broker-mcp")
     assert (ROOT / "bin" / "mcp-auth").exists()
     assert (ROOT / "scripts" / "mcp_auth.py").exists()
+    slack_wrapper = read(ROOT / "bin" / "slack-official-mcp")
+    assert PINNED_MCP_REMOTE in slack_wrapper
+    assert "mcp-remote@latest" not in slack_wrapper
 
     profiles_dir = ROOT / "profiles"
     required_profiles = {
@@ -192,6 +199,8 @@ def main() -> None:
         # yq omits an empty args array in TOML; Codex treats a missing args as [] (standard for
         # arg-less stdio servers), so accept either form.
         assert codex_servers["slack"].get("args", []) == []
+        assert codex_servers["slack"]["startup_timeout_sec"] >= 60
+        assert codex_servers["slack-dm"]["startup_timeout_sec"] >= 60
         assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
         assert codex_servers["bigquery"].get("args", []) == []
         assert codex.get("features", {}).get("experimental_use_rmcp_client") is True

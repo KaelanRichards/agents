@@ -158,6 +158,13 @@ EOF
     else
       vok "no mcp-remote@latest (bridges are version-pinned)"
     fi
+    if [ -f "$AGENTS_HOME/bin/slack-official-mcp" ]; then
+      if grep -qF 'mcp-remote@latest' "$AGENTS_HOME/bin/slack-official-mcp"; then
+        vbad "slack-official-mcp invokes mcp-remote@latest internally — pin the wrapper package"
+      else
+        vok "slack-official-mcp wrapper does not invoke mcp-remote@latest"
+      fi
+    fi
 
     echo "== auth contract =="
     if [ -x "$AGENTS_HOME/bin/mcp-auth" ]; then
@@ -170,7 +177,8 @@ EOF
     echo "== OAuth state (~/.mcp-auth) =="
     oauth_servers=$(jq -r '.servers | to_entries[] | select((.value.token_type // "") | test("OAuth")) | .key' "$manifest" | sort)
     if [ -d "$HOME/.mcp-auth" ] && [ -n "$(ls -A "$HOME/.mcp-auth" 2>/dev/null)" ]; then
-      vok "~/.mcp-auth present ($(ls -1 "$HOME/.mcp-auth" 2>/dev/null | wc -l | tr -d ' ') entries) — OAuth logins cached"
+      oauth_entries=$(find "$HOME/.mcp-auth" -mindepth 1 -maxdepth 1 -print 2>/dev/null | wc -l | tr -d ' ')
+      vok "$HOME/.mcp-auth present ($oauth_entries entries) — OAuth logins cached"
     else
       while IFS= read -r s; do
         [ -z "$s" ] && continue

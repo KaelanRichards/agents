@@ -17,9 +17,9 @@ printf '{"mcpServers":{}}\n' >"$AGENTS_HOME/mcp.json"
 
 name="_roundtrip_$$"
 
-# Check a Codex server key by PARSING the TOML (robust to yq's quoting choices — it leaves simple
-# names bare and only quotes when needed), not by grepping a specific quoted/bare spelling.
-codex_has() { python3 -c 'import tomllib,sys; d=tomllib.load(open(sys.argv[1],"rb")); sys.exit(0 if sys.argv[2] in d.get("mcp_servers",{}) else 1)' "$HOME/.codex/config.toml" "$1"; }
+# Check a Codex server key by parsing the TOML, not by grepping a quoted/bare spelling.
+# Avoid python3 here: under the isolated HOME it resolves through mise without the real trust store.
+codex_has() { yq -p toml -o json "$HOME/.codex/config.toml" | jq -e --arg n "$1" '.mcp_servers[$n]' >/dev/null; }
 
 mcp-sync add "$name" -- echo hello >/dev/null
 jq -e --arg n "$name" '.mcpServers[$n]' "$HOME/.claude.json" >/dev/null
