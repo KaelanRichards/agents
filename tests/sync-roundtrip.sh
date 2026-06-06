@@ -17,10 +17,13 @@ printf '{"mcpServers":{}}\n' >"$AGENTS_HOME/mcp.json"
 
 name="_roundtrip_$$"
 
+# Check a Codex server key by PARSING the TOML (robust to yq's quoting choices — it leaves simple
+# names bare and only quotes when needed), not by grepping a specific quoted/bare spelling.
+codex_has() { python3 -c 'import tomllib,sys; d=tomllib.load(open(sys.argv[1],"rb")); sys.exit(0 if sys.argv[2] in d.get("mcp_servers",{}) else 1)' "$HOME/.codex/config.toml" "$1"; }
+
 mcp-sync add "$name" -- echo hello >/dev/null
 jq -e --arg n "$name" '.mcpServers[$n]' "$HOME/.claude.json" >/dev/null
-# mcp-sync emits @json-quoted TOML keys: [mcp_servers."<name>"]
-grep -qF "[mcp_servers.\"$name\"]" "$HOME/.codex/config.toml"
+codex_has "$name"
 echo "add  -> claude: ok"
 echo "add  -> codex: ok"
 
@@ -29,7 +32,7 @@ if jq -e --arg n "$name" '.mcpServers[$n]' "$HOME/.claude.json" >/dev/null 2>&1;
 	echo "rm   -> claude: STILL PRESENT"
 	exit 1
 fi
-if grep -qF "[mcp_servers.\"$name\"]" "$HOME/.codex/config.toml"; then
+if codex_has "$name"; then
 	echo "rm   -> codex: STILL PRESENT"
 	exit 1
 fi

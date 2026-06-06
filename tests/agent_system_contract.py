@@ -74,14 +74,15 @@ def assert_mcp_remote_bridge(server: dict, name: str) -> None:
     url, port = MCP_REMOTE_BRIDGES[name]
     assert server.get("type", "stdio") == "stdio"
     assert server["command"] == "npx"
-    assert server["args"] == [
-        "-y",
-        "mcp-remote@latest",
-        url,
-        port,
-        "--host",
-        "127.0.0.1",
-    ]
+    args = server["args"]
+    # mcp-remote must be PINNED (never @latest — it re-resolves every launch and breaks ~/.mcp-auth
+    # lockfile coordination, causing slow starts + duplicate OAuth prompts). Version-agnostic so the
+    # pin can bump in mcp.json without editing this test.
+    assert args[0] == "-y"
+    assert args[1].startswith("mcp-remote@") and args[1] != "mcp-remote@latest", (
+        f"{name}: mcp-remote must be pinned, got {args[1]!r}"
+    )
+    assert args[2:] == [url, port, "--host", "127.0.0.1"]
 
 
 def main() -> None:
@@ -100,18 +101,36 @@ def main() -> None:
         assert auth_servers[name]["strategy"] == "mcp-remote-stdio"
         assert auth_servers[name]["token_store"] == "~/.mcp-auth"
         assert auth_servers[name]["callback_host"] == "127.0.0.1"
-        assert auth_servers[name]["clients"]["claude"]["support"] == "supported-via-stdio-bridge"
-        assert auth_servers[name]["clients"]["opencode"]["support"] == "supported-via-stdio-bridge"
-        assert auth_servers[name]["clients"]["codex"]["support"] == "supported-via-stdio-bridge"
+        assert (
+            auth_servers[name]["clients"]["claude"]["support"]
+            == "supported-via-stdio-bridge"
+        )
+        assert (
+            auth_servers[name]["clients"]["opencode"]["support"]
+            == "supported-via-stdio-bridge"
+        )
+        assert (
+            auth_servers[name]["clients"]["codex"]["support"]
+            == "supported-via-stdio-bridge"
+        )
     for name, command in MCP_REMOTE_WRAPPERS.items():
         assert auth_servers[name]["url"] == "https://mcp.slack.com/mcp"
         assert auth_servers[name]["strategy"] == "mcp-remote-wrapper"
         assert auth_servers[name]["command"] == command
         assert auth_servers[name]["token_store"] == "~/.mcp-auth"
         assert auth_servers[name]["callback_host"] == "127.0.0.1"
-        assert auth_servers[name]["clients"]["claude"]["support"] == "supported-via-stdio-bridge"
-        assert auth_servers[name]["clients"]["opencode"]["support"] == "supported-via-stdio-bridge"
-        assert auth_servers[name]["clients"]["codex"]["support"] == "supported-via-stdio-bridge"
+        assert (
+            auth_servers[name]["clients"]["claude"]["support"]
+            == "supported-via-stdio-bridge"
+        )
+        assert (
+            auth_servers[name]["clients"]["opencode"]["support"]
+            == "supported-via-stdio-bridge"
+        )
+        assert (
+            auth_servers[name]["clients"]["codex"]["support"]
+            == "supported-via-stdio-bridge"
+        )
 
     assert servers["datadog"]["type"] == "http"
     assert (
@@ -170,9 +189,11 @@ def main() -> None:
         for name in MCP_REMOTE_BRIDGES:
             assert_mcp_remote_bridge(codex_servers[name], name)
         assert codex_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
-        assert codex_servers["slack"]["args"] == []
+        # yq omits an empty args array in TOML; Codex treats a missing args as [] (standard for
+        # arg-less stdio servers), so accept either form.
+        assert codex_servers["slack"].get("args", []) == []
         assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
-        assert codex_servers["bigquery"]["args"] == []
+        assert codex_servers["bigquery"].get("args", []) == []
         assert codex.get("features", {}).get("experimental_use_rmcp_client") is True
 
     claude_json = HOME / ".claude.json"

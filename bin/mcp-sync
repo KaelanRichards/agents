@@ -142,12 +142,15 @@ else
 fi
 t=$(mktemp)
 jq --slurpfile c "$EFFECTIVE" '.mcpServers = (($c[0].mcpServers // {}) | map_values(
-    if .bearer_token_env_var then
+    (if .bearer_token_env_var then
       (if (.headers.Authorization // null) != null
        then error("mcp-sync: server defines both a literal Authorization header and bearer_token_env_var — pick one")
        else (.headers = ((.headers // {}) + {Authorization: ("Bearer ${" + .bearer_token_env_var + "}")})) | del(.bearer_token_env_var)
        end)
-    else . end))' "$CLAUDE_JSON" > "$t"
+    else . end)
+    # startup_timeout_sec / tool_timeout_sec are Codex-only reliability knobs — strip them from the
+    # Claude config (Claude has its own MCP timeout handling and would not understand these keys).
+    | del(.startup_timeout_sec, .tool_timeout_sec)))' "$CLAUDE_JSON" > "$t"
 if jq -e . "$t" >/dev/null 2>&1; then
   mv "$t" "$CLAUDE_JSON"
 else
@@ -157,27 +160,28 @@ else
 fi
 
 # 2) Codex CLI (TOML) — replace only the managed block, leave the rest untouched.
+#    Serialize via jq (shape) -> yq (json->toml) so TOML quoting, nested tables, arrays and dotted
+#    keys are handled by a real serializer instead of hand-rolled lines. yq is REQUIRED here.
+if ! command -v yq >/dev/null 2>&1; then
+  echo "ERROR: yq is required to generate the Codex TOML (it's in the toolbelt) — install yq and retry" >&2
+  exit 1
+fi
 [ -f "$CODEX_TOML" ] || touch "$CODEX_TOML"
 cp "$CODEX_TOML" "$CODEX_TOML.mcp-sync.bak"
+# Shape each server for Codex: drop "type", rename headers->http_headers, keep command/args/url/
+# bearer_token_env_var/env and the Codex-only reliability knobs (startup_timeout_sec/tool_timeout_sec);
+# drop null fields so absent keys are omitted. yq turns this JSON into faithfully-quoted TOML.
+codex_block=$(jq '{
+    mcp_servers: ((.mcpServers // {}) | with_entries(.value |= (
+      { command, args, url, bearer_token_env_var, startup_timeout_sec, tool_timeout_sec, env, http_headers: .headers }
+      | with_entries(select(.value != null))
+    )))
+  }' "$EFFECTIVE" | yq -p json -o toml)
 t=$(mktemp)
 awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1;next} $0==e{skip=0;next} skip!=1{print}' "$CODEX_TOML" > "$t" && mv "$t" "$CODEX_TOML"
 {
   echo "$BEGIN"
-  # All TOML keys (server name, env keys, header keys) are emitted via @json so a name/key with a
-  # dot, quote, or space produces a correctly-quoted key (e.g. [mcp_servers."a.b"]) instead of
-  # silently nesting into a sub-table or invalidating the block. Sub-table values are coerced to
-  # strings (MCP env/headers are strings; a bare TOML number/bool would diverge from the Claude side).
-  jq -r '
-    .mcpServers // {} | to_entries[] |
-    "[mcp_servers.\(.key|@json)]",
-    (if .value.command then "command = \(.value.command|@json)" else empty end),
-    (if .value.args    then "args = \(.value.args|@json)" else empty end),
-    (if .value.url     then "url = \(.value.url|@json)" else empty end),
-    (if .value.bearer_token_env_var then "bearer_token_env_var = \(.value.bearer_token_env_var|@json)" else empty end),
-    (if (.value.env|type=="object")     then "[mcp_servers.\(.key|@json).env]",          (.value.env|to_entries[]|"\(.key|@json) = \(.value|tostring|@json)") else empty end),
-    (if (.value.headers|type=="object") then "[mcp_servers.\(.key|@json).http_headers]",  (.value.headers|to_entries[]|"\(.key|@json) = \(.value|tostring|@json)") else empty end),
-    ""
-  ' "$EFFECTIVE"
+  printf '%s\n' "$codex_block"
   echo "$END"
 } >> "$CODEX_TOML"
 

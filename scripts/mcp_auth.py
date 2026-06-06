@@ -19,10 +19,14 @@ import sys
 from collections.abc import Sequence
 
 
-ROOT = pathlib.Path(os.environ.get("AGENTS_HOME", pathlib.Path.home() / ".config" / "agents"))
+ROOT = pathlib.Path(
+    os.environ.get("AGENTS_HOME", pathlib.Path.home() / ".config" / "agents")
+)
 AUTH = ROOT / "mcp.auth.json"
 MCP = ROOT / "mcp.json"
-AUTH_STORE = pathlib.Path(os.environ.get("MCP_REMOTE_CONFIG_DIR", "~/.mcp-auth")).expanduser()
+AUTH_STORE = pathlib.Path(
+    os.environ.get("MCP_REMOTE_CONFIG_DIR", "~/.mcp-auth")
+).expanduser()
 
 
 def load_json(path: pathlib.Path) -> dict:
@@ -83,23 +87,42 @@ def check_contract() -> int:
         if entry.get("type") != "stdio":
             errors.append(f"{name}: expected stdio bridge, got {entry.get('type')!r}")
         if strategy == "mcp-remote-stdio":
-            expected_args = [
-                "-y",
-                "mcp-remote@latest",
+            args = entry.get("args") or []
+            # The mcp-remote version is PINNED in mcp.json. Assert it's a pinned mcp-remote@<version>
+            # (never @latest — @latest re-resolves every launch and breaks ~/.mcp-auth lockfile
+            # coordination, causing slow starts + duplicate OAuth prompts) and that the URL / callback
+            # port / host match the auth contract. The exact version lives only in mcp.json — not
+            # copied here — so it can't drift.
+            expected_tail = [
                 meta.get("url"),
                 str(meta.get("callback_port")),
                 "--host",
                 meta.get("callback_host"),
             ]
             if entry.get("command") != "npx":
-                errors.append(f"{name}: expected npx command, got {entry.get('command')!r}")
-            if entry.get("args") != expected_args:
-                errors.append(f"{name}: bridge args mismatch auth={expected_args!r} mcp={entry.get('args')!r}")
+                errors.append(
+                    f"{name}: expected npx command, got {entry.get('command')!r}"
+                )
+            elif not (
+                len(args) == 6
+                and args[0] == "-y"
+                and isinstance(args[1], str)
+                and args[1].startswith("mcp-remote@")
+                and args[1] != "mcp-remote@latest"
+                and args[2:] == expected_tail
+            ):
+                errors.append(
+                    f"{name}: bridge args mismatch — expected ['-y','mcp-remote@<pinned>',*{expected_tail!r}], got {args!r}"
+                )
         elif strategy == "mcp-remote-wrapper":
             if entry.get("command") != meta.get("command"):
-                errors.append(f"{name}: wrapper command mismatch auth={meta.get('command')!r} mcp={entry.get('command')!r}")
+                errors.append(
+                    f"{name}: wrapper command mismatch auth={meta.get('command')!r} mcp={entry.get('command')!r}"
+                )
             if entry.get("args", []) != meta.get("args", []):
-                errors.append(f"{name}: wrapper args mismatch auth={meta.get('args', [])!r} mcp={entry.get('args', [])!r}")
+                errors.append(
+                    f"{name}: wrapper args mismatch auth={meta.get('args', [])!r} mcp={entry.get('args', [])!r}"
+                )
         else:
             errors.append(f"{name}: unsupported strategy {meta.get('strategy')!r}")
         if meta.get("token_store") != "~/.mcp-auth":
@@ -121,7 +144,9 @@ def list_servers() -> int:
         client_bits = []
         for client, cfg in sorted(meta.get("clients", {}).items()):
             client_bits.append(f"{client}:{cfg.get('support', 'unknown')}")
-        print(f"{name}\t{meta.get('strategy')}\t{meta.get('url')}\t{', '.join(client_bits)}")
+        print(
+            f"{name}\t{meta.get('strategy')}\t{meta.get('url')}\t{', '.join(client_bits)}"
+        )
     return 0
 
 
@@ -133,8 +158,12 @@ def status_one(name: str) -> None:
     if meta.get("strategy") == "mcp-remote-wrapper":
         print(f"bridge: {meta.get('command')}")
     else:
-        print(f"bridge: npx -y mcp-remote@latest {meta.get('url')} {meta.get('callback_port')} --host {meta.get('callback_host')}")
-    print(f"token_store: {AUTH_STORE} ({'present' if AUTH_STORE.exists() else 'missing'})")
+        print(
+            f"bridge: npx -y {remote_pin(name)} {meta.get('url')} {meta.get('callback_port')} --host {meta.get('callback_host')}"
+        )
+    print(
+        f"token_store: {AUTH_STORE} ({'present' if AUTH_STORE.exists() else 'missing'})"
+    )
     print(f"boundary: {meta.get('account_boundary')}")
     if meta.get("host_requirements"):
         print(f"host_requirements: {meta.get('host_requirements')}")
@@ -168,7 +197,9 @@ def plan(args: argparse.Namespace) -> int:
     names = args.servers or sorted(auth_servers())
     print("MCP OAuth setup plan")
     print()
-    print("Principle: sync config everywhere, authenticate once per host with mcp-remote, do not copy token stores.")
+    print(
+        "Principle: sync config everywhere, authenticate once per host with mcp-remote, do not copy token stores."
+    )
     print()
     print("On every target host:")
     print("  cd ~/.config/agents")
@@ -185,17 +216,31 @@ def plan(args: argparse.Namespace) -> int:
         print(f"  url: {meta.get('url')}")
         print(f"  local login: mcp-auth login {name}")
         print(f"  VM login:    mcp-auth vm-login {name} <vm-host>")
-        print(f"  tunnel:      ssh -L {port}:127.0.0.1:{port} <vm-host> mcp-auth login {name}")
-        print("  clients:     Claude, Codex, and OpenCode all reuse the same stdio bridge on that host")
+        print(
+            f"  tunnel:      ssh -L {port}:127.0.0.1:{port} <vm-host> mcp-auth login {name}"
+        )
+        print(
+            "  clients:     Claude, Codex, and OpenCode all reuse the same stdio bridge on that host"
+        )
         print()
     return 0
 
 
 def expand_host_path(value: str) -> str:
-    return (
-        value.replace("$AGENTS_HOME", str(ROOT))
-        .replace("$HOME", str(pathlib.Path.home()))
+    return value.replace("$AGENTS_HOME", str(ROOT)).replace(
+        "$HOME", str(pathlib.Path.home())
     )
+
+
+def remote_pin(name: str) -> str:
+    """The pinned mcp-remote@<version> token for a server, read from mcp.json (the single source of
+    the version). Login must use the SAME version as the runtime bridge so the ~/.mcp-auth token it
+    writes is read back by the identical client version (a mismatch triggers re-auth)."""
+    entry = canonical_servers().get(name, {})
+    for a in entry.get("args", []):
+        if isinstance(a, str) and a.startswith("mcp-remote@"):
+            return a
+    return "mcp-remote@latest"
 
 
 def remote_args(name: str, meta: dict) -> list[str]:
@@ -207,7 +252,7 @@ def remote_args(name: str, meta: dict) -> list[str]:
         "npx",
         "-y",
         "-p",
-        "mcp-remote@latest",
+        remote_pin(name),
         "mcp-remote-client",
         str(meta["url"]),
         str(meta["callback_port"]),
@@ -220,7 +265,9 @@ def login(args: argparse.Namespace) -> int:
     meta = require_server(args.server)
     cmd = remote_args(args.server, meta)
     print(f"Starting OAuth login for {args.server}.")
-    print("Open the browser URL that mcp-remote prints. Stop this command after it lists tools.")
+    print(
+        "Open the browser URL that mcp-remote prints. Stop this command after it lists tools."
+    )
     print(f"token_store: {AUTH_STORE}")
     print(f"command: {' '.join(cmd)}")
     return subprocess.run(cmd, check=False).returncode
@@ -232,7 +279,9 @@ def vm_login(args: argparse.Namespace) -> int:
     remote = "zsh -lc " + shlex.quote(f"mcp-auth login {shlex.quote(args.server)}")
     cmd = ["ssh", "-L", f"{port}:127.0.0.1:{port}", args.host, remote]
     print(f"Forwarding local 127.0.0.1:{port} to {args.host}:127.0.0.1:{port}.")
-    print("Open the browser URL printed by the remote login; the callback will come back through SSH.")
+    print(
+        "Open the browser URL printed by the remote login; the callback will come back through SSH."
+    )
     print(f"command: {' '.join(cmd)}")
     if args.print_only:
         return 0
@@ -246,19 +295,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub.add_parser("check", help="validate mcp.auth.json against mcp.json")
     sub.add_parser("list", help="list auth-managed MCP servers")
 
-    p_status = sub.add_parser("status", help="show local client auth status and setup commands")
+    p_status = sub.add_parser(
+        "status", help="show local client auth status and setup commands"
+    )
     p_status.add_argument("servers", nargs="*")
 
     p_plan = sub.add_parser("plan", help="print clean VM setup plan")
     p_plan.add_argument("servers", nargs="*")
 
-    p_login = sub.add_parser("login", help="run mcp-remote OAuth login/test for one server")
+    p_login = sub.add_parser(
+        "login", help="run mcp-remote OAuth login/test for one server"
+    )
     p_login.add_argument("server")
 
-    p_vm = sub.add_parser("vm-login", help="authenticate a VM-hosted bridge through an SSH callback tunnel")
+    p_vm = sub.add_parser(
+        "vm-login",
+        help="authenticate a VM-hosted bridge through an SSH callback tunnel",
+    )
     p_vm.add_argument("server")
     p_vm.add_argument("host")
-    p_vm.add_argument("--print-only", action="store_true", help="print the ssh command without running it")
+    p_vm.add_argument(
+        "--print-only",
+        action="store_true",
+        help="print the ssh command without running it",
+    )
 
     args = parser.parse_args(argv)
     if args.cmd == "check":
