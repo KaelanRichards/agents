@@ -54,7 +54,7 @@ flake_only_filtered=""
 for f in $only_in_flake; do
 	case "$f" in
 	# These are intentionally only in the Nix shell or installed elsewhere.
-	hcloud | actionlint | git) continue ;;
+	hcloud | git) continue ;; # actionlint now in Brewfile too (just test needs it on brew hosts)
 	esac
 	flake_only_filtered="$flake_only_filtered $f"
 done
