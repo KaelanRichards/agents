@@ -82,8 +82,9 @@ if [ -f "$wm_env" ]; then
 		# shellcheck disable=SC1090
 		. "$wm_env"
 		set +a
+		login_body="$(jq -nc --arg email "$WINDMILL_ADMIN_EMAIL" --arg password "$WINDMILL_ADMIN_PASSWORD" '{email: $email, password: $password}')"
 		token="$(curl -fsS "$WINDMILL_BASE_URL/api/auth/login" -H "Content-Type: application/json" \
-			--data "{\"email\":\"$WINDMILL_ADMIN_EMAIL\",\"password\":\"$WINDMILL_ADMIN_PASSWORD\"}" 2>/dev/null || true)"
+			--data "$login_body" 2>/dev/null || true)"
 		if [ -n "$token" ]; then
 			curl -fsS "$WINDMILL_BASE_URL/api/w/$WINDMILL_WORKSPACE/resources/list" \
 				-H "Authorization: Bearer $token" 2>/dev/null |
