@@ -57,6 +57,10 @@ if command -v jq >/dev/null 2>&1; then
 		jq -e --arg s "$s" '.mcpServers[$s]' "$AH/mcp.json" >/dev/null 2>&1 && ok "MCP required server present: $s" || bad "missing required MCP server: $s"
 	done
 	jq -e '.mcpServers.datadog.url == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Datadog MCP US5 URL pinned" || bad "Datadog MCP URL mismatch"
+		# The two direct-HTTP servers must carry an auth path, else they silently 401 with no
+		# credential reaching the request (doctor used to pin only the URL and stay green).
+		jq -e '.mcpServers.datadog.headers.DD_API_KEY == "${DD_API_KEY}" and .mcpServers.datadog.headers.DD_APPLICATION_KEY == "${DD_APPLICATION_KEY}"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Datadog MCP header auth (DD_API_KEY/DD_APPLICATION_KEY) wired" || bad "Datadog MCP has no header auth (DD_API_KEY/DD_APPLICATION_KEY) — calls will be unauthenticated"
+		jq -e '.mcpServers.github.url == "https://api.githubcopilot.com/mcp/" and .mcpServers.github.bearer_token_env_var == "GITHUB_PAT"' "$AH/mcp.json" >/dev/null 2>&1 && ok "GitHub MCP endpoint + bearer (GITHUB_PAT) pinned" || bad "GitHub MCP endpoint/bearer mismatch"
 	jq -e '.mcpServers.linear.type == "stdio" and .mcpServers.linear.command == "npx" and .mcpServers.linear.args == ["-y","mcp-remote@latest","https://mcp.linear.app/mcp","3336","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP mcp-remote bridge pinned" || bad "Linear MCP bridge mismatch"
 	jq -e '.mcpServers.sentry.type == "stdio" and .mcpServers.sentry.command == "npx" and .mcpServers.sentry.args == ["-y","mcp-remote@latest","https://mcp.sentry.dev/mcp","3337","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Sentry MCP mcp-remote bridge pinned" || bad "Sentry MCP bridge mismatch"
 	jq -e '.mcpServers.notion.type == "stdio" and .mcpServers.notion.command == "npx" and .mcpServers.notion.args == ["-y","mcp-remote@latest","https://mcp.notion.com/mcp","3334","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Notion MCP mcp-remote bridge pinned" || bad "Notion MCP bridge mismatch"
@@ -81,10 +85,18 @@ else
 	bad "mcp-auth helper missing"
 fi
 [ -f "$HOME/.claude/settings.json" ] && { jq -e . "$HOME/.claude/settings.json" >/dev/null 2>&1 && ok "claude settings.json" || bad "claude settings.json invalid"; }
-if command -v yq >/dev/null 2>&1 && [ -f "$HOME/.codex/config.toml" ]; then
-	yq -p toml "$HOME/.codex/config.toml" >/dev/null 2>&1 && ok "codex config.toml" || bad "codex config.toml invalid TOML"
-	if grep -qF '[mcp_servers.linear]' "$HOME/.codex/config.toml"; then
-		grep -qF 'experimental_use_rmcp_client = true' "$HOME/.codex/config.toml" && ok "codex remote MCP feature enabled" || bad "codex Linear MCP requires experimental_use_rmcp_client = true"
+if [ -f "$HOME/.codex/config.toml" ]; then
+	if command -v yq >/dev/null 2>&1; then
+		yq -p toml "$HOME/.codex/config.toml" >/dev/null 2>&1 && ok "codex config.toml" || bad "codex config.toml invalid TOML"
+	elif command -v python3 >/dev/null 2>&1; then
+		python3 -c 'import sys,tomllib; tomllib.load(open(sys.argv[1],"rb"))' "$HOME/.codex/config.toml" >/dev/null 2>&1 && ok "codex config.toml (tomllib)" || bad "codex config.toml invalid TOML"
+	else
+		warn "no TOML validator (yq/python3) — cannot verify codex config.toml"
+	fi
+	# experimental_use_rmcp_client is required by the direct-HTTP servers (github/datadog), NOT the
+	# stdio mcp-remote bridges — gate the check on the http servers that actually need it.
+	if grep -qE '^\[mcp_servers\."(github|datadog)"\]' "$HOME/.codex/config.toml"; then
+		grep -qF 'experimental_use_rmcp_client = true' "$HOME/.codex/config.toml" && ok "codex remote MCP feature enabled (http servers)" || bad "codex http MCP servers (github/datadog) require experimental_use_rmcp_client = true"
 	fi
 fi
 command -v jj >/dev/null 2>&1 && { jj config list --user >/dev/null 2>&1 && ok "jj config" || bad "jj config invalid"; }

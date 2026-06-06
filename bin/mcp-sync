@@ -59,7 +59,7 @@ build_effective() {
         (if has("command") then .command |= expand else . end)
       | (if has("url")     then .url     |= expand else . end)
       | (if has("args")    then .args    |= (if type=="array" then map(expand) else . end) else . end)
-      | (if has("env")     then .env     |= (if type=="object" then with_entries(.value |= expand) else . end) else . end)
+      | (if has("env")     then .env     |= (if type=="object" then with_entries(.value |= (expand | if type=="string" then . else tostring end)) else . end) else . end)
     ))
   ' "$merged" > "$out"
   rm -f "$merged"
@@ -68,12 +68,22 @@ build_effective() {
 cmd="${1:-sync}"
 if [ $# -gt 0 ]; then shift; fi
 
+# Server names become TOML table keys and Claude object keys. Keep them to a safe charset so a
+# name can never need exotic quoting (and so a typo can't silently mis-register on one client).
+valid_name() {
+  case "$1" in
+    '' ) echo "mcp-sync: server name must not be empty" >&2; return 1 ;;
+    *[!A-Za-z0-9_-]* ) echo "mcp-sync: invalid server name '$1' (allowed: letters, digits, '_', '-')" >&2; return 1 ;;
+  esac
+}
+
 case "$cmd" in
   list)
     jq -r '.mcpServers // {} | to_entries[] | "  \(.key): \(.value.type // "stdio")  \(.value.command // .value.url // "")"' "$CANON"
     exit 0 ;;
   add)
     name="$1"; shift
+    valid_name "$name" || exit 2
     if [ "${1:-}" = "--" ]; then shift; fi
     cmdbin="$1"; shift
     args=$(printf '%s\n' "$@" | jq -R . | jq -s .)
@@ -82,6 +92,7 @@ case "$cmd" in
     echo "added stdio server '$name'" ;;
   add-http)
     name="$1"; url="$2"; bearer="${3:-}"
+    valid_name "$name" || exit 2
     if [ -n "$bearer" ]; then
       t=$(mktemp); jq --arg n "$name" --arg u "$url" --arg b "$bearer" \
         '.mcpServers[$n] = {type:"http", url:$u, bearer_token_env_var:$b}' "$CANON" > "$t" && mv "$t" "$CANON"
@@ -132,8 +143,10 @@ fi
 t=$(mktemp)
 jq --slurpfile c "$EFFECTIVE" '.mcpServers = (($c[0].mcpServers // {}) | map_values(
     if .bearer_token_env_var then
-      (.headers = ((.headers // {}) + {Authorization: ("Bearer ${" + .bearer_token_env_var + "}")}))
-      | del(.bearer_token_env_var)
+      (if (.headers.Authorization // null) != null
+       then error("mcp-sync: server defines both a literal Authorization header and bearer_token_env_var — pick one")
+       else (.headers = ((.headers // {}) + {Authorization: ("Bearer ${" + .bearer_token_env_var + "}")})) | del(.bearer_token_env_var)
+       end)
     else . end))' "$CLAUDE_JSON" > "$t"
 if jq -e . "$t" >/dev/null 2>&1; then
   mv "$t" "$CLAUDE_JSON"
@@ -150,15 +163,19 @@ t=$(mktemp)
 awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1;next} $0==e{skip=0;next} skip!=1{print}' "$CODEX_TOML" > "$t" && mv "$t" "$CODEX_TOML"
 {
   echo "$BEGIN"
+  # All TOML keys (server name, env keys, header keys) are emitted via @json so a name/key with a
+  # dot, quote, or space produces a correctly-quoted key (e.g. [mcp_servers."a.b"]) instead of
+  # silently nesting into a sub-table or invalidating the block. Sub-table values are coerced to
+  # strings (MCP env/headers are strings; a bare TOML number/bool would diverge from the Claude side).
   jq -r '
     .mcpServers // {} | to_entries[] |
-    "[mcp_servers.\(.key)]",
+    "[mcp_servers.\(.key|@json)]",
     (if .value.command then "command = \(.value.command|@json)" else empty end),
     (if .value.args    then "args = \(.value.args|@json)" else empty end),
     (if .value.url     then "url = \(.value.url|@json)" else empty end),
     (if .value.bearer_token_env_var then "bearer_token_env_var = \(.value.bearer_token_env_var|@json)" else empty end),
-    (if (.value.env|type=="object")     then "[mcp_servers.\(.key).env]",          (.value.env|to_entries[]|"\(.key) = \(.value|@json)") else empty end),
-    (if (.value.headers|type=="object") then "[mcp_servers.\(.key).http_headers]",  (.value.headers|to_entries[]|"\(.key) = \(.value|@json)") else empty end),
+    (if (.value.env|type=="object")     then "[mcp_servers.\(.key|@json).env]",          (.value.env|to_entries[]|"\(.key|@json) = \(.value|tostring|@json)") else empty end),
+    (if (.value.headers|type=="object") then "[mcp_servers.\(.key|@json).http_headers]",  (.value.headers|to_entries[]|"\(.key|@json) = \(.value|tostring|@json)") else empty end),
     ""
   ' "$EFFECTIVE"
   echo "$END"
@@ -182,7 +199,7 @@ awk '
     in_features=0
   }
   in_features && /^experimental_use_rmcp_client[[:space:]]*=/ {
-    print "experimental_use_rmcp_client = true"
+    print  # keep the existing value — a deliberate `= false` (to dodge a Codex rmcp bug) must survive
     seen_key=1
     next
   }
@@ -197,9 +214,25 @@ awk '
   }
 ' "$CODEX_TOML" > "$features_tmp" && mv "$features_tmp" "$CODEX_TOML"
 
-# Validate Codex TOML; roll back if broken so a parse error doesn't disable Codex.
-if command -v yq >/dev/null 2>&1 && ! yq -p toml "$CODEX_TOML" >/dev/null 2>&1; then
-  echo "ERROR: generated Codex TOML is invalid — restoring backup" >&2
+# Validate the generated Codex TOML and roll back if broken, so a parse error can't silently
+# disable ALL Codex MCP servers. Prefer yq; fall back to Python's stdlib tomllib (3.11+). If
+# NEITHER validator is available, fail CLOSED (restore backup) rather than ship unvalidated TOML.
+codex_toml_valid() { # 0=valid, 1=invalid, 2=no validator available
+  if command -v yq >/dev/null 2>&1; then
+    yq -p toml "$1" >/dev/null 2>&1
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import sys,tomllib; tomllib.load(open(sys.argv[1],"rb"))' "$1" >/dev/null 2>&1
+  else
+    return 2
+  fi
+}
+if ! codex_toml_valid "$CODEX_TOML"; then
+  rc=$?
+  if [ "$rc" -eq 2 ]; then
+    echo "ERROR: no TOML validator (yq or python3+tomllib) available — refusing to ship unvalidated Codex config; restoring backup" >&2
+  else
+    echo "ERROR: generated Codex TOML is invalid — restoring backup" >&2
+  fi
   mv "$CODEX_TOML.mcp-sync.bak" "$CODEX_TOML"
   exit 1
 fi

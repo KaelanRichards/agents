@@ -13,13 +13,14 @@ export HOME="$tmp/home"
 export AGENTS_HOME="$tmp/agents"
 export PATH="$repo/bin:$PATH"
 mkdir -p "$HOME/.codex" "$HOME/.claude" "$AGENTS_HOME"
-printf '{"mcpServers":{}}\n' > "$AGENTS_HOME/mcp.json"
+printf '{"mcpServers":{}}\n' >"$AGENTS_HOME/mcp.json"
 
 name="_roundtrip_$$"
 
 mcp-sync add "$name" -- echo hello >/dev/null
 jq -e --arg n "$name" '.mcpServers[$n]' "$HOME/.claude.json" >/dev/null
-grep -qF "[mcp_servers.$name]" "$HOME/.codex/config.toml"
+# mcp-sync emits @json-quoted TOML keys: [mcp_servers."<name>"]
+grep -qF "[mcp_servers.\"$name\"]" "$HOME/.codex/config.toml"
 echo "add  -> claude: ok"
 echo "add  -> codex: ok"
 
@@ -28,7 +29,7 @@ if jq -e --arg n "$name" '.mcpServers[$n]' "$HOME/.claude.json" >/dev/null 2>&1;
 	echo "rm   -> claude: STILL PRESENT"
 	exit 1
 fi
-if grep -qF "[mcp_servers.$name]" "$HOME/.codex/config.toml"; then
+if grep -qF "[mcp_servers.\"$name\"]" "$HOME/.codex/config.toml"; then
 	echo "rm   -> codex: STILL PRESENT"
 	exit 1
 fi
