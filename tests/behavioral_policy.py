@@ -148,15 +148,24 @@ def main() -> None:
         "hook ignores malformed mcp name", hook("plan-readonly", "mcp__weird") is None
     )
 
-    # 7) Native Codex containment flags compile correctly per profile.
+    # 7) Native Codex containment flags compile correctly per profile: sandbox/approval prefix PLUS
+    #    `-c mcp_servers.<id>.enabled=false` overrides that make the server subset a real boundary.
+    flags = c.codex_sandbox_args(c.load_profile("plan-readonly"))
     check(
-        "codex read-only for plan-readonly",
-        c.codex_sandbox_args(c.load_profile("plan-readonly"))
-        == ["--sandbox", "read-only", "--ask-for-approval", "on-request"],
+        "codex read-only sandbox/approval for plan-readonly",
+        flags[:4] == ["--sandbox", "read-only", "--ask-for-approval", "on-request"],
+    )
+    check(
+        "codex subsetting disables a non-granted server (notion) for plan-readonly",
+        'mcp_servers."notion".enabled=false' in flags,
+    )
+    check(
+        "codex subsetting keeps a granted server (github) for plan-readonly",
+        'mcp_servers."github".enabled=false' not in flags,
     )
     check(
         "codex workspace-write+untrusted for critical prod-mutator",
-        c.codex_sandbox_args(c.load_profile("prod-mutator-confirmed"))
+        c.codex_sandbox_args(c.load_profile("prod-mutator-confirmed"))[:4]
         == ["--sandbox", "workspace-write", "--ask-for-approval", "untrusted"],
     )
 
