@@ -2,6 +2,11 @@
 # Shared PreToolUse(Bash) guard for Claude Code + Codex.
 # Reads the hook JSON on stdin and denies clearly destructive or security-sensitive
 # shell commands, forcing the human to run them manually (human-in-the-loop).
+#
+# NOTE: this is a best-effort, high-signal DENYLIST, not a sandbox. An agent with shell
+# access can always obfuscate past a regex; the real least-privilege boundary is the OS
+# Bash sandbox (`agentp`) + the compiled per-profile deny list. The rules here close the
+# common/obvious destructive idioms so a stray or injected command is stopped by default.
 set -uo pipefail
 # Portable PATH: Homebrew prefix differs (macOS vs linuxbrew). Detect at runtime.
 for _brew in /opt/homebrew/bin /home/linuxbrew/.linuxbrew/bin /usr/local/bin; do
@@ -29,8 +34,19 @@ deny() {
 }
 
 # --- destructive filesystem ---
-printf '%s' "$c" | grep -Eq '\brm\b +-[A-Za-z]*r[A-Za-z]* +(/|~|\$HOME)( |/?$)' &&
-	deny "Blocked: recursive rm of /, ~ or \$HOME. Run it yourself if you truly intend to."
+# Recursive rm of a root/home target OR any subpath beneath it. Anchor with (/| |$) so that
+# `rm -rf ~/code`, `rm -rf $HOME/.config/agents`, `rm -rf ${HOME}/x` are all caught — not only the
+# bare root. Tolerate a leading `--` end-of-options separator before the path.
+printf '%s' "$c" | grep -Eq '\brm\b +-[A-Za-z]*r[A-Za-z]* +(-- +)?(/|~|\$\{?HOME\}?)(/| |$)' &&
+	deny "Blocked: recursive rm of /, ~ or \$HOME (or a subpath). Run it yourself if you truly intend to."
+# Explicit denies for high-value home subtrees referenced via the expanded absolute path.
+printf '%s' "$c" | grep -Eq '\brm\b +-[A-Za-z]*r[A-Za-z]* +(-- +)?'"$HOME"'/(\.config/agents|\.ssh|\.claude|\.codex|code)(/| |$)' &&
+	deny "Blocked: recursive rm of a protected home subtree (.config/agents, .ssh, .claude, .codex, code)."
+# Bulk deletion that sidesteps a bare `rm`.
+printf '%s' "$c" | grep -Eq '\bfind\b[^|]*(-delete\b|-exec +rm\b)' &&
+	deny "Blocked: bulk delete via find -delete / -exec rm. Run it yourself if intended."
+printf '%s' "$c" | grep -Eq '\bshred\b +-[A-Za-z]*' &&
+	deny "Blocked: shred. Run it yourself if you truly intend to destroy data."
 printf '%s' "$c" | grep -Eq '\brm\b +-[A-Za-z]*r[A-Za-z]* +/(usr|etc|var|bin|sbin|System|Applications|Library|opt|private|cores)(/| |$)' &&
 	deny "Blocked: recursive rm of a protected system path."
 printf '%s' "$c" | grep -Eq '\brm\b[^|;]* /\*( |$)' &&
@@ -59,8 +75,15 @@ printf '%s' "$c" | grep -Eiq '\bprofiles\b[^|]*(remove|delete| -D| -R)' &&
 printf '%s' "$c" | grep -Eiq 'launchctl +(unload|bootout)[^|]*(sentinel|rippling|mdm)' &&
 	deny "Blocked: unloading managed security/MDM agents."
 
-# --- remote code execution ---
-printf '%s' "$c" | grep -Eiq '(curl|wget)\b[^|]*\| *(sudo +)?(bash|sh|zsh)\b' &&
-	deny "Blocked: piping a remote script into a shell. Download, review, then run."
+# --- remote code execution (best-effort: close the common fetch-and-exec idioms) ---
+# 1) Classic pipe into a shell:  curl ... | bash   (incl. xh/aria2c as fetchers).
+printf '%s' "$c" | grep -Eiq '(curl|wget|xh|aria2c)\b[^|]*\| *(sudo +)?(bash|sh|zsh|ksh|dash)\b' &&
+	deny "Blocked: piping a remote fetch into a shell. Download, review, then run."
+# 2) Process/command substitution feeding a shell or eval:  bash <(curl ..)  /  sh -c "$(curl ..)"  /  eval "$(wget ..)".
+printf '%s' "$c" | grep -Eiq '\b(bash|sh|zsh|ksh|dash|eval)\b[^|]*[<$]\( *(sudo +)?(curl|wget|xh|aria2c)\b' &&
+	deny "Blocked: fetch-and-exec via process/command substitution into a shell. Download, review, then run."
+# 3) Any process/command substitution whose first token is a fetcher (catches the reverse ordering).
+printf '%s' "$c" | grep -Eiq '[<$]\( *(sudo +)?(curl|wget|xh|aria2c)\b' &&
+	deny "Blocked: fetch-and-exec via process/command substitution. Download, review, then run."
 
 exit 0
