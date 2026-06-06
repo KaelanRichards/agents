@@ -84,9 +84,11 @@ def check_contract() -> int:
             continue
         entry = mcp[name]
         strategy = meta.get("strategy")
-        if entry.get("type") != "stdio":
-            errors.append(f"{name}: expected stdio bridge, got {entry.get('type')!r}")
         if strategy == "mcp-remote-stdio":
+            if entry.get("type") != "stdio":
+                errors.append(
+                    f"{name}: expected stdio bridge, got {entry.get('type')!r}"
+                )
             args = entry.get("args") or []
             # The mcp-remote version is PINNED in mcp.json. Assert it's a pinned mcp-remote@<version>
             # (never @latest — @latest re-resolves every launch and breaks ~/.mcp-auth lockfile
@@ -115,6 +117,10 @@ def check_contract() -> int:
                     f"{name}: bridge args mismatch — expected ['-y','mcp-remote@<pinned>',*{expected_tail!r}], got {args!r}"
                 )
         elif strategy == "mcp-remote-wrapper":
+            if entry.get("type") != "stdio":
+                errors.append(
+                    f"{name}: expected stdio wrapper, got {entry.get('type')!r}"
+                )
             if entry.get("command") != meta.get("command"):
                 errors.append(
                     f"{name}: wrapper command mismatch auth={meta.get('command')!r} mcp={entry.get('command')!r}"
@@ -123,14 +129,40 @@ def check_contract() -> int:
                 errors.append(
                     f"{name}: wrapper args mismatch auth={meta.get('args', [])!r} mcp={entry.get('args', [])!r}"
                 )
+        elif strategy == "client-native-http-oauth":
+            if entry.get("type") != "http":
+                errors.append(
+                    f"{name}: expected http remote server, got {entry.get('type')!r}"
+                )
+            if entry.get("url") != meta.get("url"):
+                errors.append(
+                    f"{name}: URL mismatch auth={meta.get('url')!r} mcp={entry.get('url')!r}"
+                )
+            if entry.get("headers") or entry.get("bearer_token_env_var"):
+                errors.append(
+                    f"{name}: client-native OAuth must not force static shared auth"
+                )
         else:
             errors.append(f"{name}: unsupported strategy {meta.get('strategy')!r}")
-        if meta.get("token_store") != "~/.mcp-auth":
-            errors.append(f"{name}: token_store must be ~/.mcp-auth")
+        expected_store = (
+            "client-managed"
+            if strategy == "client-native-http-oauth"
+            else "~/.mcp-auth"
+        )
+        if meta.get("token_store") != expected_store:
+            errors.append(f"{name}: token_store must be {expected_store}")
         clients = meta.get("clients", {})
         for required in ("claude", "opencode", "codex"):
             if required not in clients:
                 errors.append(f"{name}: missing client auth metadata for {required}")
+    # Pinned mcp-remote versions must have a populated OAuth store, or unattended startup re-auths
+    # (the failure mode that hangs Codex on Slack). A bump without `mcp-auth migrate` orphans these.
+    for version in sorted(pinned_remote_versions()):
+        if not version_store(version).exists():
+            errors.append(
+                f"mcp-remote {version}: no {version_store(version).name}/ OAuth store "
+                f"(version bump orphaned auth — run: mcp-auth migrate)"
+            )
     if errors:
         for err in errors:
             print(f"FAIL: {err}", file=sys.stderr)
@@ -155,15 +187,20 @@ def status_one(name: str) -> None:
     print(f"== {name} ==")
     print(f"url: {meta.get('url')}")
     print(f"strategy: {meta.get('strategy')}")
-    if meta.get("strategy") == "mcp-remote-wrapper":
+    if meta.get("strategy") == "client-native-http-oauth":
+        print(f"login: {meta.get('login_command')}")
+    elif meta.get("strategy") == "mcp-remote-wrapper":
         print(f"bridge: {meta.get('command')}")
     else:
         print(
             f"bridge: npx -y {remote_pin(name)} {meta.get('url')} {meta.get('callback_port')} --host {meta.get('callback_host')}"
         )
-    print(
-        f"token_store: {AUTH_STORE} ({'present' if AUTH_STORE.exists() else 'missing'})"
-    )
+    if meta.get("token_store") == "client-managed":
+        print("token_store: client-managed")
+    else:
+        print(
+            f"token_store: {AUTH_STORE} ({'present' if AUTH_STORE.exists() else 'missing'})"
+        )
     print(f"boundary: {meta.get('account_boundary')}")
     if meta.get("host_requirements"):
         print(f"host_requirements: {meta.get('host_requirements')}")
@@ -240,7 +277,74 @@ def remote_pin(name: str) -> str:
     for a in entry.get("args", []):
         if isinstance(a, str) and a.startswith("mcp-remote@"):
             return a
+    # The Slack wrapper (and any future wrapper) hides its mcp-remote@<ver> behind a bin/ script;
+    # fall back to scanning the wrapper source so version-store migration covers it too.
+    command = entry.get("command")
+    if isinstance(command, str):
+        script = pathlib.Path(expand_host_path(command))
+        try:
+            for tok in script.read_text(encoding="utf-8").split():
+                tok = tok.strip("\"'")
+                if tok.startswith("mcp-remote@") and tok != "mcp-remote@latest":
+                    return tok
+        except OSError:
+            pass
     return "mcp-remote@latest"
+
+
+def pinned_remote_versions() -> set[str]:
+    """Distinct mcp-remote versions any bridge in mcp.json pins (e.g. {"0.1.38"}). mcp-remote stores
+    its OAuth cache under ~/.mcp-auth/mcp-remote-<version>/, so a version bump silently orphans every
+    cached login — these are the version dirs that MUST exist for unattended startup to skip re-auth.
+    """
+    versions: set[str] = set()
+    for name in canonical_servers():
+        pin = remote_pin(name)
+        if pin != "mcp-remote@latest" and "@" in pin:
+            versions.add(pin.split("@", 1)[1])
+    return versions
+
+
+def version_store(version: str) -> pathlib.Path:
+    return AUTH_STORE / f"mcp-remote-{version}"
+
+
+def existing_stores() -> list[pathlib.Path]:
+    """Existing ~/.mcp-auth/mcp-remote-* dirs, newest first (by mtime)."""
+    if not AUTH_STORE.exists():
+        return []
+    dirs = [p for p in AUTH_STORE.glob("mcp-remote-*") if p.is_dir()]
+    return sorted(dirs, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def migrate(args: argparse.Namespace) -> int:
+    """Ensure every pinned mcp-remote version has a populated OAuth store, copying from the newest
+    existing store when a version dir is missing. Idempotent; safe to run on every sync."""
+    wanted = pinned_remote_versions()
+    if not wanted:
+        print("no pinned mcp-remote bridges — nothing to migrate")
+        return 0
+    stores = existing_stores()
+    rc = 0
+    for version in sorted(wanted):
+        dst = version_store(version)
+        if dst.exists():
+            print(f"ok: {dst.name} present")
+            continue
+        src = next((s for s in stores if s != dst), None)
+        if src is None:
+            print(
+                f"MISSING: {dst.name} and no prior store to migrate from — run: mcp-auth login <server>",
+                file=sys.stderr,
+            )
+            rc = 1
+            continue
+        if args.dry_run:
+            print(f"would copy {src.name} -> {dst.name}")
+            continue
+        shutil.copytree(src, dst)
+        print(f"migrated {src.name} -> {dst.name} ({len(list(dst.iterdir()))} entries)")
+    return rc
 
 
 def remote_args(name: str, meta: dict) -> list[str]:
@@ -295,6 +399,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub.add_parser("check", help="validate mcp.auth.json against mcp.json")
     sub.add_parser("list", help="list auth-managed MCP servers")
 
+    p_migrate = sub.add_parser(
+        "migrate",
+        help="ensure each pinned mcp-remote version has a populated ~/.mcp-auth store",
+    )
+    p_migrate.add_argument(
+        "--dry-run", action="store_true", help="report actions without copying"
+    )
+
     p_status = sub.add_parser(
         "status", help="show local client auth status and setup commands"
     )
@@ -325,6 +437,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return check_contract()
     if args.cmd == "list":
         return list_servers()
+    if args.cmd == "migrate":
+        return migrate(args)
     if args.cmd == "status":
         return status(args)
     if args.cmd == "plan":

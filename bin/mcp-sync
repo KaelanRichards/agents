@@ -322,6 +322,15 @@ if ! codex_toml_valid "$CODEX_TOML"; then
   exit 1
 fi
 
+# Self-heal the mcp-remote OAuth store. mcp-remote namespaces its token cache by its own version
+# (~/.mcp-auth/mcp-remote-<version>/), so bumping a pinned mcp-remote@<ver> in mcp.json orphans every
+# cached login — the next unattended launch then re-runs browser OAuth and HANGS (esp. Codex, which
+# eagerly blocks startup on each server). Migrating the store to the new version dir here keeps a
+# pin bump from silently breaking auth. Best-effort: never fail the sync on this.
+if [ -x "$AGENTS_HOME/bin/mcp-auth" ]; then
+  "$AGENTS_HOME/bin/mcp-auth" migrate >/dev/null || echo "mcp-sync: note — mcp-auth migrate reported a gap (run: mcp-auth login <server>)" >&2
+fi
+
 n=$(jq '.mcpServers // {} | length' "$EFFECTIVE")
 src="$CANON"
 [ -f "$LOCAL_OVERLAY" ] && src="$src + mcp.local.json"

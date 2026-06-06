@@ -27,10 +27,9 @@
 		},
 		"datadog": {
 			"transport": "http",
-			"credential_env": "DD_API_KEY + DD_APP_KEY",
-			"token_type": "scoped read-only API + application keys",
-			"preflight": "any read with DD_API_KEY and DD_APPLICATION_KEY headers -> 200",
-			"notes": "US5. Use ?toolsets= to limit exposed tools (already core,apm,error-tracking,software-delivery). VM env maps existing DD_APP_KEY to DD_APPLICATION_KEY for the official remote MCP header contract."
+			"token_type": "OAuth via the client-native Datadog MCP login flow; scoped API + application keys are a host-specific fallback only",
+			"preflight": "Codex: `codex mcp login datadog` once per host, then verify tools list. Header-auth fallback must live in an untracked local override.",
+			"notes": "US5. Use ?toolsets= to limit exposed tools (already core,apm,error-tracking,software-delivery). Do not put literal placeholder HTTP headers in the shared config; Codex treats that as unsupported auth and can fail startup on non-JSON auth responses."
 		},
 		"sentry": {
 			"transport": "stdio",

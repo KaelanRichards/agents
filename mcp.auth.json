@@ -9,6 +9,32 @@
     "preferred_long_term": "use official hosted MCPs through mcp-remote first; graduate to a narrow local facade only if hosted MCP behavior is insufficient"
   },
   "servers": {
+    "datadog": {
+      "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery",
+      "strategy": "client-native-http-oauth",
+      "token_store": "client-managed",
+      "login_command": "codex mcp login datadog",
+      "account_boundary": "acts with the connected Datadog user's roles and MCP Read/Write permissions for the selected US5 organization",
+      "clients": {
+        "claude": {
+          "support": "supported-via-plugin-or-http-remote-auth",
+          "setup": "Prefer the official Datadog Claude plugin. For manual HTTP config, use the synced URL and complete the Datadog OAuth flow in Claude.",
+          "verify_command": "claude mcp get datadog"
+        },
+        "opencode": {
+          "support": "supported-via-http-remote-auth-when-client-supports-it",
+          "setup": "Use the synced HTTP URL if the client supports Datadog remote OAuth; otherwise use the Datadog local binary fallback.",
+          "verify_command": "opencode mcp list"
+        },
+        "codex": {
+          "support": "supported-via-client-native-http-oauth",
+          "setup": "Run `codex mcp login datadog` once on the host after `mcp-sync`. If Codex remote auth is unreliable, install Datadog's local `datadog_mcp_cli`, run `datadog_mcp_cli login`, and override Datadog in untracked `mcp.local.json`.",
+          "verify_command": "codex mcp list"
+        }
+      },
+      "vm_setup": "Run `codex mcp login datadog` on the target host if browser OAuth is available. For headless hosts, use the Datadog local binary fallback or a scoped API/application-key header override in untracked host-local config.",
+      "rollback": "Use the client's disconnect/logout flow, remove the Datadog local binary override if present, or remove the server with mcp-sync only if Datadog should disappear from all clients."
+    },
     "linear": {
       "url": "https://mcp.linear.app/mcp",
       "strategy": "mcp-remote-stdio",

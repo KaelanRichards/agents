@@ -97,7 +97,17 @@ def main() -> None:
     auth = load_json(ROOT / "mcp.auth.json")
     assert auth["policy"]["token_copying"] == "forbidden-by-default"
     auth_servers = auth["servers"]
-    assert set(auth_servers) == set(MCP_REMOTE_BRIDGES) | set(MCP_REMOTE_WRAPPERS)
+    assert set(auth_servers) == set(MCP_REMOTE_BRIDGES) | set(MCP_REMOTE_WRAPPERS) | {"datadog"}
+    assert (
+        auth_servers["datadog"]["url"]
+        == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+    )
+    assert auth_servers["datadog"]["strategy"] == "client-native-http-oauth"
+    assert auth_servers["datadog"]["login_command"] == "codex mcp login datadog"
+    assert (
+        auth_servers["datadog"]["clients"]["codex"]["support"]
+        == "supported-via-client-native-http-oauth"
+    )
     for name, (url, _port) in MCP_REMOTE_BRIDGES.items():
         assert auth_servers[name]["url"] == url
         assert auth_servers[name]["strategy"] == "mcp-remote-stdio"
@@ -139,10 +149,8 @@ def main() -> None:
         servers["datadog"]["url"]
         == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
     )
-    assert servers["datadog"]["headers"] == {
-        "DD_API_KEY": "${DD_API_KEY}",
-        "DD_APPLICATION_KEY": "${DD_APPLICATION_KEY}",
-    }
+    assert "headers" not in servers["datadog"]
+    assert "bearer_token_env_var" not in servers["datadog"]
     for name in MCP_REMOTE_BRIDGES:
         assert_mcp_remote_bridge(servers[name], name)
     for name, command in MCP_REMOTE_WRAPPERS.items():
@@ -193,6 +201,8 @@ def main() -> None:
             codex_servers["datadog"]["url"]
             == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
         )
+        assert "http_headers" not in codex_servers["datadog"]
+        assert "bearer_token_env_var" not in codex_servers["datadog"]
         for name in MCP_REMOTE_BRIDGES:
             assert_mcp_remote_bridge(codex_servers[name], name)
         assert codex_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
@@ -217,6 +227,7 @@ def main() -> None:
             claude_servers["datadog"]["url"]
             == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
         )
+        assert "headers" not in claude_servers["datadog"]
         for name in MCP_REMOTE_BRIDGES:
             assert_mcp_remote_bridge(claude_servers[name], name)
         assert claude_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
