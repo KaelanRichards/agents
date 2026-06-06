@@ -21,8 +21,25 @@ mem_files="${mem_files%$'\n'}"
 
 # Pull the remote MCP endpoints from the canonical mcp.json so hermes-sync stays a single source
 # of truth (the pinned Datadog US5 toolsets and Sentry URL live there, not duplicated here).
-dd_url="$(python3 -c "import json;print(json.load(open('$AH/mcp.json'))['mcpServers'].get('datadog',{}).get('url',''))" 2>/dev/null || true)"
-sentry_url="$(python3 -c "import json;print(json.load(open('$AH/mcp.json'))['mcpServers'].get('sentry',{}).get('url',''))" 2>/dev/null || true)"
+# Resolve a server's remote endpoint: prefer .url, else the first https:// arg. mcp-remote stdio
+# bridges (Sentry, etc.) carry the real URL as an arg, not a .url key — without the fallback,
+# Sentry was silently dropped from the Hermes config entirely.
+mcp_endpoint() {
+	python3 - "$AH/mcp.json" "$1" <<'PY' 2>/dev/null || true
+import json, sys
+
+cfg = json.load(open(sys.argv[1]))["mcpServers"].get(sys.argv[2], {})
+url = cfg.get("url") or ""
+if not url:
+    for a in cfg.get("args", []):
+        if isinstance(a, str) and a.startswith("https://"):
+            url = a
+            break
+print(url)
+PY
+}
+dd_url="$(mcp_endpoint datadog)"
+sentry_url="$(mcp_endpoint sentry)"
 
 # Datadog: read-first observability. include-list = read-only tools only (no create/update/upsert/
 # mute/retry), enforcing assistant/policy.md "Datadog MCP" section at the tool-surface level.

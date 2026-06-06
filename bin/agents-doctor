@@ -41,7 +41,14 @@ done
 
 echo "== MCP parity =="
 if command -v jq >/dev/null 2>&1; then
-	c=$(jq '.mcpServers // {} | length' "$AH/mcp.json" 2>/dev/null || echo -1)
+	# Count the EFFECTIVE canonical set (mcp.json ⊕ optional mcp.local.json overlay) — that's what
+	# mcp-sync actually writes into the Claude/Codex configs. Counting raw mcp.json against the
+	# overlay-inclusive client configs produced a permanent spurious FAIL on any host with an overlay.
+	if [ -f "$AH/mcp.local.json" ]; then
+		c=$(jq -s '((.[0].mcpServers // {}) + (.[1].mcpServers // {})) | length' "$AH/mcp.json" "$AH/mcp.local.json" 2>/dev/null || echo -1)
+	else
+		c=$(jq '.mcpServers // {} | length' "$AH/mcp.json" 2>/dev/null || echo -1)
+	fi
 	cl=$(jq '.mcpServers // {} | length' "$HOME/.claude.json" 2>/dev/null || echo -1)
 	cx=$(grep -cE '^\[mcp_servers\.[^.]+\]$' "$HOME/.codex/config.toml" 2>/dev/null || echo -1)
 	[ "$c" = "$cl" ] && [ "$c" = "$cx" ] && ok "MCP servers in sync ($c)" || bad "MCP parity mismatch: canonical=$c claude=$cl codex=$cx (run mcp-sync)"

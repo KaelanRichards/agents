@@ -132,11 +132,15 @@ for f in "$AH"/agents/*.json; do
 		echo "description: $(jq -r '.description' "$f")"
 		tools=$(jq -r '(.tools // []) | join(", ")' "$f")
 		[ -n "$tools" ] && echo "tools: $tools"
+		# Generation marker — the GC below only deletes files carrying it, so a user-authored
+		# subagent dropped into ~/.claude/agents is never silently removed.
+		echo "generated_by: agents-sync"
 		echo "---"
 		echo
 		jq -r '.instructions' "$f"
 	} >"$HOME/.claude/agents/$name.md"
 	{
+		printf '# generated_by: agents-sync\n'
 		printf 'name = %s\n' "$(jq '.name' "$f")"
 		printf 'description = %s\n' "$(jq '.description' "$f")"
 		printf 'developer_instructions = %s\n' "$(jq '.instructions' "$f")"
@@ -148,8 +152,14 @@ for tdir in "$HOME/.claude/agents" "$HOME/.codex/agents"; do
 		[ -f "$file" ] || continue
 		bn=$(basename "$file")
 		if ! grep -Fxq -- "$bn" "$KEEP_AGENTS"; then
-			echo "  gc subagent: $file (canonical removed)"
-			rm -f -- "$file"
+			# Only GC files we generated (carry the marker). A user-authored subagent without the
+			# marker is left in place rather than silently deleted.
+			if grep -q 'generated_by: agents-sync' "$file" 2>/dev/null; then
+				echo "  gc subagent: $file (canonical removed)"
+				rm -f -- "$file"
+			else
+				echo "  skip gc (no agents-sync marker; user-authored?): $file"
+			fi
 		fi
 	done
 done
