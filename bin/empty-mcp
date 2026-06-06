@@ -30,19 +30,11 @@ def _write_message(message: dict) -> None:
     sys.stdout.buffer.flush()
 
 
-def main() -> None:
-    name = sys.argv[1] if len(sys.argv) > 1 else "disabled"
-    reason = sys.argv[2] if len(sys.argv) > 2 else "optional MCP connector is not configured on this host"
-
-    while True:
-        message = _read_message()
-        if message is None:
-            return
-
+def _handle(message: dict, name: str, reason: str) -> None:
         message_id = message.get("id")
         method = message.get("method")
         if message_id is None:
-            continue
+            return
 
         if method == "initialize":
             params = message.get("params") or {}
@@ -71,6 +63,33 @@ def main() -> None:
                     },
                 }
             )
+
+
+def main() -> None:
+    name = sys.argv[1] if len(sys.argv) > 1 else "disabled"
+    reason = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else "optional MCP connector is not configured on this host"
+    )
+
+    while True:
+        try:
+            message = _read_message()
+        except Exception:
+            # Malformed/partial frame (bad Content-Length, invalid JSON): skip it and keep serving.
+            # A crashed degrade-placeholder is exactly the opaque stdio disappearance it exists to avoid.
+            continue
+        if message is None:  # EOF — client closed the pipe
+            return
+        if not isinstance(message, dict):
+            continue
+        try:
+            _handle(message, name, reason)
+        except (BrokenPipeError, KeyboardInterrupt):
+            return
+        except Exception:
+            continue
 
 
 if __name__ == "__main__":

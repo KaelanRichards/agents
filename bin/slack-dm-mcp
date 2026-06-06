@@ -160,9 +160,16 @@ def _tool_result(payload: dict) -> dict:
 
 def main() -> None:
     while True:
-        message = _read_message()
-        if message is None:
+        try:
+            message = _read_message()
+        except Exception:  # noqa: BLE001
+            # Malformed/partial frame (bad Content-Length, invalid JSON): skip it and keep serving
+            # rather than crashing the process on one bad byte.
+            continue
+        if message is None:  # EOF — client closed the pipe
             return
+        if not isinstance(message, dict):
+            continue
 
         message_id = message.get("id")
         method = message.get("method")
