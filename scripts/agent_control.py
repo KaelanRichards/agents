@@ -125,6 +125,10 @@ def jj_revision(repo: Path) -> str:
     code, out = run(
         [
             "jj",
+            # Snapshotting the working copy on a read can race a concurrent jj mutation and make jj
+            # discard the divergent op (silently dropping an agent commit / workspace add). A read
+            # must never mutate: --ignore-working-copy reads the recorded @ without snapshotting.
+            "--ignore-working-copy",
             "log",
             "-r",
             "@",
@@ -226,9 +230,11 @@ def compile_profile(profile: dict[str, Any]) -> None:
     )
     guidance = profile.get("guidance") or []
     if guidance:
-        summary += "\nOperational guidance:\n" + "\n".join(
-            f"- {item}" for item in guidance
-        ) + "\n"
+        summary += (
+            "\nOperational guidance:\n"
+            + "\n".join(f"- {item}" for item in guidance)
+            + "\n"
+        )
     (GENERATED / "claude").mkdir(parents=True, exist_ok=True)
     (GENERATED / "claude" / f"{name}.md").write_text(summary, encoding="utf-8")
     (GENERATED / "gemini" / name).mkdir(parents=True, exist_ok=True)
@@ -496,8 +502,18 @@ def iter_ledger() -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     for path in sorted(base.glob("*.jsonl")):
         for line in path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
+            if not line.strip():
+                continue
+            # One corrupt/partial line (e.g. a torn append) must not blind every ledger reader
+            # (MCP read tools, agentd snapshot/events, the broker audit). Skip it — never crash —
+            # and warn to stderr so corruption stays observable without polluting the data stream.
+            try:
                 entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                print(
+                    f"agent_control: skipping corrupt ledger line in {path}",
+                    file=sys.stderr,
+                )
     return entries
 
 
@@ -1522,9 +1538,7 @@ def cmd_broker_hook(args: argparse.Namespace) -> int:
     try:
         decision = broker_hook_decision(profile, tool_name)
     except (SystemExit, Exception) as exc:  # noqa: BLE001 — a corrupt/unknown profile must never wedge a session
-        # Fail open so the session keeps moving (Claude's compiled deny-list + --strict-mcp-config
-        # remain the primary gate), but never silently: a broken broker hook must be observable in
-        # the ledger rather than invisible. Best-effort; the failure path must not itself raise.
+        # Audit the failure (best-effort; the failure path must not itself raise).
         try:
             append_ledger(
                 {
@@ -1539,6 +1553,27 @@ def cmd_broker_hook(args: argparse.Namespace) -> int:
             )
         except Exception:  # noqa: BLE001
             pass
+        # Fail CLOSED for MCP tool calls: if the broker can't evaluate the active profile
+        # (unknown/corrupt profile, validation error), the per-tool read/write gate is the only
+        # thing standing between an MCP write tool and the session — denying is the safe default.
+        # Non-MCP calls aren't the broker's concern, so stay out of the way (Claude's compiled
+        # deny-list + --strict-mcp-config remain the primary gate there). The normal launch path
+        # validates the profile up front (agentp), so this only fires on genuine mid-session breakage.
+        if tool_name.startswith("mcp__"):
+            print(
+                json.dumps(
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "deny",
+                            "permissionDecisionReason": (
+                                f"profile '{profile}': broker could not evaluate this MCP call "
+                                f"({exc}); denying (fail-closed)."
+                            ),
+                        }
+                    }
+                )
+            )
         return 0
     if decision is None:
         return 0

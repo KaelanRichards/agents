@@ -17,9 +17,25 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("bigquery_mcp")
 
-DEFAULT_PROJECT = os.environ.get("BIGQUERY_MCP_PROJECT", "vizcom-web").strip() or "vizcom-web"
+DEFAULT_PROJECT = (
+    os.environ.get("BIGQUERY_MCP_PROJECT", "vizcom-web").strip() or "vizcom-web"
+)
 DEFAULT_LOCATION = os.environ.get("BIGQUERY_MCP_LOCATION", "US").strip() or "US"
-DEFAULT_MAX_BYTES = int(os.environ.get("BIGQUERY_MCP_MAX_BYTES_BILLED", "1000000000"))
+
+
+def _int_env(name: str, default: int) -> int:
+    """Parse a positive-int env var defensively. A typo (e.g. '1e9') must not crash the MCP server
+    at import time — that surfaces only as an opaque stdio disappearance to the client."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
+DEFAULT_MAX_BYTES = _int_env("BIGQUERY_MCP_MAX_BYTES_BILLED", 1_000_000_000)
 MAX_SQL_CHARS = 50_000
 
 MUTATING_SQL = re.compile(
@@ -61,7 +77,9 @@ def _location(location: str = "") -> str:
 def _identifier(name: str, value: str) -> str:
     value = _require(name, value)
     if not re.fullmatch(r"[A-Za-z0-9_:-]+", value):
-        raise BigQueryMcpError(f"{name} must contain only letters, numbers, underscores, hyphens, or colons")
+        raise BigQueryMcpError(
+            f"{name} must contain only letters, numbers, underscores, hyphens, or colons"
+        )
     return value
 
 
@@ -74,9 +92,13 @@ def _sql(value: str) -> str:
         raise BigQueryMcpError("multiple SQL statements are not allowed")
     stripped = stripped.rstrip(";").strip()
     if not re.match(r"(?is)^(select|with|explain)\b", stripped):
-        raise BigQueryMcpError("only read-only SELECT, WITH, or EXPLAIN queries are allowed")
+        raise BigQueryMcpError(
+            "only read-only SELECT, WITH, or EXPLAIN queries are allowed"
+        )
     if MUTATING_SQL.search(stripped):
-        raise BigQueryMcpError("write-capable SQL keywords are not allowed in the read-only BigQuery MCP facade")
+        raise BigQueryMcpError(
+            "write-capable SQL keywords are not allowed in the read-only BigQuery MCP facade"
+        )
     return stripped
 
 
@@ -109,14 +131,20 @@ def _json_response(status: str, result: dict[str, Any]) -> str:
 
 def _bq(args: list[str], timeout: int = 120) -> dict[str, Any]:
     if not shutil.which("bq"):
-        raise BigQueryMcpError("bq CLI is not installed; install gcloud-cli and authenticate with gcloud auth login")
+        raise BigQueryMcpError(
+            "bq CLI is not installed; install gcloud-cli and authenticate with gcloud auth login"
+        )
     if _dry_run():
         return {"dry_run": True, "command": ["bq", *args]}
-    proc = subprocess.run(["bq", *args], capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run(
+        ["bq", *args], capture_output=True, text=True, timeout=timeout
+    )
     stdout = (proc.stdout or "").strip()
     stderr = (proc.stderr or "").strip()
     if proc.returncode != 0:
-        raise BigQueryMcpError(stderr or stdout or f"bq exited with status {proc.returncode}")
+        raise BigQueryMcpError(
+            stderr or stdout or f"bq exited with status {proc.returncode}"
+        )
     if not stdout:
         return {}
     try:
@@ -131,7 +159,9 @@ def _run(action: str, result_fn) -> str:
     except BigQueryMcpError as exc:
         return _json_response("error", {"error": str(exc), "action": action})
     except Exception as exc:  # noqa: BLE001
-        return _json_response("error", {"error": f"unexpected error: {exc}", "action": action})
+        return _json_response(
+            "error", {"error": f"unexpected error: {exc}", "action": action}
+        )
 
 
 @mcp.tool()
@@ -140,7 +170,10 @@ def bigquery_list_datasets(project_id: str = "") -> str:
 
     def run() -> dict[str, Any]:
         project = _project(project_id)
-        return {"project_id": project, "datasets": _bq(["ls", "--format=prettyjson", f"--project_id={project}"])}
+        return {
+            "project_id": project,
+            "datasets": _bq(["ls", "--format=prettyjson", f"--project_id={project}"]),
+        }
 
     return _run("bigquery_list_datasets", run)
 
@@ -152,13 +185,19 @@ def bigquery_list_tables(dataset_id: str, project_id: str = "") -> str:
     def run() -> dict[str, Any]:
         project = _project(project_id)
         dataset = _identifier("dataset_id", dataset_id)
-        return {"project_id": project, "dataset_id": dataset, "tables": _bq(["ls", "--format=prettyjson", f"{project}:{dataset}"])}
+        return {
+            "project_id": project,
+            "dataset_id": dataset,
+            "tables": _bq(["ls", "--format=prettyjson", f"{project}:{dataset}"]),
+        }
 
     return _run("bigquery_list_tables", run)
 
 
 @mcp.tool()
-def bigquery_show_table_schema(dataset_id: str, table_id: str, project_id: str = "") -> str:
+def bigquery_show_table_schema(
+    dataset_id: str, table_id: str, project_id: str = ""
+) -> str:
     """Show a BigQuery table schema using current gcloud/bq auth."""
 
     def run() -> dict[str, Any]:
@@ -166,7 +205,12 @@ def bigquery_show_table_schema(dataset_id: str, table_id: str, project_id: str =
         dataset = _identifier("dataset_id", dataset_id)
         table = _identifier("table_id", table_id)
         table_ref = f"{project}:{dataset}.{table}"
-        return {"project_id": project, "dataset_id": dataset, "table_id": table, "schema": _bq(["show", "--schema", "--format=prettyjson", table_ref])}
+        return {
+            "project_id": project,
+            "dataset_id": dataset,
+            "table_id": table,
+            "schema": _bq(["show", "--schema", "--format=prettyjson", table_ref]),
+        }
 
     return _run("bigquery_show_table_schema", run)
 
@@ -213,7 +257,9 @@ def bigquery_execute_sql_readonly(
         loc = _location(location)
         query = _sql(sql)
         if maximum_bytes_billed < 1 or maximum_bytes_billed > DEFAULT_MAX_BYTES:
-            raise BigQueryMcpError(f"maximum_bytes_billed must be between 1 and {DEFAULT_MAX_BYTES}")
+            raise BigQueryMcpError(
+                f"maximum_bytes_billed must be between 1 and {DEFAULT_MAX_BYTES}"
+            )
         return {
             "project_id": project,
             "location": loc,
