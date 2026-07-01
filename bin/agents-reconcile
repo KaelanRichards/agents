@@ -92,9 +92,6 @@ sync_generated() {
     echo "agents-reconcile: agents-sync missing after relink" >&2
     exit 1
   fi
-  if command -v hermes-sync >/dev/null 2>&1; then
-    run hermes-sync
-  fi
   if [ "$RUN_DOCTOR" = 1 ] && command -v agents-doctor >/dev/null 2>&1; then
     run agents-doctor
   fi

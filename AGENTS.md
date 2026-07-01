@@ -173,11 +173,11 @@ This is the single source of truth for both agents. Canonical file lives at
   without explicit approval.
 - **Mutating MCP tools**: the custom `agents` MCP server exposes read-only repo/status tools
   by default. `run_task` and `sync_config` require `AGENTS_MCP_ALLOW_MUTATION=1`.
-- **Hermes personal assistant**: Hermes config is generated with `hermes-sync`; policy and memory
-  live under `~/.config/agents/assistant`. Slack send, Gmail draft/send/trash, and Calendar
-  create/update are allowed only through the shared constrained `personal-actions-mcp` facade,
-  which defaults to dry-run unless a live provider is explicitly configured. Gmail trash means
-  moving one exact message id to Trash only; permanent delete and bulk/search delete are forbidden.
+- **Personal assistant**: policy and memory live under `~/.config/agents/assistant`. Slack send,
+  Gmail draft/send/trash, and Calendar create/update are allowed only through the shared constrained
+  `personal-actions-mcp` facade, which defaults to dry-run unless a live provider is explicitly
+  configured. Gmail trash means moving one exact message id to Trash only; permanent delete and
+  bulk/search delete are forbidden.
 - **Personal action confirmation**: draft creation may happen when requested, but Gmail sends,
   Gmail trash moves, Slack posts, and Calendar creates/updates require explicit confirmation unless
   the user clearly labels the action as a test/canary or says to send/post/create immediately.
@@ -198,13 +198,11 @@ This is the single source of truth for both agents. Canonical file lives at
 - **Per-file format:** `# Title`, then a one-line `> summary` (used to build the index below). For
   entries that evolve, use *Current truth · Details · Open questions · Timeline*, and **append dated
   lines to Timeline rather than silently overwriting** so staleness stays visible.
-- **How each tool loads it:** Hermes auto-loads all `assistant/memory/*.md` via `hermes-sync`
-  `context_files`. Claude + Codex read the auto-generated index below and open the specific file on
-  demand. When you learn a durable fact, update the right file (absolute dates, no secrets), then run
-  `hermes-sync` and `agents-sync` (the latter refreshes the index below).
-- **Retrieval:** none needed yet (few small files). Hermes already has SQLite FTS5 search over its
-  own session transcripts. If `assistant/memory/` grows large, add a *rebuildable* FTS5 index
-  (e.g. memweave / Basic Memory) and keep markdown canonical.
+- **How each tool loads it:** Claude + Codex read the auto-generated index below and open the
+  specific file on demand. When you learn a durable fact, update the right file (absolute dates, no
+  secrets), then run `agents-sync` (which refreshes the index below).
+- **Retrieval:** none needed yet (few small files). If `assistant/memory/` grows large, add a
+  *rebuildable* FTS5 index (e.g. memweave / Basic Memory) and keep markdown canonical.
 
 <!-- agents-sync:memory-index:start -->
 - `assistant/memory/decisions.md` — Architectural / operating decisions and the reasoning behind them.

@@ -32,5 +32,5 @@ Windmill personal-actions setup
    PERSONAL_ACTIONS_DRY_RUN=0
    in ~/.config/agents-secrets/personal-actions.env
 
-Keep Windmill MCP disabled for Claude/Codex/Hermes until the narrow webhook path is proven.
+Keep Windmill MCP disabled for Claude/Codex until the narrow webhook path is proven.
 EOF

@@ -12,8 +12,6 @@ import hmac
 import importlib.util
 import os
 import re
-import subprocess
-import sys
 import time
 import urllib.error
 import urllib.parse
@@ -66,12 +64,6 @@ _load_env_file()
 def _agents_home() -> Path:
     return Path(
         os.environ.get("AGENTS_HOME", str(Path.home() / ".config/agents"))
-    ).expanduser()
-
-
-def _hermes_home() -> Path:
-    return Path(
-        os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))
     ).expanduser()
 
 
@@ -367,11 +359,9 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
         provider = _provider()
         if provider == "webhook":
             result = _dispatch_webhook(action, provider_payload)
-        elif provider == "google_workspace_cli":
-            result = _dispatch_google_workspace_cli(action, provider_payload)
         else:
             raise PersonalActionError(
-                "unsupported PERSONAL_ACTIONS_PROVIDER; use webhook, google_workspace_cli, or set PERSONAL_ACTIONS_DRY_RUN=1"
+                "unsupported PERSONAL_ACTIONS_PROVIDER; use webhook, or set PERSONAL_ACTIONS_DRY_RUN=1"
             )
         _audit(action, payload, "ok", result)
         return _json_response(action, "ok", payload, result)
@@ -658,70 +648,6 @@ def _gmail_get_message_local(payload: dict[str, Any]) -> dict[str, Any]:
         f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}?{query}",
         _gmail_modify_access_token(account),
         "Gmail get message",
-    )
-
-
-def _google_api_cmd() -> list[str]:
-    script = (
-        _hermes_home()
-        / "skills"
-        / "productivity"
-        / "google-workspace"
-        / "scripts"
-        / "google_api.py"
-    )
-    if not script.exists():
-        raise PersonalActionError(f"Google Workspace script not found at {script}")
-    return [sys.executable, str(script)]
-
-
-def _run_google(args: list[str]) -> dict[str, Any]:
-    cmd = _google_api_cmd() + args
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-    out = (proc.stdout or "").strip()
-    err = (proc.stderr or "").strip()
-    if proc.returncode != 0:
-        raise PersonalActionError(
-            f"google_workspace_cli failed: {_redact_text(err or out or 'no output')}"
-        )
-    return {"command": args, "output": _parse_json_or_text(out)}
-
-
-def _dispatch_google_workspace_cli(
-    action: str, payload: dict[str, Any]
-) -> dict[str, Any]:
-    if action == "gmail_send_email":
-        args = [
-            "gmail",
-            "send",
-            "--to",
-            payload["to"],
-            "--subject",
-            payload["subject"],
-            "--body",
-            payload["body"],
-        ]
-        if payload.get("html"):
-            args.append("--html")
-        return _run_google(args)
-    if action == "calendar_create_event":
-        args = [
-            "calendar",
-            "create",
-            "--summary",
-            payload["summary"],
-            "--start",
-            payload["start"],
-            "--end",
-            payload["end"],
-        ]
-        if payload.get("location"):
-            args += ["--location", payload["location"]]
-        if payload.get("attendees"):
-            args += ["--attendees", ",".join(payload["attendees"])]
-        return _run_google(args)
-    raise PersonalActionError(
-        f"{action} is not implemented by google_workspace_cli provider; use webhook provider for this tool"
     )
 
 

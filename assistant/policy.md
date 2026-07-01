@@ -1,11 +1,12 @@
 # Personal Assistant Policy
 
-Hermes is the personal assistant front door. `~/.config/agents` remains the source of truth for
-agent config, MCP policy, skills, hooks, and verification.
+The personal assistant (Claude / Codex through the `personal-actions` facade) is the front door.
+`~/.config/agents` remains the source of truth for agent config, MCP policy, skills, hooks, and
+verification.
 
 ## Allowed First-Pass Actions
 
-Hermes may use the configured personal action MCP endpoint for:
+The assistant may use the configured personal action MCP endpoint for:
 
 - Slack: search messages and send messages.
 - Gmail: search messages, read one exact message id, create drafts, and send emails.
@@ -13,8 +14,8 @@ Hermes may use the configured personal action MCP endpoint for:
 - Google Calendar: list events, create events, and update events.
 - Google Drive: search files.
 
-Hermes may also use the read-only `agents` MCP tools for repo status, logs, diffs, task discovery,
-and MCP server listing.
+The assistant may also use the read-only `agents` MCP tools for repo status, logs, diffs, task
+discovery, and MCP server listing.
 
 ## BigQuery MCP
 
@@ -56,7 +57,7 @@ and MCP server listing.
 - Gmail "delete" means move one exact Gmail message id to Trash only. Do not search-and-delete,
   bulk delete, or call the permanent Gmail delete endpoint.
 - Never use broad filesystem, terminal, browser, payment, password-manager, or purchasing tools
-  from Hermes without an explicit follow-up change to this policy.
+  from the personal-assistant profile without an explicit follow-up change to this policy.
 - Confirm ambiguous recipients, channels, calendars, dates, or times before taking action.
 - Draft creation may happen without a second confirmation when the user asks for a draft.
 - For Gmail sends and Slack posts, include recipients/channel, subject when applicable, and final
@@ -100,4 +101,4 @@ those outputs.
 
 The remote personal action MCP endpoint must be constrained at the provider/dashboard level to
 only the allowed actions above. Do not connect a broad "all apps/all actions" MCP endpoint to
-Hermes.
+the personal-actions facade.

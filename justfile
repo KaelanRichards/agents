@@ -19,9 +19,6 @@ skills-update:
 mcp-update:
     mcp-update
 
-hermes-sync:
-    hermes-sync
-
 # Verify the per-repo agent-config convention across all project repos (read-only).
 verify-repos:
     agents-verify

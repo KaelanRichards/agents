@@ -25,7 +25,6 @@ done
 for t in claude codex; do
 	command -v "$t" >/dev/null 2>&1 && ok "$t present" || warn "$t not on PATH"
 done
-command -v hermes >/dev/null 2>&1 && ok "hermes present" || warn "hermes not on PATH"
 
 echo "== instruction symlinks =="
 for f in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
@@ -152,31 +151,11 @@ else
 	bad "missing skills.lock.json"
 fi
 
-echo "== Hermes personal assistant =="
-if command -v hermes >/dev/null 2>&1; then
-	[ -f "$HOME/.hermes/config.yaml" ] && ok "hermes config.yaml present" || warn "hermes config.yaml missing (run hermes-sync)"
-	if hermes mcp list 2>/dev/null | grep -q "agents_readonly"; then
-		ok "hermes agents_readonly MCP configured"
-	else
-		warn "hermes agents_readonly MCP missing (run hermes-sync)"
-	fi
-	if hermes mcp list 2>/dev/null | grep -q "personal_actions"; then
-		ok "hermes personal_actions MCP configured"
-	else
-		warn "hermes personal_actions MCP missing (run hermes-sync)"
-	fi
-	if [ "${PERSONAL_ACTIONS_DRY_RUN:-1}" = "0" ] || [ -n "${PERSONAL_ACTIONS_WEBHOOK_URL:-}" ]; then
-		ok "personal actions live provider env present"
-	else
-		ok "personal actions default to dry-run"
-	fi
-	if [ -f "$HOME/.hermes/config.yaml" ]; then
-		for tool in personal_slack_send_message personal_slack_search_messages personal_gmail_search_messages personal_gmail_get_message personal_gmail_create_draft personal_gmail_send_email personal_gmail_trash_email personal_calendar_list_events personal_calendar_create_event personal_calendar_update_event personal_drive_search_files; do
-			grep -qF -- "- $tool" "$HOME/.hermes/config.yaml" && ok "hermes personal action tool: $tool" || bad "hermes missing personal action tool: $tool"
-		done
-	fi
+echo "== personal actions =="
+if [ "${PERSONAL_ACTIONS_DRY_RUN:-1}" = "0" ] || [ -n "${PERSONAL_ACTIONS_WEBHOOK_URL:-}" ]; then
+	ok "personal actions live provider env present"
 else
-	warn "Hermes not installed"
+	ok "personal actions default to dry-run"
 fi
 
 echo "== personal action auth =="

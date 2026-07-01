@@ -1,4 +1,4 @@
-"""Contract checks for the shared Claude/Codex/Hermes agent setup."""
+"""Contract checks for the shared Claude/Codex agent setup."""
 
 from __future__ import annotations
 
@@ -224,16 +224,6 @@ def main() -> None:
             assert_mcp_remote_bridge(claude_servers[name], name)
         assert claude_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
         assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
-
-    hermes_config = HOME / ".hermes" / "config.yaml"
-    if hermes_config.exists():
-        hermes = read(hermes_config)
-        assert_contains(hermes, "agents_readonly:", "Hermes config")
-        assert_contains(hermes, "personal_actions:", "Hermes config")
-        for tool in PERSONAL_ACTION_TOOLS:
-            assert_contains(
-                hermes, f"- {tool}", "Hermes personal_actions tool allowlist"
-            )
 
     server = read(ROOT / "mcp-servers" / "personal-actions" / "server.py")
     for tool in PERSONAL_ACTION_TOOLS:

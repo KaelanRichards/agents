@@ -1,11 +1,11 @@
 # Windmill Backend for Personal Actions
 
-Windmill is the preferred open-source backend for live Slack, Gmail, Calendar, and Drive actions. Claude,
-Codex, and Hermes still talk only to `personal-actions-mcp`; Windmill receives the single webhook
+Windmill is the preferred open-source backend for live Slack, Gmail, Calendar, and Drive actions.
+Claude and Codex still talk only to `personal-actions-mcp`; Windmill receives the single webhook
 behind that facade.
 
 ```text
-Claude / Codex / Hermes
+Claude / Codex
         |
         v
 personal-actions-mcp
@@ -87,7 +87,7 @@ The handler defaults expect these resource paths:
 If you use different paths, edit the script defaults in Windmill.
 
 The Windmill UI may generate names like `u/admin/charismatic_gmail`. Create stable aliases at
-the paths above so Claude, Codex, and Hermes keep using the same resource contract.
+the paths above so Claude and Codex keep using the same resource contract.
 
 ```bash
 windmill-link-personal-resources

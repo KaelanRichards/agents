@@ -122,10 +122,6 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - **`mcp-auth`** — status/setup helper for OAuth-backed remote MCPs. It validates
   `mcp.auth.json`, runs `mcp-remote` login probes, prints the clean VM auth plan, and checks
   local client status without exporting tokens.
-- **`hermes-sync`** — generate the managed Hermes personal-assistant profile at
-  `~/.hermes/config.yaml`. Hermes uses the shared local `personal-actions-mcp` facade for Slack,
-  Gmail, and Calendar writes plus read-only `agents` MCP tools. Gmail trash is recoverable only:
-  one exact message id moved to Trash, never permanent or bulk deletion.
 - **`windmill-up` / `windmill-status` / `windmill-down`** — manage the local open-source Windmill
   backend for live personal actions. See `assistant/windmill/README.md`.
 - **CI** (`.github/workflows/ci.yml`): lints + validates on every push; weekly it runs the

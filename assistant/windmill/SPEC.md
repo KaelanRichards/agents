@@ -3,7 +3,7 @@
 ## Outcome
 
 Run an open-source Windmill instance as the preferred local backend for `personal-actions-mcp`.
-Claude, Codex, and Hermes continue to see only the five shared local tools; Windmill receives one
+Claude and Codex continue to see only the five shared local tools; Windmill receives one
 authenticated webhook and dispatches to Slack, Gmail, and Google Calendar resources.
 
 ## Scope
@@ -15,7 +15,7 @@ authenticated webhook and dispatches to Slack, Gmail, and Google Calendar resour
 - **In:** Documentation for first-run Windmill setup, OAuth resource creation, webhook URL/token
   configuration, and canary testing.
 - **Out:** Public internet exposure, Tailscale serving, automatic browser OAuth, broad Windmill MCP
-  exposure to Claude/Codex/Hermes, and committing any secrets.
+  exposure to Claude/Codex, and committing any secrets.
 
 ## Constraints
 
