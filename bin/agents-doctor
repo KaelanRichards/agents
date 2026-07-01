@@ -117,11 +117,6 @@ if command -v agent-profile >/dev/null 2>&1; then
 else
 	warn "agent-profile not on PATH"
 fi
-if command -v agent-eval >/dev/null 2>&1; then
-	agent-eval list >/dev/null 2>&1 && ok "agent eval tasks readable" || bad "agent eval tasks unreadable"
-else
-	warn "agent-eval not on PATH"
-fi
 if [ -x "$AH/bin/agent-broker-mcp" ]; then
 	ok "agent-broker MCP launcher present"
 else

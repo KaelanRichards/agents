@@ -62,7 +62,6 @@ PANELS: dict[str, tuple[str, str]] = {
         "Agent Control",
         "agent-profile list 2>/dev/null | sed 's/^/profile: /'; "
         "agent-ledger list --limit 5 2>/dev/null | sed 's/^/run: /' || true; "
-        "agentq list --limit 5 2>/dev/null | sed 's/^/queue: /' || true; "
         "agent-approve list --limit 5 2>/dev/null | sed 's/^/approval: /' || true",
     ),
     "ci": (
@@ -126,11 +125,12 @@ def _cmd_for(action: str, args: dict) -> str | None:
         ),
         "mcp-remove": lambda: f"mcp-sync remove {name}" if args.get("name") else None,
         "profile-compile": lambda: "agent-profile validate && agent-profile compile",
-        "eval-smoke": lambda: "agent-eval run smoke-noop --agent noop",
-        "queue-start": lambda: "agentq start",
-        "queue-tail": lambda: f"agentq tail {item_id} --lines 120" if args.get("id") else None,
-        "approval-approve": lambda: f"agent-approve approve {item_id}" if args.get("id") else None,
-        "approval-reject": lambda: f"agent-approve reject {item_id}" if args.get("id") else None,
+        "approval-approve": lambda: (
+            f"agent-approve approve {item_id}" if args.get("id") else None
+        ),
+        "approval-reject": lambda: (
+            f"agent-approve reject {item_id}" if args.get("id") else None
+        ),
     }
     b = builders.get(action)
     return b() if b else None
@@ -161,7 +161,9 @@ def _same_origin(request: Request) -> bool:
 
 def _require_run_auth(request: Request) -> None:
     if not TOKEN:
-        raise HTTPException(403, "WEBDASH_TOKEN is required for mutating dashboard actions")
+        raise HTTPException(
+            403, "WEBDASH_TOKEN is required for mutating dashboard actions"
+        )
     if not _same_origin(request):
         raise HTTPException(403, "cross-origin dashboard action denied")
     csrf_header = request.headers.get("x-csrf-token", "")
@@ -183,11 +185,21 @@ async def auth(request: Request, call_next):
     secure_cookie = request.url.scheme == "https"
     if via_param == TOKEN and request.cookies.get("token") != TOKEN:
         response.set_cookie(
-            "token", TOKEN, max_age=2592000, httponly=True, samesite="lax", secure=secure_cookie
+            "token",
+            TOKEN,
+            max_age=2592000,
+            httponly=True,
+            samesite="lax",
+            secure=secure_cookie,
         )
     if request.cookies.get(CSRF_COOKIE) != CSRF_TOKEN:
         response.set_cookie(
-            CSRF_COOKIE, CSRF_TOKEN, max_age=2592000, httponly=False, samesite="strict", secure=secure_cookie
+            CSRF_COOKIE,
+            CSRF_TOKEN,
+            max_age=2592000,
+            httponly=False,
+            samesite="strict",
+            secure=secure_cookie,
         )
     return response
 
@@ -311,7 +323,6 @@ iframe{width:100%;height:540px;border:0;background:#111;border-radius:0}.termina
         <button onclick="run('sync')">Sync</button>
         <button onclick="run('doctor')">Doctor</button>
         <button onclick="run('profile-compile')">Profiles</button>
-        <button onclick="run('eval-smoke')">Eval</button>
         <button class="danger" onclick="if(confirm('Reboot the agents VM?'))run('reboot')">Reboot VM</button>
       </div>
       <div class="updated" id="updated">connecting</div>
@@ -320,7 +331,7 @@ iframe{width:100%;height:540px;border:0;background:#111;border-radius:0}.termina
     <section id="overview" class="section active">
       <div class="hero" id="hero"></div>
       <div class="grid">
-        <article class="panel span7"><div class="panelHead"><h2>Queue</h2><button onclick="run('queue-start')">Start next</button></div><div class="panelBody scroll" id="queueTable"></div></article>
+        <article class="panel span7"><div class="panelHead"><h2>Queue</h2></div><div class="panelBody scroll" id="queueTable"></div></article>
         <article class="panel span5"><div class="panelHead"><h2>Approvals</h2><span id="approvalBadge" class="status"></span></div><div class="panelBody scroll" id="approvalTable"></div></article>
         <article class="panel span6"><div class="panelHead"><h2>CI</h2></div><div class="panelBody scroll" id="ciTable"></div></article>
         <article class="panel span6"><div class="panelHead"><h2>Machines</h2></div><div class="panelBody scroll" id="machinesTable"></div></article>
@@ -329,10 +340,7 @@ iframe{width:100%;height:540px;border:0;background:#111;border-radius:0}.termina
 
     <section id="work" class="section">
       <div class="grid">
-        <article class="panel span7"><div class="panelHead"><h2>Queue State</h2><button onclick="run('queue-start')">Start next queued task</button></div><div class="panelBody scroll" id="queueTableFull"></div></article>
-        <article class="panel span5"><div class="panelHead"><h2>Tail Task Log</h2></div><div class="panelBody">
-          <form onsubmit="queueTail(event)" class="formGrid"><input id="qid" class="wide" placeholder="task id"><button class="primary">Tail log</button></form>
-        </div></article>
+        <article class="panel span7"><div class="panelHead"><h2>Queue State</h2></div><div class="panelBody scroll" id="queueTableFull"></div></article>
         <article class="panel span6"><div class="panelHead"><h2>Approval Inbox</h2></div><div class="panelBody scroll" id="approvalTableFull"></div></article>
         <article class="panel span6"><div class="panelHead"><h2>Decide Approval</h2></div><div class="panelBody">
           <form onsubmit="approvalApprove(event)" class="formGrid"><input id="aidApprove" class="wide" placeholder="approval id"><button class="primary">Approve</button></form>
@@ -430,7 +438,6 @@ function closeDrawer(){drawer.classList.remove('open')}
 }
 function mcpAdd(e){e.preventDefault();run('mcp-add',{name:mname.value,command:mcmd.value})}
 function mcpRemove(e){e.preventDefault();run('mcp-remove',{name:mrm.value})}
-function queueTail(e){e.preventDefault();run('queue-tail',{id:qid.value})}
 function approvalApprove(e){e.preventDefault();run('approval-approve',{id:aidApprove.value})}
 function approvalReject(e){e.preventDefault();run('approval-reject',{id:aidReject.value})}
 </script></body></html>"""

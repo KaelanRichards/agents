@@ -37,9 +37,6 @@ fi
 if command -v agent-ledger >/dev/null 2>&1; then
 	agent-ledger list --limit 5 2>/dev/null | sed 's/^/  run: /' || echo "  runs: none"
 fi
-if command -v agentq >/dev/null 2>&1; then
-	agentq list --limit 5 2>/dev/null | sed 's/^/  queue: /' || echo "  queue: none"
-fi
 if command -v agent-approve >/dev/null 2>&1; then
 	agent-approve list --limit 5 2>/dev/null | sed 's/^/  approval: /' || echo "  approvals: none"
 fi

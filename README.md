@@ -125,14 +125,8 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
   - `agent-ledger record|list|show|verify` stores append-only run events under gitignored
     `state/runs/`. Entries form a SHA-256 hash chain; `agent-ledger verify` confirms it is
     tamper-evident (also checked by `agents-doctor`).
-  - `agentq add|list|show|start|worker` queues background agent work into isolated jj workspaces.
-    On an always-on VM, install `systemd/agentq-worker.{service,timer}` as user units and enable
-    the timer to poll queued work every minute.
   - `agent-approve request|list|show|approve|reject|expire` manages the local approval inbox.
     Requests carry a TTL (default 24h, `--ttl-hours`) and auto-expire instead of lingering pending.
-  - `agent-eval list|run` runs small local eval tasks from `evals/tasks/`, including
-    `policy-enforcement` (adversarial broker checks: synonym evasion, fail-closed effects,
-    tainted-context writes, per-profile boundaries).
   - `agent-broker` holds the policy logic (effect classification from an authoritative registry,
     fail-closed for unknown tools; provenance rule: a mutation with `context_tainted=true` is
     forced to confirm and refused on high/critical profiles). It runs in **two** places: the MCP

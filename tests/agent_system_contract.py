@@ -298,19 +298,6 @@ def main() -> None:
     ]:
         assert_contains(spec, phrase, "agent control spec")
 
-    eval_tasks = {path.stem for path in (ROOT / "evals" / "tasks").glob("*.json")}
-    assert {
-        "smoke-noop",
-        "profile-compile",
-        "mcp-contract",
-        "prompt-injection-policy",
-        "personal-actions-dry-run",
-        "queue-smoke",
-        "policy-enforcement",
-        "enforcement-e2e",
-    }.issubset(eval_tasks)
-    assert (ROOT / "systemd" / "agentq-worker.service").exists()
-    assert (ROOT / "systemd" / "agentq-worker.timer").exists()
     assert (ROOT / "bin" / "agentp").exists()
     assert (ROOT / "tests" / "behavioral_policy.py").exists()
 

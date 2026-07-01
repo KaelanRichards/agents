@@ -1,9 +1,0 @@
-{
-  "id": "profile-compile",
-  "description": "Validate and compile all canonical permission profiles.",
-  "profile": "repo-maintainer",
-  "agent": "noop",
-  "repo": "~/.config/agents",
-  "prompt": "Validate and compile agent profiles without making source changes.",
-  "success_command": "agent-profile validate && agent-profile compile"
-}

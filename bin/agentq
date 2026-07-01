@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# agentq — durable local queue for isolated jj-workspace agent tasks.
-set -euo pipefail
-AH="${AGENTS_HOME:-$HOME/.config/agents}"
-exec python3 "$AH/scripts/agent_control.py" queue "$@"

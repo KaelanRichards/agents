@@ -17,7 +17,9 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("agents")
-AGENTS_HOME = Path(os.environ.get("AGENTS_HOME", str(Path.home() / ".config/agents"))).expanduser()
+AGENTS_HOME = Path(
+    os.environ.get("AGENTS_HOME", str(Path.home() / ".config/agents"))
+).expanduser()
 CONTROL_PATH = AGENTS_HOME / "scripts" / "agent_control.py"
 _spec = importlib.util.spec_from_file_location("agent_control", CONTROL_PATH)
 agent_control = importlib.util.module_from_spec(_spec)
@@ -153,11 +155,11 @@ def list_agent_profiles() -> str:
 @mcp.tool()
 def list_agent_runs(limit: int = 20) -> str:
     """List recent local agent run ledger entries."""
-    entries = agent_control.iter_ledger()[-int(limit):]
+    entries = agent_control.iter_ledger()[-int(limit) :]
     if not entries:
         return "(no runs recorded)"
     return "\n".join(
-        f"{e.get('ts','')} {e.get('id','')} {e.get('kind','')} {e.get('status','')} {e.get('profile','')} {e.get('repo','')}"
+        f"{e.get('ts', '')} {e.get('id', '')} {e.get('kind', '')} {e.get('status', '')} {e.get('profile', '')} {e.get('repo', '')}"
         for e in entries
     )
 
@@ -169,22 +171,6 @@ def get_agent_run(run_id: str) -> str:
         if entry.get("id") == run_id:
             return json.dumps(entry, indent=2, sort_keys=True)
     return f"error: run not found: {run_id}"
-
-
-@mcp.tool()
-def list_agent_queue(status: str = "all", limit: int = 20) -> str:
-    """List local background agent queue items."""
-    conn = agent_control.queue_db()
-    rows = conn.execute(
-        "SELECT id, created_at, status, profile, agent, repo, task FROM tasks WHERE (? = 'all' OR status = ?) ORDER BY created_at DESC LIMIT ?",
-        (status, status, int(limit)),
-    ).fetchall()
-    if not rows:
-        return "(no queued tasks)"
-    return "\n".join(
-        f"{r['created_at']} {r['id']} {r['status']} {r['profile']} {r['agent']} {r['repo']} {r['task'][:80]}"
-        for r in rows
-    )
 
 
 @mcp.tool()

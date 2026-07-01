@@ -1,9 +1,0 @@
-{
-  "id": "queue-smoke",
-  "description": "Verify the queue CLI is readable and can list state.",
-  "profile": "plan-readonly",
-  "agent": "noop",
-  "repo": "~/.config/agents",
-  "prompt": "List queue state without changing it.",
-  "success_command": "agentq reconcile && agentq list --limit 5"
-}

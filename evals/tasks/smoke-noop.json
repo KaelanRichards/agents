@@ -1,9 +1,0 @@
-{
-  "id": "smoke-noop",
-  "description": "No-op eval proving the local eval harness, ledger, and profile validation compose without credentials.",
-  "profile": "plan-readonly",
-  "agent": "noop",
-  "repo": "~/.config/agents",
-  "prompt": "Inspect the repository status without making changes.",
-  "success_command": "agent-profile validate"
-}
