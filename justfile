@@ -22,10 +22,6 @@ mcp-update:
 hermes-sync:
     hermes-sync
 
-# Verify Brewfile and flake.nix stay in sync — both list the shared CLI toolbelt.
-check-toolbelt:
-    toolbelt-diff
-
 # Verify the per-repo agent-config convention across all project repos (read-only).
 verify-repos:
     agents-verify
@@ -35,7 +31,6 @@ verify-repos:
 verify-all:
     agents-doctor
     mcp-sync verify
-    toolbelt-diff
     bash tests/sync-roundtrip.sh
     gitleaks detect --source . --no-git --redact --verbose
     agents-verify
@@ -53,7 +48,6 @@ test:
     yq -e . stacks/windmill/docker-compose.yml >/dev/null
     for f in agents/*.json; do jq -e . "$f" >/dev/null; done
     ruff check .
-    toolbelt-diff
     bash tests/sync-roundtrip.sh
     bash tests/enforcement_e2e.sh
     uv run --script tests/agent_system_contract.py
@@ -62,7 +56,6 @@ test:
     uv run --script tests/personal_actions_smoke.py
     uv run --script tests/personal_actions_webhook_live.py
     uv run --script tests/windmill_stack_smoke.py
-    uv run --script tests/dash_smoke.py
     uv run --script tests/webdash_smoke.py
     uv run --script tests/prompt_injection_policy.py
     uv run --script tests/behavioral_policy.py

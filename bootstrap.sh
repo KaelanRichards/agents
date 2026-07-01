@@ -35,15 +35,6 @@ echo "==> agent CLIs (claude + codex)"
 command -v codex >/dev/null 2>&1 || brew install codex || npm install -g @openai/codex || true
 command -v claude >/dev/null 2>&1 || curl -fsSL https://claude.ai/install.sh | bash || npm install -g @anthropic-ai/claude-code || true
 
-echo "==> optional Nix (set BOOTSTRAP_NIX=1 for the reproducible flake toolbelt)"
-if [ "${BOOTSTRAP_NIX:-0}" = "1" ]; then
-	if ! command -v nix >/dev/null 2>&1; then
-		curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix -o /tmp/nix-installer.sh
-		sh /tmp/nix-installer.sh install --no-confirm
-	fi
-	echo "    Nix ready — pinned toolbelt:  nix develop ~/.config/agents"
-fi
-
 echo "==> link helper scripts + project dir"
 mkdir -p "$HOME/.local/bin" "$HOME/code"
 for s in "$AH"/bin/*; do
@@ -75,9 +66,8 @@ ln -sf "$AH/AGENTS.md" "$HOME/.codex/AGENTS.md"
 # Symlink (not copy) jj config so edits to the canonical file take effect immediately —
 # matches how every other dotfile here is wired.
 ln -sf "$AH/jj/config.toml" "$HOME/.config/jj/config.toml"
-mkdir -p "$HOME/.config/tmux" "$HOME/.config/zellij"
+mkdir -p "$HOME/.config/tmux"
 ln -sf "$AH/tmux/tmux.conf" "$HOME/.config/tmux/tmux.conf"
-ln -sf "$AH/zellij/config.kdl" "$HOME/.config/zellij/config.kdl"
 
 echo "==> zsh (env for ALL shells via ~/.zshenv; interactive via ~/.zshrc)"
 # ~/.zshenv is read by every zsh incl. non-interactive agent shells -> toolchain on PATH
@@ -100,6 +90,6 @@ cat <<'NEXT'
   2. Secret:         export GITHUB_PAT=...   (add to ~/.zshrc or a secrets manager)
   3. Default shell:  chsh -s "$(command -v zsh)"
   4. Work in a persistent session so it survives disconnect / a closed laptop:
-       tmux new -s work        # or: zellij
+       tmux new -s work
        # detach: Ctrl-b d      reattach: tmux attach -t work
 NEXT

@@ -97,7 +97,9 @@ def main() -> None:
     auth = load_json(ROOT / "mcp.auth.json")
     assert auth["policy"]["token_copying"] == "forbidden-by-default"
     auth_servers = auth["servers"]
-    assert set(auth_servers) == set(MCP_REMOTE_BRIDGES) | set(MCP_REMOTE_WRAPPERS) | {"datadog"}
+    assert set(auth_servers) == set(MCP_REMOTE_BRIDGES) | set(MCP_REMOTE_WRAPPERS) | {
+        "datadog"
+    }
     assert (
         auth_servers["datadog"]["url"]
         == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
@@ -303,7 +305,6 @@ def main() -> None:
         "mcp-contract",
         "prompt-injection-policy",
         "personal-actions-dry-run",
-        "dashboard-smoke",
         "queue-smoke",
         "policy-enforcement",
         "enforcement-e2e",

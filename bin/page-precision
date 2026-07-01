@@ -8,7 +8,7 @@ This computes precision WITH:
   - a Wilson score lower bound (95% by default) — the statistically-honest "precision is at least X",
   - a minimum-sample gate — below N labeled pages, report INSUFFICIENT-DATA and never trip CI.
 The weekly digest reports the point estimate + Wilson lower bound; a CI/regression check uses the
-lower bound (not the point estimate) and only past the min-N gate. (specs/fleet-improvement-plan.md B2.)
+lower bound (not the point estimate) and only past the min-N gate.
 
 Input: one or more JSONL audit ledgers. A "page" = a line the agent DM'd. Its verdict comes from
 either:

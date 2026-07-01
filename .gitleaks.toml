@@ -13,6 +13,4 @@ paths = [
   '''.*\.rmeta$''',
   '''.*\.rlib$''',
   '''.*Cargo\.lock$''',
-  # Vendored minified browser libs (xterm.js etc.) — high-entropy minified strings, not secrets.
-  '''desktop/dist/vendor/.*''',
 ]

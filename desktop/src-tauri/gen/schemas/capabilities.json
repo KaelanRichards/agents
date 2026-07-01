@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Core capabilities for the main window: notifications, opener, and the app's own IPC commands.","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-show","core:window:allow-hide","core:window:allow-set-focus","notification:default","opener:default"]}}

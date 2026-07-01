@@ -45,7 +45,7 @@ Run `agents-doctor` to confirm it's healthy.
 
 ```bash
 mosh you@vm          # or ssh (mosh survives flaky networks)
-tmux new -s work     # or: zellij        (persistent session)
+tmux new -s work                         (persistent session)
 yc                   # Claude, hands-off   (yx for Codex; or plain claude/codex)
 # ...work...
 # detach: Ctrl-b d   → close your laptop. The VM keeps running.
@@ -60,18 +60,13 @@ All surfaces read the same data (machines+cost, health, MCP, CI/PRs, sessions, q
 from one typed backend — **`agentd`** (`web/agentd.py`), which imports `scripts/agent_control.py`
 directly so the ledger + event log fire identically no matter which surface triggers an action.
 Pick a surface by context:
-- **`agents-status`** — one-shot text overview.
-- **`dash`** — live TUI control center (panels + keys: `r` refresh · `s` sync · `d` doctor · `g` grafana · `q` quit).
+- **`agents-status`** — one-shot text overview (the quick local view).
 - **`dashweb`** — live HTML control center: SSE cards, streamed action logs, control buttons
-  (sync/doctor/provision/teardown/reboot, MCP add/remove), embedded Grafana + terminal.
-- **desktop app** (`desktop/`) — native macOS Tauri app: tray status pill, native approval
-  notifications, Keychain-stored tokens, PTY attach. See `desktop/README.md`.
+  (sync/doctor/provision/teardown/reboot, MCP add/remove), embedded Grafana + terminal — the
+  primary remote/phone surface (tailnet access, mutation controls).
 
-> Maintenance note: four surfaces over one data model is a known cost, kept honest by the single
-> `agentd` backend. The **desktop app is the primary macOS surface** and **`dashweb` is the primary
-> remote/phone surface** (tailnet access, mutation controls). `dash` and `agents-status` stay as
-> quick local views. Before adding a feature, put it in the `agentd` read model / action set first
-> (so every surface inherits it), then wire the UI — preferring the desktop app and `dashweb`.
+> Maintenance note: before adding a feature, put it in the `agentd` read model / action set first
+> (so every surface inherits it), then wire the UI.
 
 ```bash
 dashweb     # local: http://localhost:8787 (read-only without WEBDASH_TOKEN)
@@ -106,17 +101,6 @@ If the VM has local drift, use `agents-reconcile --apply` instead. It stashes tr
 untracked changes, resets the clone to `origin/main`, relinks helpers, and regenerates MCP/agent
 configs. On an always-on VM, `agents-reconcile install-user-timer` installs the self-healing user
 timer.
-
-## Reproducible env (Nix, optional)
-
-A hermetic, pinned alternative to the brew toolbelt — additive, doesn't replace `bootstrap.sh`.
-```bash
-nix develop ~/.config/agents        # ad-hoc shell with the pinned toolbelt
-# or, with direnv:  cd ~/.config/agents && direnv allow
-```
-`flake.nix` pins every CLI tool via nixpkgs (`flake.lock` records the exact revision). Languages
-stay mise/uv-managed; `claude`/`codex` install separately. On the VM,
-`BOOTSTRAP_NIX=1 bash ~/.config/agents/bootstrap.sh` installs Nix alongside brew.
 
 ## Teardown (stop billing)
 
@@ -178,8 +162,8 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
   every agent shell exports `OTEL_*` automatically (no per-session `obs env`). On the VM, `serve`
   installs `systemd/otel-stack.service` and turns telemetry on so cost/usage accrues 24/7.
 - **CI** (`.github/workflows/ci.yml`): lints + validates on every push; weekly it runs the
-  bootstrap smoke test, `agents-doctor`, the sync round-trip test, and `nix flake check`.
-- **Auto-updates:** Dependabot (Actions) + the `update-flake` workflow open CI-validated PRs.
+  bootstrap smoke test, `agents-doctor`, and the sync round-trip test.
+- **Auto-updates:** Dependabot (Actions) opens CI-validated PRs.
 
 ## Notes
 - Secrets are **never** committed — only `bearer_token_env_var` *names* live in `mcp.json`;

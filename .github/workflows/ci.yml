@@ -70,7 +70,7 @@ jobs:
           for t in tests/agent_system_contract.py tests/agent_control_smoke.py \
                    tests/bigquery_mcp_smoke.py tests/personal_actions_smoke.py \
                    tests/personal_actions_webhook_live.py \
-                   tests/windmill_stack_smoke.py tests/dash_smoke.py \
+                   tests/windmill_stack_smoke.py \
                    tests/webdash_smoke.py tests/prompt_injection_policy.py \
                    tests/behavioral_policy.py; do
             [ -f "$t" ] || { echo "::warning::missing $t"; continue; }
@@ -78,9 +78,6 @@ jobs:
             uv run --script "$t"
             echo "::endgroup::"
           done
-
-      - name: Toolbelt parity (Brewfile <-> flake.nix)
-        run: bash bin/toolbelt-diff
 
   bootstrap-smoke:
     name: bootstrap on fresh Ubuntu
@@ -109,18 +106,3 @@ jobs:
           test -f "$HOME/.codex/config.toml" && echo "codex config ok"
           agents-doctor
           bash "$HOME/.config/agents/tests/sync-roundtrip.sh"
-          uv run --script "$HOME/.config/agents/tests/dash_smoke.py"
-
-  flake:
-    name: nix flake check (linux)
-    # Validates the flake on Linux too. Heavy-ish; weekly or on demand.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v6
-      - uses: DeterminateSystems/nix-installer-action@main
-      - name: flake check + build devShell
-        run: |
-          nix flake check
-          nix develop --command bash -lc 'jj --version && rg --version | head -1 && echo SHELL_OK'
