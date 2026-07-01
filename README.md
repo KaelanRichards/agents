@@ -2,8 +2,9 @@
 
 Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md`), MCP servers
 (`mcp.json`), subagents/skills/hooks, helper scripts (`bin/`), shell env (`zsh/agents.env.zsh`
-for all shells plus `zsh/agents.zsh` for interactive extras), dashboards, observability, CI,
-and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
+for all shells plus `zsh/agents.zsh` for interactive extras), a status dashboard
+(`agents-status` locally, `dashweb` over the tailnet), CI, and a `bootstrap.sh` that reproduces
+the whole thing on a fresh box.
 
 The shared MCP set includes official OAuth-backed Linear, Sentry, Notion, Granola, Cloudflare,
 and Slack MCPs bridged through `mcp-remote` or a narrow wrapper, the official Datadog US5 remote
