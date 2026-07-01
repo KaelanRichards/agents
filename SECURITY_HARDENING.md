@@ -54,7 +54,6 @@ Created and applied Hetzner firewall `agents-tight` to server `agents`, then mov
 
 - Allow inbound UDP `41641` from `0.0.0.0/0` and `::/0` for Tailscale direct connectivity.
 - No inbound public TCP SSH rule remains.
-- No public access to webdash; it remains localhost-bound and exposed through Tailscale Serve.
 
 Verified firewall:
 
@@ -81,16 +80,6 @@ AllowAgentForwarding no
 
 Verified the file via SSH after reload. SSH access through `Host agents` works over Tailscale.
 
-### VM dashboard posture
-
-Confirmed the dashboard remains bound locally and served through Tailscale:
-
-```text
-127.0.0.1:8787        webdash
-100.84.252.93:443     tailscale serve
-```
-
-Confirmed `WEBDASH_TOKEN` is configured and `/home/kaelan/.config/agents/webdash.env` is mode `0600`.
 
 ## Could Not Apply Non-Interactively
 
@@ -121,7 +110,7 @@ Firewall stealth mode is on
 docker ps --filter name=vizcom_pg --filter name=vizcom_redis --format 'table {{.Names}}\t{{.Ports}}\t{{.Status}}'
 hcloud firewall describe agents-tight
 ssh agents 'sudo -n cat /etc/ssh/sshd_config.d/99-agent-hardening.conf'
-ssh agents 'ss -tuln | awk "NR==1 || /:22|:443|:8787|41641/"'
+ssh agents 'ss -tuln | awk "NR==1 || /:22|:443|41641/"'
 tailscale status
 gitleaks detect --source /Users/kaelan/.config/agents --no-git --redact --verbose
 agents-doctor

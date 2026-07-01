@@ -158,10 +158,6 @@ This is the single source of truth for both agents. Canonical file lives at
 - **VM self-heal**: `agents-reconcile --apply` stashes local drift, resets a plain-git VM clone to
   `origin/main`, relinks helpers, and regenerates MCP/agent config. `agents-reconcile
   install-user-timer` installs the periodic user timer.
-- **Web dashboard**: `dashweb` — live HTML control center at `localhost:8787`: SSE cards,
-  streamed action logs, embedded `ttyd` terminal, real cost; controls for
-  sync/doctor/provision/teardown/reboot and MCP add/remove. Localhost-only; `serve` (on the VM)
-  runs it always-on behind `tailscale serve` (tailnet HTTPS + cookie auth).
 
 ## Security policy (agents + MCP)
 - **Destructive ops are blocked** by the guard hook (`rm -rf /`, disk wipes, `curl|bash`,

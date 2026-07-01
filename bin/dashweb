@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# dashweb — native HTML control center (FastAPI; single-file via uv). Binds to localhost only.
-# Phone access: ssh -L 8787:localhost:8787 you@host  then open http://localhost:8787
-exec uv run --quiet --script "$HOME/.config/agents/web/dashboard.py" "$@"

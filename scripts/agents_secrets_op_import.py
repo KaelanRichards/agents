@@ -17,15 +17,27 @@ REF_ENV = SECRETS_DIR / "agents.1password.env"
 ITEMS: dict[str, list[tuple[Path, str, str]]] = {
     "personal-actions": [
         (SECRETS_DIR / "personal-actions.env", "PERSONAL_ACTIONS_PROVIDER", "provider"),
-        (SECRETS_DIR / "personal-actions.env", "PERSONAL_ACTIONS_WEBHOOK_URL", "webhook_url"),
-        (SECRETS_DIR / "personal-actions.env", "PERSONAL_ACTIONS_WEBHOOK_TOKEN", "webhook_token"),
+        (
+            SECRETS_DIR / "personal-actions.env",
+            "PERSONAL_ACTIONS_WEBHOOK_URL",
+            "webhook_url",
+        ),
+        (
+            SECRETS_DIR / "personal-actions.env",
+            "PERSONAL_ACTIONS_WEBHOOK_TOKEN",
+            "webhook_token",
+        ),
         (
             SECRETS_DIR / "personal-actions.env",
             "PERSONAL_ACTIONS_WEBHOOK_HMAC_SECRET",
             "webhook_hmac_secret",
         ),
         (SECRETS_DIR / "personal-actions.env", "PERSONAL_ACTIONS_DRY_RUN", "dry_run"),
-        (SECRETS_DIR / "personal-actions.env", "PERSONAL_ACTIONS_ALLOW_HTTP", "allow_http"),
+        (
+            SECRETS_DIR / "personal-actions.env",
+            "PERSONAL_ACTIONS_ALLOW_HTTP",
+            "allow_http",
+        ),
         (
             SECRETS_DIR / "personal-actions.env",
             "PERSONAL_ACTIONS_REQUIRE_APPROVAL",
@@ -33,7 +45,11 @@ ITEMS: dict[str, list[tuple[Path, str, str]]] = {
         ),
     ],
     "gmail-compose": [
-        (SECRETS_DIR / "personal-actions.env", "PERSONAL_GMAIL_COMPOSE_CLIENT_ID", "client_id"),
+        (
+            SECRETS_DIR / "personal-actions.env",
+            "PERSONAL_GMAIL_COMPOSE_CLIENT_ID",
+            "client_id",
+        ),
         (
             SECRETS_DIR / "personal-actions.env",
             "PERSONAL_GMAIL_COMPOSE_CLIENT_SECRET",
@@ -46,7 +62,11 @@ ITEMS: dict[str, list[tuple[Path, str, str]]] = {
         ),
     ],
     "gmail-modify": [
-        (SECRETS_DIR / "personal-actions.env", "PERSONAL_GMAIL_MODIFY_CLIENT_ID", "client_id"),
+        (
+            SECRETS_DIR / "personal-actions.env",
+            "PERSONAL_GMAIL_MODIFY_CLIENT_ID",
+            "client_id",
+        ),
         (
             SECRETS_DIR / "personal-actions.env",
             "PERSONAL_GMAIL_MODIFY_CLIENT_SECRET",
@@ -95,11 +115,19 @@ ITEMS: dict[str, list[tuple[Path, str, str]]] = {
     "windmill-admin": [
         (SECRETS_DIR / "windmill-admin.env", "WINDMILL_BASE_URL", "base_url"),
         (SECRETS_DIR / "windmill-admin.env", "WINDMILL_ADMIN_EMAIL", "admin_email"),
-        (SECRETS_DIR / "windmill-admin.env", "WINDMILL_ADMIN_PASSWORD", "admin_password"),
+        (
+            SECRETS_DIR / "windmill-admin.env",
+            "WINDMILL_ADMIN_PASSWORD",
+            "admin_password",
+        ),
         (SECRETS_DIR / "windmill-admin.env", "WINDMILL_WORKSPACE", "workspace"),
     ],
     "windmill-oauth": [
-        (SECRETS_DIR / "windmill-oauth.env", "GOOGLE_OAUTH_CLIENT_ID", "google_client_id"),
+        (
+            SECRETS_DIR / "windmill-oauth.env",
+            "GOOGLE_OAUTH_CLIENT_ID",
+            "google_client_id",
+        ),
         (
             SECRETS_DIR / "windmill-oauth.env",
             "GOOGLE_OAUTH_CLIENT_SECRET",
@@ -115,7 +143,11 @@ ITEMS: dict[str, list[tuple[Path, str, str]]] = {
             "WINDMILL_GMAIL_OAUTH_CLIENT_SECRET",
             "gmail_client_secret",
         ),
-        (SECRETS_DIR / "windmill-oauth.env", "WINDMILL_GCAL_OAUTH_CLIENT_ID", "gcal_client_id"),
+        (
+            SECRETS_DIR / "windmill-oauth.env",
+            "WINDMILL_GCAL_OAUTH_CLIENT_ID",
+            "gcal_client_id",
+        ),
         (
             SECRETS_DIR / "windmill-oauth.env",
             "WINDMILL_GCAL_OAUTH_CLIENT_SECRET",
@@ -134,9 +166,6 @@ ITEMS: dict[str, list[tuple[Path, str, str]]] = {
     ],
     "windmill-stack": [
         (SECRETS_DIR / "windmill.env", "POSTGRES_PASSWORD", "postgres_password"),
-    ],
-    "webdash": [
-        (Path.home() / ".config" / "agents" / "webdash.env", "WEBDASH_TOKEN", "token"),
     ],
 }
 

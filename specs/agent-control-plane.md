@@ -14,7 +14,7 @@ The shared agent environment becomes a local, auditable control plane for multip
 
 ## Scope
 - **In:** Local CLI tools under `bin/`, stdlib Python helpers under `scripts/`, profile JSON under `profiles/`, generated output under gitignored `generated/`, runtime state under gitignored `state/`, a broker MCP server, smoke tests, and docs/status wiring.
-- **In:** Conservative MVP behavior that composes with existing `mcp-sync`, `agents-sync`, `swarm`, `dash`, `dashweb`, jj, tmux, and personal-action policy.
+- **In:** Conservative MVP behavior that composes with existing `mcp-sync`, `agents-sync`, `swarm`, `agents-status`, jj, tmux, and personal-action policy.
 - **Out:** Replacing Claude/Codex/Hermes, adopting a full external orchestrator, exposing a public HTTP service, broadening personal-action/provider privileges, or auto-approving production mutations.
 
 ## Constraints

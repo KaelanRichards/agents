@@ -2,9 +2,8 @@
 
 Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md`), MCP servers
 (`mcp.json`), subagents/skills/hooks, helper scripts (`bin/`), shell env (`zsh/agents.env.zsh`
-for all shells plus `zsh/agents.zsh` for interactive extras), a status dashboard
-(`agents-status` locally, `dashweb` over the tailnet), CI, and a `bootstrap.sh` that reproduces
-the whole thing on a fresh box.
+for all shells plus `zsh/agents.zsh` for interactive extras), a `agents-status` overview, CI,
+and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
 
 The shared MCP set includes official OAuth-backed Linear, Sentry, Notion, Granola, Cloudflare,
 and Slack MCPs bridged through `mcp-remote` or a narrow wrapper, the official Datadog US5 remote
@@ -52,34 +51,16 @@ yc                   # Claude, hands-off   (yx for Codex; or plain claude/codex)
 # detach: Ctrl-b d   → close your laptop. The VM keeps running.
 mosh you@vm; tmux attach -t work   # later, from anywhere — exactly where you left it
 ```
-**From your phone:** a terminal app (Blink / Termius) over SSH/Mosh, **or** the web dashboard
-at `https://<vm>.<tailnet>.ts.net` (see below), or Claude Code's `/remote-control`.
+**From your phone:** a terminal app (Blink / Termius) over SSH/Mosh, or Claude Code's `/remote-control`.
 
-## Dashboards & control
+## Status & control
 
-Two surfaces, pick by context:
-- **`agents-status`** — one-shot text overview (the quick local view).
-- **`dashweb`** — live HTML control center: SSE cards, streamed action logs, control buttons
-  (sync/doctor/provision/teardown/reboot, MCP add/remove), embedded terminal — the primary
-  remote/phone surface (tailnet access, mutation controls). It shells out to the same CLIs
-  (`agents-status`, `agents-doctor`, `mcp-sync`, …) so actions and their audit trail stay identical.
+- **`agents-status`** — one-shot text overview: VMs + cost, health, MCP servers, repo/CI + open
+  PRs, and tmux sessions. Run it locally or over SSH on the VM.
+- **`fleet-monitor`** — VM heartbeat / dead-man's-switch (systemd timer).
 
-```bash
-dashweb     # local: http://localhost:8787 (read-only without WEBDASH_TOKEN)
-```
-Panel prerequisites: terminal panel needs `ttyd -p 7681 -W zsh`.
-Dashboard mutation controls (`sync`, `doctor`, queue/approval actions, MCP add/remove, VM actions)
-require `WEBDASH_TOKEN` and same-origin CSRF headers even on localhost.
-
-### Always-on + phone access (on the VM)
-```bash
-serve       # on the VM: installs the webdash systemd service (always-on) + tailscale serve
-```
-Runs webdash 24/7 (systemd, `Restart=always`, linger) behind **`tailscale serve`** at
-`https://<vm>.<tailnet>.ts.net` — tailnet-only HTTPS, webdash stays localhost-bound. A
-`WEBDASH_TOKEN` (in the VM's `webdash.env`) gates it as defense-in-depth: first visit with
-`?token=<token>` sets a 30-day cookie, then the bare URL works. Requires Tailscale "Serve"
-enabled on the tailnet + `tailscale up` on the VM and your devices.
+Remote/phone access is a terminal app (Blink / Termius) over SSH/Mosh, or Claude Code's
+`/remote-control`.
 
 ## Keep laptop and VM in sync
 
@@ -90,7 +71,6 @@ jj -R ~/.config/agents describe -m "update config"
 jj -R ~/.config/agents bookmark set main -r @ && jj -R ~/.config/agents git push
 # VM — pull & regenerate (run on the VM):
 git -C ~/.config/agents pull && mcp-sync && agents-sync
-systemctl --user restart webdash.service    # if the dashboard changed
 ```
 
 If the VM has local drift, use `agents-reconcile --apply` instead. It stashes tracked and
@@ -154,7 +134,7 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 
 ## Notes
 - Secrets are **never** committed — only `bearer_token_env_var` *names* live in `mcp.json`;
-  tokens live in the macOS keychain (laptop) or `webdash.env` (VM).
+  tokens live in the macOS keychain (laptop) or gitignored `~/.config/agents-secrets/*.env` (VM).
 - MCP stdio package versions are pinned in `mcp.json`; use `mcp-update` before intentionally
   bumping them.
 - The custom `agents` MCP server is read-only by default for task/config mutation. Set

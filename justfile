@@ -55,7 +55,6 @@ test:
     uv run --script tests/personal_actions_smoke.py
     uv run --script tests/personal_actions_webhook_live.py
     uv run --script tests/windmill_stack_smoke.py
-    uv run --script tests/webdash_smoke.py
     uv run --script tests/prompt_injection_policy.py
     uv run --script tests/behavioral_policy.py
 

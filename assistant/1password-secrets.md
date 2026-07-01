@@ -53,7 +53,6 @@ That file must be mode `0600`.
 - `personal-actions.env`: webhook token, HMAC secret, Gmail OAuth client secrets, refresh tokens.
 - `windmill-admin.env`: Windmill admin password.
 - `windmill-oauth.env`: OAuth client secrets.
-- `webdash.env`: dashboard token, if present.
 - `HCLOUD_TOKEN`: Hetzner API token, if used for provision/teardown/status.
 
 ## Personal Actions Migration
