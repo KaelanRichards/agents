@@ -44,13 +44,13 @@
 			"env": {
 				"SLACK_DM_TARGET": "U04E9M9235G"
 			},
-			"startup_timeout_sec": 30
+			"startup_timeout_sec": 60
 		},
 		"slack": {
 			"type": "stdio",
 			"command": "$AGENTS_HOME/bin/slack-official-mcp",
 			"args": [],
-			"startup_timeout_sec": 30
+			"startup_timeout_sec": 60
 		},
 		"agent-broker": {
 			"type": "stdio",
