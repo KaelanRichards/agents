@@ -40,7 +40,7 @@ The shared agent environment becomes a local, auditable control plane for multip
 - [x] T4 — Eval harness — files: `bin/agent-eval`, `evals/tasks/*.json`, `scripts/agent_control.py`
 - [x] T5 — Approval inbox — files: `bin/agent-approve`, `scripts/agent_control.py`, `web/dashboard.py`
 - [x] T6 — Agent profile compiler — files: `scripts/agent_control.py`, `bin/agents-sync`
-- [x] T7 — MCP broker — files: `mcp-servers/agent-broker/server.py`, `bin/agent-broker-mcp`, `mcp.json`
+- [x] T7 — MCP broker — files: `mcp-servers/agents/server.py` (`authorize_tool_call`), `mcp.json`
 - [x] T8 — Skill trust metadata audit — files: `bin/skills-audit`
 - [x] T9 — Prompt-injection fixtures/tests — files: `tests/prompt_injection_policy.py`, `tests/fixtures/prompt-injection/*`
 - [x] T10 — Status/docs/tests — files: `bin/agents-status`, `web/dashboard.py`, `README.md`, `tests/agent_system_contract.py`

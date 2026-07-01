@@ -21,7 +21,6 @@ REQUIRED_MCP = {
     "sentry",
     "bigquery",
     "agents",
-    "agent-broker",
     "personal-actions",
     "linear",
     "slack-dm",
@@ -166,7 +165,6 @@ def main() -> None:
     assert servers["bigquery"]["args"] == []
     assert servers["github"]["bearer_token_env_var"] == "GITHUB_PAT"
     assert servers["personal-actions"]["command"].endswith("/bin/personal-actions-mcp")
-    assert servers["agent-broker"]["command"].endswith("/bin/agent-broker-mcp")
     assert (ROOT / "bin" / "mcp-auth").exists()
     assert (ROOT / "scripts" / "mcp_auth.py").exists()
     slack_wrapper = read(ROOT / "bin" / "slack-official-mcp")
@@ -253,8 +251,8 @@ def main() -> None:
     assert "/trash" in server
     assert "/delete" not in server
 
-    broker = read(ROOT / "mcp-servers" / "agent-broker" / "server.py")
-    assert_contains(broker, "authorize_tool_call", "agent-broker MCP")
+    agents_server = read(ROOT / "mcp-servers" / "agents" / "server.py")
+    assert_contains(agents_server, "authorize_tool_call", "agents MCP broker tool")
 
     control = read(ROOT / "scripts" / "agent_control.py")
     for phrase in [

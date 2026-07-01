@@ -1,12 +1,22 @@
 {
-  "name": "code-edit",
-  "description": "Normal coding work in a repository with tests and local file edits.",
-  "mcp_servers": ["context7", "filesystem", "github", "agents", "agent-broker"],
-  "allowed_tools": ["read", "grep", "glob", "edit", "apply_patch", "repo_status", "repo_diff", "list_tasks", "run_tests"],
-  "disallowed_tools": ["personal_write", "prod_mutation", "destructive_shell"],
-  "filesystem": {"mode": "workspace-write", "roots": ["current_repo"]},
-  "shell": {"mode": "guarded", "mutating": true},
-  "confirm": ["dependency_install", "network_write", "push"],
-  "skills": ["spec", "qa"],
-  "risk": "medium"
+	"name": "code-edit",
+	"description": "Normal coding work in a repository with tests and local file edits.",
+	"mcp_servers": ["context7", "filesystem", "github", "agents"],
+	"allowed_tools": [
+		"read",
+		"grep",
+		"glob",
+		"edit",
+		"apply_patch",
+		"repo_status",
+		"repo_diff",
+		"list_tasks",
+		"run_tests"
+	],
+	"disallowed_tools": ["personal_write", "prod_mutation", "destructive_shell"],
+	"filesystem": { "mode": "workspace-write", "roots": ["current_repo"] },
+	"shell": { "mode": "guarded", "mutating": true },
+	"confirm": ["dependency_install", "network_write", "push"],
+	"skills": ["spec", "qa"],
+	"risk": "medium"
 }

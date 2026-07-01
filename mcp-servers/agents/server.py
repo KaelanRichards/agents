@@ -189,5 +189,42 @@ def list_pending_approvals(limit: int = 20) -> str:
     )
 
 
+@mcp.tool()
+def get_profile(name: str) -> str:
+    """Return one canonical agent permission profile."""
+    return json.dumps(agent_control.load_profile(name), indent=2, sort_keys=True)
+
+
+@mcp.tool()
+def authorize_tool_call(
+    profile: str,
+    server: str,
+    tool: str,
+    mutation: bool = False,
+    context_tainted: bool = False,
+) -> str:
+    """Check whether a profile allows an MCP/tool call; records the decision in the run ledger.
+
+    Set context_tainted=True when the call would act on data drawn from an untrusted source
+    (a fetched web page, an inbound email/Slack message, a Datadog/Sentry payload). A mutation
+    under taint always requires confirmation, and on high/critical profiles is refused outright.
+    Advisory only — the load-bearing enforcement is the profile-broker PreToolUse hook."""
+    decision = agent_control.broker_authorize(
+        profile, server, tool, mutation, context_tainted
+    )
+    agent_control.append_ledger(
+        {
+            "kind": "broker",
+            "status": "allowed" if decision["allowed"] else "denied",
+            "profile": profile,
+            "agent": "",
+            "repo": "",
+            "prompt": f"{server}.{tool}",
+            "details": decision,
+        }
+    )
+    return json.dumps(decision, indent=2, sort_keys=True)
+
+
 if __name__ == "__main__":
     mcp.run()

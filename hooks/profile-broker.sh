@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # profile-broker.sh — Claude PreToolUse hook that ENFORCES the active agentp profile on MCP tool
-# calls. This is the load-bearing counterpart to the agent-broker MCP (which is only advisory):
-# a PreToolUse hook runs before the model sees the result and cannot be routed around.
+# calls. This is the load-bearing counterpart to the advisory `authorize_tool_call` tool on the
+# agents MCP: a PreToolUse hook runs before the model sees the result and cannot be routed around.
 #
 # No-op unless AGENTS_PROFILE is set (i.e. the session was launched via `agentp <profile>`) and the
 # pending tool is an MCP tool. Reuses broker_authorize() so policy lives in exactly one place.

@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# agent-broker-mcp — launch the local profile-aware MCP policy broker.
-set -euo pipefail
-exec uv run --quiet --script "$HOME/.config/agents/mcp-servers/agent-broker/server.py" "$@"

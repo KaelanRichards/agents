@@ -127,11 +127,12 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
     tamper-evident (also checked by `agents-doctor`).
   - `agent-approve request|list|show|approve|reject|expire` manages the local approval inbox.
     Requests carry a TTL (default 24h, `--ttl-hours`) and auto-expire instead of lingering pending.
-  - `agent-broker` holds the policy logic (effect classification from an authoritative registry,
-    fail-closed for unknown tools; provenance rule: a mutation with `context_tainted=true` is
-    forced to confirm and refused on high/critical profiles). It runs in **two** places: the MCP
-    facade (advisory, for interactive queries) and — load-bearing — the `profile-broker` PreToolUse
-    **hook** (`hooks/profile-broker.sh`), which the model cannot route around. Same code, both paths.
+  - The broker policy (effect classification from an authoritative registry, fail-closed for
+    unknown tools; provenance rule: a mutation with `context_tainted=true` is forced to confirm and
+    refused on high/critical profiles) lives in `scripts/agent_control.py` and runs in **two**
+    places: the `authorize_tool_call` tool on the `agents` MCP (advisory, for interactive queries)
+    and — load-bearing — the `profile-broker` PreToolUse **hook** (`hooks/profile-broker.sh`), which
+    the model cannot route around. Same code, both paths.
 - **`just ci-local`** — local verification loop: shell scripts, JSON locks, sync round-trip,
   agent-system contract checks, dashboard smoke test, `gitleaks`, and `agents-doctor`.
 - **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,

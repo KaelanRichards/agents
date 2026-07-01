@@ -9,7 +9,6 @@
 		"notion",
 		"granola",
 		"slack",
-		"agent-broker",
 		"slack-dm"
 	],
 	"allowed_tools": [

@@ -52,11 +52,6 @@
 			"args": [],
 			"startup_timeout_sec": 60
 		},
-		"agent-broker": {
-			"type": "stdio",
-			"command": "$AGENTS_HOME/bin/agent-broker-mcp",
-			"args": []
-		},
 		"personal-actions": {
 			"type": "stdio",
 			"command": "$AGENTS_HOME/bin/personal-actions-mcp",

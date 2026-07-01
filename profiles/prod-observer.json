@@ -1,14 +1,7 @@
 {
 	"name": "prod-observer",
 	"description": "Read-first production investigation across observability and issue systems.",
-	"mcp_servers": [
-		"datadog",
-		"sentry",
-		"bigquery",
-		"linear",
-		"agent-broker",
-		"slack-dm"
-	],
+	"mcp_servers": ["datadog", "sentry", "bigquery", "linear", "slack-dm"],
 	"allowed_tools": [
 		"datadog_read",
 		"sentry_read",

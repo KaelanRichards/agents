@@ -396,7 +396,7 @@ def codex_sandbox_args(profile: dict[str, Any]) -> list[str]:
     )
     args = ["--sandbox", sandbox, "--ask-for-approval", approval]
     # Disable every known MCP server not granted by the profile. Quote the server id so hyphenated
-    # names (slack-dm, agent-broker, …) parse as a single TOML key.
+    # names (slack-dm, personal-actions, …) parse as a single TOML key.
     allow_servers = set(profile["mcp_servers"])
     for srv in sorted(set(claude_mcp_servers()) - allow_servers):
         args += ["-c", f'mcp_servers."{srv}".enabled=false']
@@ -1265,7 +1265,7 @@ TOOL_EFFECTS = {
     # bigquery facade (read-only by construction)
     "bigquery_execute_sql_readonly": "read",
     "bigquery_dry_run_sql": "read",
-    # agent-broker (policy queries only)
+    # agents MCP — broker / policy query tools (read-only)
     "list_profiles": "read",
     "get_profile": "read",
     "authorize_tool_call": "read",
