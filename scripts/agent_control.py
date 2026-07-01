@@ -237,11 +237,6 @@ def compile_profile(profile: dict[str, Any]) -> None:
         )
     (GENERATED / "claude").mkdir(parents=True, exist_ok=True)
     (GENERATED / "claude" / f"{name}.md").write_text(summary, encoding="utf-8")
-    (GENERATED / "gemini" / name).mkdir(parents=True, exist_ok=True)
-    (GENERATED / "gemini" / name / "GEMINI.md").write_text(summary, encoding="utf-8")
-    (GENERATED / "qwen" / name).mkdir(parents=True, exist_ok=True)
-    (GENERATED / "qwen" / name / "QWEN.md").write_text(summary, encoding="utf-8")
-    write_json(GENERATED / "opencode" / f"{name}.json", profile)
     toml = [
         f'name = "{name}"',
         f'description = "{profile["description"]}"',
@@ -1135,12 +1130,6 @@ def agent_command(agent: str, task: str, profile: str = "") -> str:
             flags = " ".join(codex_sandbox_args(load_profile(profile)))
             return f"codex exec {flags} {quoted}"
         return f"codex exec --full-auto {quoted}"
-    if agent == "opencode":
-        return f"opencode run {quoted}"
-    if agent == "gemini":
-        return f"gemini -p {quoted}"
-    if agent == "qwen":
-        return f"qwen -p {quoted}"
     raise SystemExit(f"unsupported agent: {agent}")
 
 

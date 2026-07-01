@@ -121,7 +121,7 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
       so the `profile-broker` PreToolUse hook enforces per-tool read/write policy that settings
       alone can't express (e.g. allow Datadog reads, deny Datadog writes on the same server).
     - **Codex**: native `--sandbox` + `--ask-for-approval` derived from the profile's risk/mode.
-    - `agentp list` shows the profiles. (Gemini/Qwen/OpenCode artifacts are compiled for reference.)
+    - `agentp list` shows the profiles.
   - `agent-ledger record|list|show|verify` stores append-only run events under gitignored
     `state/runs/`. Entries form a SHA-256 hash chain; `agent-ledger verify` confirms it is
     tamper-evident (also checked by `agents-doctor`).

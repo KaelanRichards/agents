@@ -21,11 +21,6 @@
           "setup": "Prefer the official Datadog Claude plugin. For manual HTTP config, use the synced URL and complete the Datadog OAuth flow in Claude.",
           "verify_command": "claude mcp get datadog"
         },
-        "opencode": {
-          "support": "supported-via-http-remote-auth-when-client-supports-it",
-          "setup": "Use the synced HTTP URL if the client supports Datadog remote OAuth; otherwise use the Datadog local binary fallback.",
-          "verify_command": "opencode mcp list"
-        },
         "codex": {
           "support": "supported-via-client-native-http-oauth",
           "setup": "Run `codex mcp login datadog` once on the host after `mcp-sync`. If Codex remote auth is unreliable, install Datadog's local `datadog_mcp_cli`, run `datadog_mcp_cli login`, and override Datadog in untracked `mcp.local.json`.",
@@ -48,11 +43,6 @@
           "support": "supported-via-stdio-bridge",
           "setup": "Run `mcp-auth login linear` once on the target host, then use the synced Linear MCP entry normally.",
           "verify_command": "claude mcp get linear"
-        },
-        "opencode": {
-          "support": "supported-via-stdio-bridge",
-          "setup": "Use the synced stdio MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login linear`.",
-          "verify_command": "opencode mcp list"
         },
         "codex": {
           "support": "supported-via-stdio-bridge",
@@ -77,11 +67,6 @@
           "setup": "Run `mcp-auth login sentry` once on the target host, then use the synced Sentry MCP entry normally.",
           "verify_command": "claude mcp get sentry"
         },
-        "opencode": {
-          "support": "supported-via-stdio-bridge",
-          "setup": "Use the synced stdio MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login sentry`.",
-          "verify_command": "opencode mcp list"
-        },
         "codex": {
           "support": "supported-via-stdio-bridge",
           "setup": "Use the synced stdio MCP entry; Codex does not need native remote OAuth support for this server.",
@@ -104,11 +89,6 @@
           "support": "supported-via-stdio-bridge",
           "setup": "Run `mcp-auth login notion` once on the target host, then use the synced Notion MCP entry normally.",
           "verify_command": "claude mcp get notion"
-        },
-        "opencode": {
-          "support": "supported-via-stdio-bridge",
-          "setup": "Use the synced stdio MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login notion`.",
-          "verify_command": "opencode mcp list"
         },
         "codex": {
           "support": "supported-via-stdio-bridge",
@@ -133,11 +113,6 @@
           "setup": "Run `mcp-auth login granola` once on the target host, then use the synced Granola MCP entry normally.",
           "verify_command": "claude mcp get granola"
         },
-        "opencode": {
-          "support": "supported-via-stdio-bridge",
-          "setup": "Use the synced stdio MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login granola`.",
-          "verify_command": "opencode mcp list"
-        },
         "codex": {
           "support": "supported-via-stdio-bridge",
           "setup": "Use the synced stdio MCP entry; Codex does not need native remote OAuth support for this server.",
@@ -160,11 +135,6 @@
           "support": "supported-via-stdio-bridge",
           "setup": "Run `mcp-auth login cloudflare` once on the target host, then use the synced Cloudflare MCP entry normally.",
           "verify_command": "claude mcp get cloudflare"
-        },
-        "opencode": {
-          "support": "supported-via-stdio-bridge",
-          "setup": "Use the synced stdio MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login cloudflare`.",
-          "verify_command": "opencode mcp list"
         },
         "codex": {
           "support": "supported-via-stdio-bridge",
@@ -190,11 +160,6 @@
           "support": "supported-via-stdio-bridge",
           "setup": "Configure the host-local Slack MCP app credentials, run `mcp-auth login slack` once on the target host, then use the synced Slack MCP entry normally.",
           "verify_command": "claude mcp get slack"
-        },
-        "opencode": {
-          "support": "supported-via-stdio-bridge",
-          "setup": "Use the synced wrapper MCP entry; auth state comes from ~/.mcp-auth after `mcp-auth login slack`.",
-          "verify_command": "opencode mcp list"
         },
         "codex": {
           "support": "supported-via-stdio-bridge",

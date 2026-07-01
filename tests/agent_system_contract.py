@@ -119,10 +119,6 @@ def main() -> None:
             == "supported-via-stdio-bridge"
         )
         assert (
-            auth_servers[name]["clients"]["opencode"]["support"]
-            == "supported-via-stdio-bridge"
-        )
-        assert (
             auth_servers[name]["clients"]["codex"]["support"]
             == "supported-via-stdio-bridge"
         )
@@ -134,10 +130,6 @@ def main() -> None:
         assert auth_servers[name]["callback_host"] == "127.0.0.1"
         assert (
             auth_servers[name]["clients"]["claude"]["support"]
-            == "supported-via-stdio-bridge"
-        )
-        assert (
-            auth_servers[name]["clients"]["opencode"]["support"]
             == "supported-via-stdio-bridge"
         )
         assert (

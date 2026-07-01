@@ -152,7 +152,7 @@ def check_contract() -> int:
         if meta.get("token_store") != expected_store:
             errors.append(f"{name}: token_store must be {expected_store}")
         clients = meta.get("clients", {})
-        for required in ("claude", "opencode", "codex"):
+        for required in ("claude", "codex"):
             if required not in clients:
                 errors.append(f"{name}: missing client auth metadata for {required}")
     # Pinned mcp-remote versions must have a populated OAuth store, or unattended startup re-auths
@@ -205,7 +205,7 @@ def status_one(name: str) -> None:
     if meta.get("host_requirements"):
         print(f"host_requirements: {meta.get('host_requirements')}")
     print()
-    for client in ("claude", "opencode", "codex"):
+    for client in ("claude", "codex"):
         cfg = meta.get("clients", {}).get(client, {})
         support = cfg.get("support", "unknown")
         verify = cfg.get("verify_command", "")
