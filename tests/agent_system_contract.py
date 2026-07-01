@@ -311,7 +311,6 @@ def main() -> None:
     }.issubset(eval_tasks)
     assert (ROOT / "systemd" / "agentq-worker.service").exists()
     assert (ROOT / "systemd" / "agentq-worker.timer").exists()
-    assert (ROOT / "systemd" / "otel-stack.service").exists()
     assert (ROOT / "bin" / "agentp").exists()
     assert (ROOT / "tests" / "behavioral_policy.py").exists()
 

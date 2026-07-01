@@ -162,8 +162,6 @@ This is the single source of truth for both agents. Canonical file lives at
   streamed action logs, embedded Grafana + `ttyd` terminal, real cost; controls for
   sync/doctor/provision/teardown/reboot and MCP add/remove. Localhost-only; `serve` (on the VM)
   runs it always-on behind `tailscale serve` (tailnet HTTPS + cookie auth).
-- **Observability**: `obs up` starts a local OTel → Prometheus → Grafana stack; `obs env`
-  prints the env to stream Claude Code telemetry to it.
 
 ## Security policy (agents + MCP)
 - **Destructive ops are blocked** by the guard hook (`rm -rf /`, disk wipes, `curl|bash`,

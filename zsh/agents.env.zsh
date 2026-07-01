@@ -47,15 +47,3 @@ do
   fi
 done
 unset _agents_secret_env _agents_secret_mode
-
-# Agent telemetry: when the local OTel stack is marked on (`obs on` / `obs up`, or `serve` on the
-# VM), stream Claude Code metrics/logs to it. Reaches the non-interactive shells agents spawn, so
-# usage/cost accrues without a per-session opt-in. Safe no-op if the collector isn't running.
-if [ -f "${AGENTS_HOME:-$HOME/.config/agents}/observability/.telemetry-on" ]; then
-  export CLAUDE_CODE_ENABLE_TELEMETRY=1
-  export OTEL_METRICS_EXPORTER=otlp
-  export OTEL_LOGS_EXPORTER=otlp
-  export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-  export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}"
-  export OTEL_METRIC_EXPORT_INTERVAL="${OTEL_METRIC_EXPORT_INTERVAL:-10000}"
-fi

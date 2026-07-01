@@ -35,7 +35,6 @@ run `mcp-auth plan` for OAuth-backed hosted MCPs you want on the host.
 | `serve` | (VM) run webdash always-on + expose via `tailscale serve` |
 | `swarm "task" ...` | parallel agents across jj workspaces |
 | `wt new <name>` | one isolated workspace |
-| `obs up` | start the observability stack |
 
 ## Extending
 - **New MCP server:** `mcp-sync add …` (never hand-edit `~/.claude.json` or Codex's managed block).

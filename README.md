@@ -71,7 +71,7 @@ Pick a surface by context:
 ```bash
 dashweb     # local: http://localhost:8787 (read-only without WEBDASH_TOKEN)
 ```
-Panel prerequisites: Grafana panel needs `obs up`; terminal panel needs `ttyd -p 7681 -W zsh`.
+Panel prerequisites: terminal panel needs `ttyd -p 7681 -W zsh`.
 Dashboard mutation controls (`sync`, `doctor`, queue/approval actions, MCP add/remove, VM actions)
 require `WEBDASH_TOKEN` and same-origin CSRF headers even on localhost.
 
@@ -157,10 +157,6 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
   one exact message id moved to Trash, never permanent or bulk deletion.
 - **`windmill-up` / `windmill-status` / `windmill-down`** — manage the local open-source Windmill
   backend for live personal actions. See `assistant/windmill/README.md`.
-- **`obs up|down|on|off|status`** — local OpenTelemetry → Prometheus → Grafana stack for agent
-  cost/usage. `obs on`/`obs up` drop a `.telemetry-on` marker that `zsh/agents.env.zsh` reads, so
-  every agent shell exports `OTEL_*` automatically (no per-session `obs env`). On the VM, `serve`
-  installs `systemd/otel-stack.service` and turns telemetry on so cost/usage accrues 24/7.
 - **CI** (`.github/workflows/ci.yml`): lints + validates on every push; weekly it runs the
   bootstrap smoke test, `agents-doctor`, and the sync round-trip test.
 - **Auto-updates:** Dependabot (Actions) opens CI-validated PRs.
