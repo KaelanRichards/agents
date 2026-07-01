@@ -109,7 +109,7 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
     load-bearing — the `profile-broker` PreToolUse **hook** (`hooks/profile-broker.sh`), which the
     model cannot route around. Same code, both paths.
 - **`just ci-local`** — local verification loop: shell scripts, JSON locks, sync round-trip,
-  agent-system contract checks, dashboard smoke test, `gitleaks`, and `agents-doctor`.
+  agent-system contract checks, dashboard smoke test, and `agents-doctor`.
 - **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,
   then report upstream drift without modifying files. `skills.lock.json` is the source of truth.
 - **`mcp-update`** — report npm drift for pinned stdio MCP packages without modifying `mcp.json`.

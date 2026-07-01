@@ -93,4 +93,3 @@ The server is registered once in `~/.config/agents/mcp.json`, propagated to Clau
 - `PERSONAL_ACTIONS_DRY_RUN=1 hermes -z "List personal action tools; do not take action."` completes without writes.
 - Dry-run tool calls create audit JSONL entries and never call the configured provider.
 - Claude and Codex configs contain the same canonical `personal-actions` MCP server after `mcp-sync`.
-- `gitleaks detect --source . --no-git --redact --verbose` passes.

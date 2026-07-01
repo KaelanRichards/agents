@@ -18,7 +18,7 @@ ok() { printf '  [ ok ] %s\n' "$1"; }
 
 echo "== tools =="
 missing=""
-for t in jj git mise uv rg fd fzf jq yq ast-grep sd gron bat eza tree scc ruff biome shellcheck shfmt gitleaks just watchexec entr hyperfine xh pandoc starship gh delta; do
+for t in jj git mise uv rg fd fzf jq yq ast-grep sd gron bat eza tree scc ruff biome shellcheck shfmt just watchexec entr hyperfine xh pandoc starship gh delta; do
 	command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
 done
 [ -z "$missing" ] && ok "core toolbelt present" || bad "missing tools:$missing"
@@ -33,6 +33,8 @@ done
 
 echo "== helper scripts on PATH =="
 for s in "$AH"/bin/*; do
+	[ -f "$s" ] || continue
+	[ -x "$s" ] || continue
 	n=$(basename "$s")
 	[ -x "$HOME/.local/bin/$n" ] && ok "$n" || warn "$n not on ~/.local/bin (run bootstrap or re-link)"
 done
@@ -203,7 +205,10 @@ cur=$(mktemp)
 	command -v codex >/dev/null 2>&1 && codex --version 2>/dev/null | head -1
 } >"$cur"
 if [ -f "$vfile" ]; then
-	diff -q "$vfile" "$cur" >/dev/null 2>&1 && ok "agent CLI versions unchanged" || { warn "agent CLI version changed — re-verify mcp-sync/agents-sync output"; cp "$cur" "$vfile"; }
+	diff -q "$vfile" "$cur" >/dev/null 2>&1 && ok "agent CLI versions unchanged" || {
+		warn "agent CLI version changed — re-verify mcp-sync/agents-sync output"
+		cp "$cur" "$vfile"
+	}
 else
 	cp "$cur" "$vfile"
 	ok "recorded agent CLI version baseline"
@@ -212,7 +217,8 @@ rm -f "$cur"
 
 echo "== container runtime (local dev) =="
 if command -v docker >/dev/null 2>&1; then
-	if docker info >/dev/null 2>&1; then ok "docker present + daemon running"
+	if docker info >/dev/null 2>&1; then
+		ok "docker present + daemon running"
 	else warn "docker on PATH but daemon not running (OrbStack: 'orb start')"; fi
 elif command -v orb >/dev/null 2>&1; then
 	warn "OrbStack installed but 'docker' not on PATH (run 'orb start')"

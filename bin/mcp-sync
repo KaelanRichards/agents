@@ -15,7 +15,8 @@
 #
 # Usage:
 #   mcp-sync                              regenerate both tool configs from canonical
-#   mcp-sync list                         list canonical servers
+#   mcp-sync list                         list effective servers (canonical + local overlay)
+#   mcp-sync list --canonical             list canonical servers only
 #   mcp-sync add  <name> -- <cmd...>      add a stdio server, then sync
 #   mcp-sync add-http <name> <url> [ENV]  add an http server (optional bearer env var), then sync
 #   mcp-sync remove <name>                remove a server, then sync
@@ -31,29 +32,32 @@ set -euo pipefail
 
 AGENTS_HOME="${AGENTS_HOME:-$HOME/.config/agents}"
 CANON="$AGENTS_HOME/mcp.json"
-LOCAL_OVERLAY="$AGENTS_HOME/mcp.local.json"   # optional per-machine overlay (gitignored)
+LOCAL_OVERLAY="$AGENTS_HOME/mcp.local.json" # optional per-machine overlay (gitignored)
 CLAUDE_JSON="$HOME/.claude.json"
 CODEX_TOML="$HOME/.codex/config.toml"
 BEGIN="# >>> mcp-sync (managed: edit ~/.config/agents/mcp.json then run mcp-sync) >>>"
 END="# <<< mcp-sync <<<"
 
-command -v jq >/dev/null || { echo "mcp-sync: jq is required" >&2; exit 1; }
+command -v jq >/dev/null || {
+	echo "mcp-sync: jq is required" >&2
+	exit 1
+}
 mkdir -p "$AGENTS_HOME" "$HOME/.codex"
-[ -f "$CANON" ] || echo '{"mcpServers":{}}' > "$CANON"
+[ -f "$CANON" ] || echo '{"mcpServers":{}}' >"$CANON"
 
 build_effective() {
-  # Compose the effective config (canonical ⊕ optional local overlay) and expand
-  # $AGENTS_HOME / $HOME placeholders in string fields. Claude/Codex don't shell-expand
-  # the `command` field, so paths must be absolute at write time.
-  local out="$1"
-  local merged
-  merged=$(mktemp)
-  if [ -f "$LOCAL_OVERLAY" ]; then
-    jq -s '.[0].mcpServers as $a | (.[1].mcpServers // {}) as $b | {mcpServers: ($a + $b)}' "$CANON" "$LOCAL_OVERLAY" > "$merged"
-  else
-    cp "$CANON" "$merged"
-  fi
-  jq --arg AH "$AGENTS_HOME" --arg H "$HOME" '
+	# Compose the effective config (canonical ⊕ optional local overlay) and expand
+	# $AGENTS_HOME / $HOME placeholders in string fields. Claude/Codex don't shell-expand
+	# the `command` field, so paths must be absolute at write time.
+	local out="$1"
+	local merged
+	merged=$(mktemp)
+	if [ -f "$LOCAL_OVERLAY" ]; then
+		jq -s '.[0].mcpServers as $a | (.[1].mcpServers // {}) as $b | {mcpServers: ($a + $b)}' "$CANON" "$LOCAL_OVERLAY" >"$merged"
+	else
+		cp "$CANON" "$merged"
+	fi
+	jq --arg AH "$AGENTS_HOME" --arg H "$HOME" '
     def expand: if type=="string" then (gsub("\\$AGENTS_HOME"; $AH) | gsub("\\$HOME"; $H)) else . end;
     .mcpServers |= with_entries(.value |= (
         (if has("command") then .command |= expand else . end)
@@ -61,8 +65,8 @@ build_effective() {
       | (if has("args")    then .args    |= (if type=="array" then map(expand) else . end) else . end)
       | (if has("env")     then .env     |= (if type=="object" then with_entries(.value |= (expand | if type=="string" then . else tostring end)) else . end) else . end)
     ))
-  ' "$merged" > "$out"
-  rm -f "$merged"
+  ' "$merged" >"$out"
+	rm -f "$merged"
 }
 
 cmd="${1:-sync}"
@@ -71,61 +75,101 @@ if [ $# -gt 0 ]; then shift; fi
 # Server names become TOML table keys and Claude object keys. Keep them to a safe charset so a
 # name can never need exotic quoting (and so a typo can't silently mis-register on one client).
 valid_name() {
-  case "$1" in
-    '' ) echo "mcp-sync: server name must not be empty" >&2; return 1 ;;
-    *[!A-Za-z0-9_-]* ) echo "mcp-sync: invalid server name '$1' (allowed: letters, digits, '_', '-')" >&2; return 1 ;;
-  esac
+	case "$1" in
+	'')
+		echo "mcp-sync: server name must not be empty" >&2
+		return 1
+		;;
+	*[!A-Za-z0-9_-]*)
+		echo "mcp-sync: invalid server name '$1' (allowed: letters, digits, '_', '-')" >&2
+		return 1
+		;;
+	esac
 }
 
 case "$cmd" in
-  list)
-    jq -r '.mcpServers // {} | to_entries[] | "  \(.key): \(.value.type // "stdio")  \(.value.command // .value.url // "")"' "$CANON"
-    exit 0 ;;
-  add)
-    name="$1"; shift
-    valid_name "$name" || exit 2
-    if [ "${1:-}" = "--" ]; then shift; fi
-    cmdbin="$1"; shift
-    args=$(printf '%s\n' "$@" | jq -R . | jq -s .)
-    t=$(mktemp); jq --arg n "$name" --arg c "$cmdbin" --argjson a "$args" \
-      '.mcpServers[$n] = {type:"stdio", command:$c, args:$a}' "$CANON" > "$t" && mv "$t" "$CANON"
-    echo "added stdio server '$name'" ;;
-  add-http)
-    name="$1"; url="$2"; bearer="${3:-}"
-    valid_name "$name" || exit 2
-    if [ -n "$bearer" ]; then
-      t=$(mktemp); jq --arg n "$name" --arg u "$url" --arg b "$bearer" \
-        '.mcpServers[$n] = {type:"http", url:$u, bearer_token_env_var:$b}' "$CANON" > "$t" && mv "$t" "$CANON"
-    else
-      t=$(mktemp); jq --arg n "$name" --arg u "$url" \
-        '.mcpServers[$n] = {type:"http", url:$u}' "$CANON" > "$t" && mv "$t" "$CANON"
-    fi
-    echo "added http server '$name'" ;;
-  remove|rm)
-    name="$1"
-    t=$(mktemp); jq --arg n "$name" 'del(.mcpServers[$n])' "$CANON" > "$t" && mv "$t" "$CANON"
-    echo "removed '$name'" ;;
-  check)
-    jq -e . "$CANON" >/dev/null || { echo "ERROR: invalid JSON in $CANON" >&2; exit 1; }
-    [ -f "$LOCAL_OVERLAY" ] && jq -e . "$LOCAL_OVERLAY" >/dev/null
-    eff=$(mktemp); trap 'rm -f "$eff"' EXIT
-    build_effective "$eff"
-    echo "canonical: $CANON"
-    [ -f "$LOCAL_OVERLAY" ] && echo "overlay:   $LOCAL_OVERLAY (applied)"
-    echo "effective config that would be written:"
-    jq . "$eff"
-    exit 0 ;;
-  drift)
-    exec "$AGENTS_HOME/bin/mcp-update" ;;
-  sync) : ;;
-  help|-h|--help)
-    sed -n '2,36p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'; exit 0 ;;
-  *) echo "mcp-sync: unknown command '$cmd' (try: mcp-sync help)" >&2; exit 1 ;;
+list)
+	if [ "${1:-}" = "--canonical" ]; then
+		jq -r '.mcpServers // {} | to_entries[] | "  \(.key): \(.value.type // "stdio")  \(.value.command // .value.url // "")"' "$CANON"
+	else
+		eff=$(mktemp)
+		trap 'rm -f "$eff"' EXIT
+		build_effective "$eff"
+		jq -r '.mcpServers // {} | to_entries[] | "  \(.key): \(.value.type // "stdio")  \(.value.command // .value.url // "")"' "$eff"
+	fi
+	exit 0
+	;;
+add)
+	name="$1"
+	shift
+	valid_name "$name" || exit 2
+	if [ "${1:-}" = "--" ]; then shift; fi
+	cmdbin="$1"
+	shift
+	args=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+	t=$(mktemp)
+	jq --arg n "$name" --arg c "$cmdbin" --argjson a "$args" \
+		'.mcpServers[$n] = {type:"stdio", command:$c, args:$a}' "$CANON" >"$t" && mv "$t" "$CANON"
+	echo "added stdio server '$name'"
+	;;
+add-http)
+	name="$1"
+	url="$2"
+	bearer="${3:-}"
+	valid_name "$name" || exit 2
+	if [ -n "$bearer" ]; then
+		t=$(mktemp)
+		jq --arg n "$name" --arg u "$url" --arg b "$bearer" \
+			'.mcpServers[$n] = {type:"http", url:$u, bearer_token_env_var:$b}' "$CANON" >"$t" && mv "$t" "$CANON"
+	else
+		t=$(mktemp)
+		jq --arg n "$name" --arg u "$url" \
+			'.mcpServers[$n] = {type:"http", url:$u}' "$CANON" >"$t" && mv "$t" "$CANON"
+	fi
+	echo "added http server '$name'"
+	;;
+remove | rm)
+	name="$1"
+	t=$(mktemp)
+	jq --arg n "$name" 'del(.mcpServers[$n])' "$CANON" >"$t" && mv "$t" "$CANON"
+	echo "removed '$name'"
+	;;
+check)
+	jq -e . "$CANON" >/dev/null || {
+		echo "ERROR: invalid JSON in $CANON" >&2
+		exit 1
+	}
+	[ -f "$LOCAL_OVERLAY" ] && jq -e . "$LOCAL_OVERLAY" >/dev/null
+	eff=$(mktemp)
+	trap 'rm -f "$eff"' EXIT
+	build_effective "$eff"
+	echo "canonical: $CANON"
+	[ -f "$LOCAL_OVERLAY" ] && echo "overlay:   $LOCAL_OVERLAY (applied)"
+	echo "effective config that would be written:"
+	jq . "$eff"
+	exit 0
+	;;
+drift)
+	exec "$AGENTS_HOME/bin/mcp-update"
+	;;
+sync) : ;;
+help | -h | --help)
+	sed -n '2,36p' "$0" | sed 's/^#\{0,1\} \{0,1\}//'
+	exit 0
+	;;
+*)
+	echo "mcp-sync: unknown command '$cmd' (try: mcp-sync help)" >&2
+	exit 1
+	;;
 esac
 
-jq -e . "$CANON" >/dev/null 2>&1 || { echo "ERROR: invalid JSON in $CANON" >&2; exit 1; }
+jq -e . "$CANON" >/dev/null 2>&1 || {
+	echo "ERROR: invalid JSON in $CANON" >&2
+	exit 1
+}
 if [ -f "$LOCAL_OVERLAY" ] && ! jq -e . "$LOCAL_OVERLAY" >/dev/null 2>&1; then
-  echo "ERROR: invalid JSON in $LOCAL_OVERLAY" >&2; exit 1
+	echo "ERROR: invalid JSON in $LOCAL_OVERLAY" >&2
+	exit 1
 fi
 
 EFFECTIVE=$(mktemp)
@@ -136,9 +180,9 @@ build_effective "$EFFECTIVE"
 #    Map bearer_token_env_var -> Authorization header with ${VAR} expansion.
 #    Validate-then-swap so a broken jq template doesn't disable Claude.
 if [ -f "$CLAUDE_JSON" ]; then
-  cp "$CLAUDE_JSON" "$CLAUDE_JSON.mcp-sync.bak"
+	cp "$CLAUDE_JSON" "$CLAUDE_JSON.mcp-sync.bak"
 else
-  echo '{}' > "$CLAUDE_JSON"
+	echo '{}' >"$CLAUDE_JSON"
 fi
 t=$(mktemp)
 jq --slurpfile c "$EFFECTIVE" '.mcpServers = (($c[0].mcpServers // {}) | map_values(
@@ -148,42 +192,42 @@ jq --slurpfile c "$EFFECTIVE" '.mcpServers = (($c[0].mcpServers // {}) | map_val
        else (.headers = ((.headers // {}) + {Authorization: ("Bearer ${" + .bearer_token_env_var + "}")})) | del(.bearer_token_env_var)
        end)
     else . end)
-    # startup_timeout_sec / tool_timeout_sec are Codex-only reliability knobs — strip them from the
-    # Claude config (Claude has its own MCP timeout handling and would not understand these keys).
-    | del(.startup_timeout_sec, .tool_timeout_sec)))' "$CLAUDE_JSON" > "$t"
+    # enabled/startup_timeout_sec/tool_timeout_sec are Codex-only knobs — strip them from the
+    # Claude config (Claude has its own MCP enablement + timeout handling).
+    | del(.enabled, .startup_timeout_sec, .tool_timeout_sec)))' "$CLAUDE_JSON" >"$t"
 if jq -e . "$t" >/dev/null 2>&1; then
-  mv "$t" "$CLAUDE_JSON"
+	mv "$t" "$CLAUDE_JSON"
 else
-  rm -f "$t"
-  echo "ERROR: generated Claude JSON is invalid — left $CLAUDE_JSON unchanged" >&2
-  exit 1
+	rm -f "$t"
+	echo "ERROR: generated Claude JSON is invalid — left $CLAUDE_JSON unchanged" >&2
+	exit 1
 fi
 
 # 2) Codex CLI (TOML) — replace only the managed block, leave the rest untouched.
 #    Serialize via jq (shape) -> yq (json->toml) so TOML quoting, nested tables, arrays and dotted
 #    keys are handled by a real serializer instead of hand-rolled lines. yq is REQUIRED here.
 if ! command -v yq >/dev/null 2>&1; then
-  echo "ERROR: yq is required to generate the Codex TOML (it's in the toolbelt) — install yq and retry" >&2
-  exit 1
+	echo "ERROR: yq is required to generate the Codex TOML (it's in the toolbelt) — install yq and retry" >&2
+	exit 1
 fi
 [ -f "$CODEX_TOML" ] || touch "$CODEX_TOML"
 cp "$CODEX_TOML" "$CODEX_TOML.mcp-sync.bak"
 # Shape each server for Codex: drop "type", rename headers->http_headers, keep command/args/url/
-# bearer_token_env_var/env and the Codex-only reliability knobs (startup_timeout_sec/tool_timeout_sec);
+# bearer_token_env_var/env and the Codex-only knobs (enabled/startup_timeout_sec/tool_timeout_sec);
 # drop null fields so absent keys are omitted. yq turns this JSON into faithfully-quoted TOML.
 codex_block=$(jq '{
     mcp_servers: ((.mcpServers // {}) | with_entries(.value |= (
-      { command, args, url, bearer_token_env_var, startup_timeout_sec, tool_timeout_sec, env, http_headers: .headers }
+      { command, args, url, bearer_token_env_var, enabled, startup_timeout_sec, tool_timeout_sec, env, http_headers: .headers }
       | with_entries(select(.value != null))
     )))
   }' "$EFFECTIVE" | yq -p json -o toml)
 t=$(mktemp)
-awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1;next} $0==e{skip=0;next} skip!=1{print}' "$CODEX_TOML" > "$t" && mv "$t" "$CODEX_TOML"
+awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1;next} $0==e{skip=0;next} skip!=1{print}' "$CODEX_TOML" >"$t" && mv "$t" "$CODEX_TOML"
 {
-  echo "$BEGIN"
-  printf '%s\n' "$codex_block"
-  echo "$END"
-} >> "$CODEX_TOML"
+	echo "$BEGIN"
+	printf '%s\n' "$codex_block"
+	echo "$END"
+} >>"$CODEX_TOML"
 
 # Remote HTTP MCP support is required for any remaining direct HTTP servers and is harmless for
 # stdio bridges. Keep this outside the managed MCP block so other config survives mcp-sync.
@@ -216,29 +260,29 @@ awk '
       print "experimental_use_rmcp_client = true"
     }
   }
-' "$CODEX_TOML" > "$features_tmp" && mv "$features_tmp" "$CODEX_TOML"
+' "$CODEX_TOML" >"$features_tmp" && mv "$features_tmp" "$CODEX_TOML"
 
 # Validate the generated Codex TOML and roll back if broken, so a parse error can't silently
 # disable ALL Codex MCP servers. Prefer yq; fall back to Python's stdlib tomllib (3.11+). If
 # NEITHER validator is available, fail CLOSED (restore backup) rather than ship unvalidated TOML.
 codex_toml_valid() { # 0=valid, 1=invalid, 2=no validator available
-  if command -v yq >/dev/null 2>&1; then
-    yq -p toml "$1" >/dev/null 2>&1
-  elif command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import sys,tomllib; tomllib.load(open(sys.argv[1],"rb"))' "$1" >/dev/null 2>&1
-  else
-    return 2
-  fi
+	if command -v yq >/dev/null 2>&1; then
+		yq -p toml "$1" >/dev/null 2>&1
+	elif command -v python3 >/dev/null 2>&1; then
+		python3 -c 'import sys,tomllib; tomllib.load(open(sys.argv[1],"rb"))' "$1" >/dev/null 2>&1
+	else
+		return 2
+	fi
 }
 if ! codex_toml_valid "$CODEX_TOML"; then
-  rc=$?
-  if [ "$rc" -eq 2 ]; then
-    echo "ERROR: no TOML validator (yq or python3+tomllib) available — refusing to ship unvalidated Codex config; restoring backup" >&2
-  else
-    echo "ERROR: generated Codex TOML is invalid — restoring backup" >&2
-  fi
-  mv "$CODEX_TOML.mcp-sync.bak" "$CODEX_TOML"
-  exit 1
+	rc=$?
+	if [ "$rc" -eq 2 ]; then
+		echo "ERROR: no TOML validator (yq or python3+tomllib) available — refusing to ship unvalidated Codex config; restoring backup" >&2
+	else
+		echo "ERROR: generated Codex TOML is invalid — restoring backup" >&2
+	fi
+	mv "$CODEX_TOML.mcp-sync.bak" "$CODEX_TOML"
+	exit 1
 fi
 
 # Self-heal the mcp-remote OAuth store. mcp-remote namespaces its token cache by its own version
@@ -247,7 +291,7 @@ fi
 # eagerly blocks startup on each server). Migrating the store to the new version dir here keeps a
 # pin bump from silently breaking auth. Best-effort: never fail the sync on this.
 if [ -x "$AGENTS_HOME/bin/mcp-auth" ]; then
-  "$AGENTS_HOME/bin/mcp-auth" migrate >/dev/null || echo "mcp-sync: note — mcp-auth migrate reported a gap (run: mcp-auth login <server>)" >&2
+	"$AGENTS_HOME/bin/mcp-auth" migrate >/dev/null || echo "mcp-sync: note — mcp-auth migrate reported a gap (run: mcp-auth login <server>)" >&2
 fi
 
 n=$(jq '.mcpServers // {} | length' "$EFFECTIVE")

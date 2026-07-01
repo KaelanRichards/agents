@@ -10,7 +10,7 @@
       "supabase/agent-skills",
       "local"
     ],
-    "notes": "Vendored skills should come from this allowlist unless explicitly approved. Update by reviewing upstream diffs, running gitleaks, and opening a PR."
+    "notes": "Vendored skills should come from this allowlist unless explicitly approved. Update by reviewing upstream diffs and opening a PR."
   },
   "skills": {
     "docx": {"source": "anthropics/skills", "path": "skills/docx", "ref": "main", "commit": "690f15cac7f7b4c055c5ab109c79ed9259934081", "trust": "official"},

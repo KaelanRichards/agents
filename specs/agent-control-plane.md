@@ -86,7 +86,6 @@ that gap, guided by the 2025/2026 literature (CaMeL / capability + information-f
 Deferred: A2A / task-DAG planning (no current workload needs cross-agent negotiation; `swarm`
 fan-out remains the parallelism path). Gemini/Qwen/OpenCode profile artifacts stay compiled for
 reference only.
-- `gitleaks detect --source . --no-git --redact --verbose`
 
 ## Iteration 3 — fold policy into native harness enforcement (2026-05-30)
 

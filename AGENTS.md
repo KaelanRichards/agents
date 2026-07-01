@@ -35,7 +35,6 @@ This is the single source of truth for both agents. Canonical file lives at
 - Python: `ruff check` and `ruff format`.
 - JS/TS: `biome check` (lint + format) unless a project config dictates otherwise.
 - Shell: `shellcheck`, then `shfmt -w`.
-- Secrets: run `gitleaks detect` before committing.
 
 ## Automation
 - Task runner: if a `justfile` exists, use `just <task>`.
@@ -117,13 +116,13 @@ This is the single source of truth for both agents. Canonical file lives at
 - Canonical sources live in `~/.config/agents/{agents,skills,hooks}`; run **`agents-sync`**
   after editing to regenerate Claude (`~/.claude/...`) and Codex (`~/.codex/...`).
 - `~/.config/agents` is versioned with jj; after changing canonical agent config, verify with
-  `agents-doctor`, run `gitleaks detect`, and describe/bookmark the jj change before finishing
+  `agents-doctor`, and describe/bookmark the jj change before finishing
   so the repo stays synced. Push only when explicitly asked.
 - **Subagents**: `explorer` (read-only research) and `reviewer` (diff-vs-spec review).
   Delegate noisy research to `explorer`; verify changes with `reviewer` before committing.
 - **Skill `spec`** — spec-driven development: for non-trivial work, draft a `SPEC.md` from
   `~/.config/agents/templates/SPEC.md`, confirm it, implement, then verify with `reviewer`.
-- **Skill `qa`** — pre-commit verify loop: tests + `gitleaks` + lint + `reviewer` vs `SPEC.md`
+- **Skill `qa`** — pre-commit verify loop: tests + lint + `reviewer` vs `SPEC.md`
   → one gap report. CI counterpart: `templates/eval.yml` (PR eval gate).
 - **Parallel work**: `wt new <name>` for one isolated workspace; **`swarm <task>...`** fans out
   N tasks across jj workspaces with parallel headless agents (claude/codex), then review each
