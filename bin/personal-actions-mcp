@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# personal-actions-mcp — narrow Slack/Gmail/Calendar write facade for Claude, Codex, and Hermes.
-# Keep stdio MCP startup independent of interactive 1Password desktop integration.
-# The server loads the legacy chmod-600 env file itself. Move this to 1Password only
-# after unattended service-account auth is available in every MCP runtime.
+# personal-actions-mcp — narrow Slack/Gmail/Calendar write facade for Claude + Codex.
+# The server loads its chmod-600 secrets env file itself (no interactive dependency at startup).
 exec uv run --quiet --script "$HOME/.config/agents/mcp-servers/personal-actions/server.py" "$@"

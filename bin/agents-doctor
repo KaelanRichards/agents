@@ -26,7 +26,6 @@ for t in claude codex; do
 	command -v "$t" >/dev/null 2>&1 && ok "$t present" || warn "$t not on PATH"
 done
 command -v hermes >/dev/null 2>&1 && ok "hermes present" || warn "hermes not on PATH"
-command -v op >/dev/null 2>&1 && ok "op present" || warn "op not on PATH (needed for 1Password-backed agent secrets)"
 
 echo "== instruction symlinks =="
 for f in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
@@ -197,34 +196,6 @@ if [ -f "$pa_env" ]; then
 	fi
 else
 	warn "missing $pa_env"
-fi
-
-echo "== 1Password agent secrets =="
-op_refs="$HOME/.config/agents-secrets/agents.1password.env"
-op_bootstrap="$HOME/.config/agents-secrets/1password-bootstrap.env"
-if command -v op >/dev/null 2>&1; then
-	ok "op CLI available"
-	if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
-		ok "OP_SERVICE_ACCOUNT_TOKEN present in environment"
-	elif [ -f "$op_bootstrap" ]; then
-		mode="$(stat -f '%Lp' "$op_bootstrap" 2>/dev/null || stat -c '%a' "$op_bootstrap" 2>/dev/null || true)"
-		if [ "$mode" = "600" ]; then
-			ok "1Password bootstrap env mode 600"
-		else
-			warn "1Password bootstrap env mode is ${mode:-unknown}; expected 600"
-		fi
-	elif op account list --format json 2>/dev/null | jq -e 'length > 0' >/dev/null 2>&1; then
-		ok "interactive 1Password account configured"
-	else
-		warn "1Password installed but no account/session or service-account bootstrap configured"
-	fi
-	if [ -f "$op_refs" ]; then
-		ok "agents.1password.env present"
-	else
-		warn "agents.1password.env missing (see assistant/1password-secrets.md)"
-	fi
-else
-	warn "op CLI unavailable; 1Password secret references cannot resolve"
 fi
 
 echo "== BigQuery auth =="

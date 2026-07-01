@@ -2,14 +2,4 @@
 # personal-actions-check — verify the configured personal-actions webhook without a write.
 set -euo pipefail
 
-op_env="${AGENTS_1PASSWORD_ENV_FILE:-$HOME/.config/agents-secrets/agents.1password.env}"
-if [ "${AGENTS_SECRETS_DISABLE_1PASSWORD:-0}" != "1" ] &&
-	[ -f "$op_env" ] &&
-	command -v agents-secrets-op-run >/dev/null 2>&1; then
-	if agents-secrets-op-run --env-file "$op_env" -- python3 "$HOME/.config/agents/scripts/personal_actions_check.py" "$@"; then
-		exit 0
-	fi
-	echo "personal-actions-check: 1Password path failed; falling back to legacy env file" >&2
-fi
-
 exec python3 "$HOME/.config/agents/scripts/personal_actions_check.py" "$@"
