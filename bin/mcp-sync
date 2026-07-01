@@ -20,7 +20,6 @@
 #   mcp-sync add-http <name> <url> [ENV]  add an http server (optional bearer env var), then sync
 #   mcp-sync remove <name>                remove a server, then sync
 #   mcp-sync check                        validate canonical JSON + show effective config (no writes)
-#   mcp-sync verify [--strict]            preflight the manifest contract + auth/pin/OAuth state (no writes, no probes)
 #   mcp-sync drift                        report npm pkg drift for stdio MCP packages
 #
 # Path placeholders in the canonical JSON (mcp.json) are expanded at write time:
@@ -115,86 +114,6 @@ case "$cmd" in
     [ -f "$LOCAL_OVERLAY" ] && echo "overlay:   $LOCAL_OVERLAY (applied)"
     echo "effective config that would be written:"
     jq . "$eff"
-    exit 0 ;;
-  verify)
-    # Side-effect-free preflight over the operational contract in mcp.manifest.json. Asserts the
-    # manifest and mcp.json agree, the mcp-auth contract holds, and OAuth state is present; reports
-    # readiness per server. Does NOT run network/auth probes (no OAuth popups) — that stays manual.
-    #   mcp-sync verify [--strict]   (--strict: a degraded/optional gap also exits non-zero)
-    strict=0; [ "${1:-}" = "--strict" ] && strict=1
-    manifest="$AGENTS_HOME/mcp.manifest.json"
-    jq -e . "$CANON" >/dev/null || { echo "ERROR: invalid JSON in $CANON" >&2; exit 1; }
-    [ -f "$manifest" ] || { echo "ERROR: missing $manifest" >&2; exit 1; }
-    err=0; warn=0
-    vbad() { printf '  [FAIL] %s\n' "$1"; err=$((err + 1)); }
-    vwarn() { printf '  [warn] %s\n' "$1"; warn=$((warn + 1)); }
-    vok() { printf '  [ ok ] %s\n' "$1"; }
-
-    echo "== manifest <-> mcp.json =="
-    canon_servers=$(jq -r '.mcpServers // {} | keys[]' "$CANON" | sort)
-    # Named manifest servers + members of any `_group` entry (e.g. the npx-stdio group).
-    man_named=$(jq -r '.servers | to_entries[] | select(.value._group | not) | .key' "$manifest" | sort)
-    man_group=$(jq -r '[.servers[]._group // []] | add // [] | .[]' "$manifest" | sort -u)
-    man_all=$(printf '%s\n%s\n' "$man_named" "$man_group" | sed '/^$/d' | sort -u)
-    # Every server with an operational contract must still exist in mcp.json (catch a stale manifest).
-    while IFS= read -r s; do
-      [ -z "$s" ] && continue
-      if printf '%s\n' "$canon_servers" | grep -qxF "$s"; then vok "manifest server present in mcp.json: $s"
-      else vbad "manifest names '$s' but it is missing from mcp.json (stale contract)"; fi
-    done <<EOF
-$man_all
-EOF
-    # Canonical servers without a manifest entry: fine for local self-contained servers, just note it.
-    while IFS= read -r s; do
-      [ -z "$s" ] && continue
-      printf '%s\n' "$man_all" | grep -qxF "$s" || vwarn "mcp.json server '$s' has no manifest entry (ok for local/self-contained servers)"
-    done <<EOF
-$canon_servers
-EOF
-
-    echo "== pinning =="
-    if jq -e '[.mcpServers[].args // [] | index("mcp-remote@latest")] | any' "$CANON" >/dev/null 2>&1; then
-      vbad "an mcp-remote bridge is pinned to @latest (re-resolves every launch; breaks ~/.mcp-auth coordination — pin a version)"
-    else
-      vok "no mcp-remote@latest (bridges are version-pinned)"
-    fi
-    if [ -f "$AGENTS_HOME/bin/slack-official-mcp" ]; then
-      if grep -qF 'mcp-remote@latest' "$AGENTS_HOME/bin/slack-official-mcp"; then
-        vbad "slack-official-mcp invokes mcp-remote@latest internally — pin the wrapper package"
-      else
-        vok "slack-official-mcp wrapper does not invoke mcp-remote@latest"
-      fi
-    fi
-
-    echo "== auth contract =="
-    if [ -x "$AGENTS_HOME/bin/mcp-auth" ]; then
-      if "$AGENTS_HOME/bin/mcp-auth" check >/dev/null 2>&1; then vok "mcp-auth contract matches mcp.json"
-      else vbad "mcp-auth contract mismatch (run: mcp-auth check)"; fi
-    else
-      vwarn "mcp-auth helper not found — skipping auth-contract check"
-    fi
-
-    echo "== OAuth state (~/.mcp-auth) =="
-    oauth_servers=$(jq -r '.servers | to_entries[] | select((.value.token_type // "") | test("OAuth")) | .key' "$manifest" | sort)
-    if [ -d "$HOME/.mcp-auth" ] && [ -n "$(ls -A "$HOME/.mcp-auth" 2>/dev/null)" ]; then
-      oauth_entries=$(find "$HOME/.mcp-auth" -mindepth 1 -maxdepth 1 -print 2>/dev/null | wc -l | tr -d ' ')
-      vok "$HOME/.mcp-auth present ($oauth_entries entries) — OAuth logins cached"
-    else
-      while IFS= read -r s; do
-        [ -z "$s" ] && continue
-        vwarn "no ~/.mcp-auth state — OAuth server '$s' will prompt login (run: mcp-auth login $s)"
-      done <<EOF
-$oauth_servers
-EOF
-    fi
-
-    echo ""
-    if [ "$err" -gt 0 ]; then
-      echo "mcp-sync verify: $err error(s), $warn warning(s)" >&2; exit 1
-    elif [ "$warn" -gt 0 ] && [ "$strict" -eq 1 ]; then
-      echo "mcp-sync verify: 0 errors, $warn warning(s) — failing under --strict" >&2; exit 1
-    fi
-    echo "mcp-sync verify: ok ($warn warning(s))"
     exit 0 ;;
   drift)
     exec "$AGENTS_HOME/bin/mcp-update" ;;

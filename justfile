@@ -30,7 +30,6 @@ verify-repos:
 # Read-only; catches the drift classes from the 2026-05-28 sync audit.
 verify-all:
     agents-doctor
-    mcp-sync verify
     bash tests/sync-roundtrip.sh
     gitleaks detect --source . --no-git --redact --verbose
     agents-verify

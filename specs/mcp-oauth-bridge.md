@@ -8,7 +8,7 @@ Notion, Granola, Linear, and Sentry are available to every base agent through on
   - Convert canonical Notion/Granola/Linear/Sentry MCP entries from native HTTP remotes to `npx -y mcp-remote@latest ...` stdio entries.
   - Track the operational auth model in `mcp.auth.json`.
   - Extend `mcp-auth` with contract validation, local login, VM login, status, and clear setup plans.
-  - Update docs, manifest, doctor, and contract checks.
+  - Update docs, doctor, and contract checks.
 - **Out:**
   - Copying OAuth tokens between hosts.
   - Building custom hosted-service facades before the official hosted MCPs prove insufficient.
@@ -33,3 +33,14 @@ Notion, Granola, Linear, and Sentry are available to every base agent through on
 - `python3 tests/agent_system_contract.py`
 - `agents-doctor`
 - `gitleaks detect --no-banner --no-git --redact`
+
+## Operational gotchas (salvaged from the retired mcp.manifest.json / mcp-sync verify)
+- **Pin `mcp-remote`, never `@latest`.** `mcp-remote@latest` re-resolves on every launch and breaks
+  the shared `~/.mcp-auth` OAuth coordination — bridges (and the `slack-official-mcp` wrapper) must
+  pin an exact version.
+- **Slack scope changes require an app REINSTALL** (a human step) — updating `SLACK_MCP_SCOPES`
+  alone does nothing until the Slack app is reinstalled. `slack-dm` needs `chat:write`, `im:write`,
+  `im:read`, `im:history`, `reactions:read` (read path is `conversations.history`, never
+  `search.messages`, which needs a user token).
+- **GitHub MCP needs a fine-grained PAT** (`ghp_`/`github_pat_`), **not** a `gh` CLI `gho_` OAuth
+  token nor a `ghs_` App-installation token.
