@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# agent-approve — local approval inbox for risky/outward-facing actions.
-set -euo pipefail
-AH="${AGENTS_HOME:-$HOME/.config/agents}"
-exec python3 "$AH/scripts/agent_control.py" approve "$@"

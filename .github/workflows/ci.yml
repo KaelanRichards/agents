@@ -61,7 +61,7 @@ jobs:
           set -e
           # The repo is checked out outside ~/.config/agents on the runner. Put the bin shims on
           # PATH and point AGENTS_HOME at the checkout so smoke tests that shell out to
-          # agent-profile / agent-approve resolve scripts from here. (Tests that need
+          # agent-profile resolves scripts from here. (Tests that need
           # isolation set their own AGENTS_HOME/AGENTS_STATE tempdir and override these.)
           export PATH="$PWD/bin:$PATH"
           export AGENTS_HOME="$PWD"

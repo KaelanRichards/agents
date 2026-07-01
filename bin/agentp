@@ -66,8 +66,6 @@ if [ "$engine" = "codex" ]; then
 	}
 	# shellcheck disable=SC2207  # intentional word-split: flags contain no spaces in values
 	flags=($(python3 "$CTL" profile codex-flags "$profile"))
-	agent-ledger record --kind launch --status started --profile "$profile" --agent codex \
-		--prompt "agentp --codex $profile" >/dev/null 2>&1 || true
 	export AGENTS_PROFILE="$profile"
 	exec codex "${flags[@]}" "$@"
 fi
@@ -82,8 +80,6 @@ command -v claude >/dev/null 2>&1 || {
 	echo "agentp: claude not on PATH" >&2
 	exit 127
 }
-agent-ledger record --kind launch --status started --profile "$profile" --agent claude \
-	--prompt "agentp $profile" >/dev/null 2>&1 || true
 # AGENTS_PROFILE activates the profile-broker PreToolUse hook for this session.
 export AGENTS_PROFILE="$profile"
 exec claude \

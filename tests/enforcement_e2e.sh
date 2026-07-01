@@ -101,20 +101,15 @@ broker_decision() { broker_out "$1" "$2" | decision_of; }
 	fail "broker should ignore non-MCP tools"
 echo "profile-broker: deny/ask/defer mapping over the real shell entrypoint -> ok"
 
-# Fail-CLOSED-but-observable (review #36): a corrupt/unknown profile must not silently disable the
-# per-tool gate. For an MCP call the broker now DENIES (the gate is the only thing between an MCP
-# write tool and the session); for a non-MCP tool it stays out of the way (defer — Claude's compiled
-# deny-list is the gate there). Either way it leaves a 'hook-error' breadcrumb in the ledger.
+# Fail-CLOSED (review #36): a corrupt/unknown profile must not silently disable the per-tool gate.
+# For an MCP call the broker DENIES (the gate is the only thing between an MCP write tool and the
+# session); for a non-MCP tool it stays out of the way (defer — Claude's compiled deny-list is the
+# gate there).
 out="$(broker_decision _no_such_profile_ mcp__filesystem__write_file)"
 [ "$out" = deny ] || fail "broker should fail CLOSED (deny) on an unknown profile for an MCP call, got: $out"
 out_nonmcp="$(broker_decision _no_such_profile_ Bash)"
 [ "$out_nonmcp" = defer ] || fail "broker should stay out of the way (defer) for a non-MCP tool under an unknown profile, got: $out_nonmcp"
-chain_dir="$AGENTS_STATE/runs"
-if [ -d "$chain_dir" ] && grep -rqs '"status": "hook-error"' "$chain_dir"; then
-	echo "profile-broker: unknown profile fails closed for MCP, defers non-MCP, AND logs hook-error -> ok"
-else
-	fail "broker should log a hook-error breadcrumb on an unknown profile"
-fi
+echo "profile-broker: unknown profile fails closed for MCP, defers non-MCP -> ok"
 
 # Codex MCP subsetting (review #6): codex-flags must DISABLE a server the profile doesn't grant and
 # must NOT disable one it does — so the server subset is a real boundary on Codex, not just advice.

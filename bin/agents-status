@@ -34,12 +34,6 @@ if command -v agent-profile >/dev/null 2>&1; then
 else
 	echo "  agent-profile not on PATH"
 fi
-if command -v agent-ledger >/dev/null 2>&1; then
-	agent-ledger list --limit 5 2>/dev/null | sed 's/^/  run: /' || echo "  runs: none"
-fi
-if command -v agent-approve >/dev/null 2>&1; then
-	agent-approve list --limit 5 2>/dev/null | sed 's/^/  approval: /' || echo "  approvals: none"
-fi
 
 hr "personal actions"
 pa_env="$HOME/.config/agents-secrets/personal-actions.env"

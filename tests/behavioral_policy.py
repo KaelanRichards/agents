@@ -68,36 +68,13 @@ def main() -> None:
         c.classify_effect("datadog", "frobnicate_thing", False) == "write",
     )
 
-    # 3) Provenance rule: a mutation triggered under untrusted (tainted) context must require
-    #    confirmation, and on a high/critical profile must be refused outright.
-    clean = auth(
-        "personal-assistant",
-        "personal-actions",
-        "personal_gmail_send_email",
-        False,
-        context_tainted=False,
-    )
-    tainted = auth(
-        "personal-assistant",
-        "personal-actions",
-        "personal_gmail_send_email",
-        False,
-        context_tainted=True,
+    # 3) A mutation on a high-risk profile is allowed but requires confirmation.
+    send = auth(
+        "personal-assistant", "personal-actions", "personal_gmail_send_email", False
     )
     check(
-        "clean send allowed (with confirm)",
-        clean["allowed"] is True and clean["needs_confirmation"] is True,
-    )
-    check("tainted send blocked on high-risk profile", tainted["allowed"] is False)
-    check(
-        "tainted send flagged for confirmation", tainted["needs_confirmation"] is True
-    )
-
-    # tainted write on a non-high profile is flagged but not auto-blocked (only confirmation forced).
-    rt = auth("repo-maintainer", "agents", "run_task", False, context_tainted=True)
-    check(
-        "tainted write on medium profile needs confirmation",
-        rt["needs_confirmation"] is True,
+        "high-risk send allowed but needs confirmation",
+        send["allowed"] is True and send["needs_confirmation"] is True,
     )
 
     # 4) Per-profile boundaries hold.

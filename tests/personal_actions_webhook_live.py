@@ -102,10 +102,6 @@ def main() -> None:
             sent = json.loads(req["body"])
             check("action framed", sent["action"] == "slack_send_message")
             check("channel forwarded", sent["payload"]["channel"] == "#ops")
-            check(
-                "approval_id stripped from payload",
-                "approval_id" not in sent["payload"],
-            )
 
             h = {k.lower(): v for k, v in req["headers"].items()}
             check("bearer token sent", h.get("authorization") == f"Bearer {TOKEN}")

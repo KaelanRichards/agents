@@ -120,9 +120,6 @@ if [ -x "$AH/bin/agentp" ]; then
 else
 	bad "agentp profile launcher missing"
 fi
-if command -v agent-ledger >/dev/null 2>&1; then
-	agent-ledger verify >/dev/null 2>&1 && ok "run ledger hash chain intact" || warn "run ledger chain verify failed (agent-ledger verify)"
-fi
 if [ -x "$AH/hooks/profile-broker.sh" ]; then
 	if [ -f "$HOME/.claude/settings.json" ] && grep -qF 'profile-broker.sh' "$HOME/.claude/settings.json"; then
 		ok "profile-broker PreToolUse hook wired (native enforcement)"

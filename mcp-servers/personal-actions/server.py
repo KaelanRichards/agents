@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import hashlib
 import hmac
-import importlib.util
 import os
 import re
 import time
@@ -92,124 +91,6 @@ def _dry_run() -> bool:
     return True
 
 
-APPROVAL_ACTIONS = {
-    "slack_send_message",
-    "gmail_send_email",
-    "gmail_trash_email",
-    "calendar_create_event",
-    "calendar_update_event",
-}
-
-
-# Read actions whose results are external, untrusted content. We record a taint marker for each
-# so an audit can see that injected instructions could have entered the session before any write.
-READ_ACTIONS = {
-    "slack_search_messages",
-    "gmail_search_messages",
-    "gmail_get_message",
-    "calendar_list_events",
-    "drive_search_files",
-}
-
-
-def _approval_required(action: str) -> bool:
-    if action not in APPROVAL_ACTIONS:
-        return False
-    # Fail closed: outward-facing writes require an approval handshake by default, matching the
-    # documented confirmation policy. Set PERSONAL_ACTIONS_REQUIRE_APPROVAL=0 to opt a trusted,
-    # already-confirmed environment out (dry-run already short-circuits before this check).
-    value = os.environ.get("PERSONAL_ACTIONS_REQUIRE_APPROVAL")
-    if value is None or value.strip() == "":
-        return True
-    return _truthy(value)
-
-
-def _mark_taint(action: str) -> None:
-    """Append an append-only provenance marker recording that untrusted external content was
-    read into the session. Best-effort: never block a read on a logging failure."""
-    try:
-        _agent_control().append_ledger(
-            {
-                "kind": "taint",
-                "status": "external_read",
-                "profile": "personal-assistant",
-                "agent": "personal-actions",
-                "repo": "",
-                "prompt": action,
-                "details": {"provenance": "untrusted_external", "action": action},
-            }
-        )
-    except Exception:  # noqa: BLE001
-        pass
-
-
-def _agent_control():
-    path = _agents_home() / "scripts" / "agent_control.py"
-    spec = importlib.util.spec_from_file_location("agent_control", path)
-    if not spec or not spec.loader:
-        raise PersonalActionError(f"could not load agent control module at {path}")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def _approval_gate(action: str, payload: dict[str, Any]) -> dict[str, Any] | None:
-    if _dry_run() or not _approval_required(action):
-        return None
-    approval_id = str(payload.get("approval_id", "")).strip()
-    control = _agent_control()
-    conn = control.approval_db()
-    if approval_id:
-        row = conn.execute(
-            "SELECT * FROM approvals WHERE id = ?", (approval_id,)
-        ).fetchone()
-        if not row:
-            raise PersonalActionError(f"approval id not found: {approval_id}")
-        if row["status"] != "approved":
-            return {
-                "approval_required": True,
-                "approval_id": approval_id,
-                "approval_status": row["status"],
-                "message": "approval is not approved; approve it with agent-approve before retrying",
-            }
-        return None
-    request_payload = json.dumps(
-        {"action": action, "payload": _redact(payload)}, sort_keys=True
-    )
-    aid = str(uuid4())
-    conn.execute(
-        "INSERT INTO approvals (id, created_at, updated_at, kind, summary, payload, status, decision_note, expires_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'pending', '', ?)",
-        (
-            aid,
-            _now(),
-            _now(),
-            action,
-            f"Personal action approval required: {action}",
-            request_payload,
-            control.approval_expiry(control.DEFAULT_APPROVAL_TTL_HOURS),
-        ),
-    )
-    conn.commit()
-    control.append_ledger(
-        {
-            "kind": "approval",
-            "status": "pending",
-            "profile": "personal-assistant",
-            "agent": "personal-actions",
-            "repo": "",
-            "prompt": action,
-            "details": {"approval_id": aid, "approval_kind": action},
-        }
-    )
-    return {
-        "approval_required": True,
-        "approval_id": aid,
-        "approval_status": "pending",
-        "message": "approval required; approve with agent-approve and retry with approval_id",
-    }
-
-
 def _redact_text(value: str) -> str:
     out = value
     for pattern in SECRET_PATTERNS:
@@ -255,8 +136,6 @@ def _audit(
     path = log_dir / f"{datetime.now(UTC).date().isoformat()}.jsonl"
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, sort_keys=True) + "\n")
-    if status == "ok" and action in READ_ACTIONS:
-        _mark_taint(action)
 
 
 def _require(name: str, value: str) -> str:
@@ -322,13 +201,7 @@ def _dispatch(action: str, payload: dict[str, Any]) -> str:
             _audit(action, payload, "dry_run", result)
             return _json_response(action, "dry_run", payload, result)
 
-        approval = _approval_gate(action, payload)
-        if approval:
-            _audit(action, payload, "approval_required", approval)
-            return _json_response(action, "approval_required", payload, approval)
-        provider_payload = {
-            key: value for key, value in payload.items() if key != "approval_id"
-        }
+        provider_payload = dict(payload)
 
         if action == "gmail_create_draft" and _gmail_compose_configured_for(
             str(provider_payload.get("account", "personal"))
@@ -652,15 +525,12 @@ def _gmail_get_message_local(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 @mcp.tool()
-def personal_slack_send_message(
-    channel: str, text: str, thread_ts: str = "", approval_id: str = ""
-) -> str:
+def personal_slack_send_message(channel: str, text: str, thread_ts: str = "") -> str:
     """Send one Slack message to a channel, user, or conversation id."""
     payload = {
         "channel": _require("channel", channel),
         "text": _require("text", text),
         "thread_ts": _optional(thread_ts),
-        "approval_id": _optional(approval_id),
     }
     return _dispatch("slack_send_message", payload)
 
@@ -704,7 +574,6 @@ def personal_gmail_send_email(
     bcc: str = "",
     html: bool = False,
     account: str = "personal",
-    approval_id: str = "",
 ) -> str:
     """Send a Gmail email with explicit recipients, subject, and body."""
     payload = {
@@ -715,20 +584,16 @@ def personal_gmail_send_email(
         "cc": _split_csv(cc),
         "bcc": _split_csv(bcc),
         "html": bool(html),
-        "approval_id": _optional(approval_id),
     }
     return _dispatch("gmail_send_email", payload)
 
 
 @mcp.tool()
-def personal_gmail_trash_email(
-    message_id: str, account: str = "personal", approval_id: str = ""
-) -> str:
+def personal_gmail_trash_email(message_id: str, account: str = "personal") -> str:
     """Move one exact Gmail message id to Trash; does not permanently delete."""
     payload = {
         "account": _account(account),
         "message_id": _require("message_id", message_id),
-        "approval_id": _optional(approval_id),
     }
     return _dispatch("gmail_trash_email", payload)
 
@@ -776,7 +641,6 @@ def personal_calendar_create_event(
     location: str = "",
     attendees: str = "",
     account: str = "personal",
-    approval_id: str = "",
 ) -> str:
     """Create one Google Calendar event with ISO-8601 start and end times."""
     payload = {
@@ -788,7 +652,6 @@ def personal_calendar_create_event(
         "description": _optional(description),
         "location": _optional(location),
         "attendees": _split_csv(attendees),
-        "approval_id": _optional(approval_id),
     }
     return _dispatch("calendar_create_event", payload)
 
@@ -804,7 +667,6 @@ def personal_calendar_update_event(
     location: str = "",
     attendees: str = "",
     account: str = "personal",
-    approval_id: str = "",
 ) -> str:
     """Update one Google Calendar event by event id."""
     payload = {
@@ -817,7 +679,6 @@ def personal_calendar_update_event(
         "description": _optional(description),
         "location": _optional(location),
         "attendees": _split_csv(attendees),
-        "approval_id": _optional(approval_id),
     }
     if not any(
         payload[key]

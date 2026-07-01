@@ -10,7 +10,6 @@ import importlib.util
 import json
 import os
 import pathlib
-import subprocess
 import tempfile
 import time
 
@@ -57,7 +56,9 @@ def main() -> None:
             assert headers["Authorization"] == "Bearer secret-test-token"
             assert headers["X-Personal-Actions-Idempotency-Key"]
             assert headers["X-Personal-Actions-Signature"].startswith("v1=")
-            assert abs(int(headers["X-Personal-Actions-Timestamp"]) - int(time.time())) < 5
+            assert (
+                abs(int(headers["X-Personal-Actions-Timestamp"]) - int(time.time())) < 5
+            )
 
             work_response = json.loads(
                 mod.personal_gmail_send_email(
@@ -69,18 +70,26 @@ def main() -> None:
             )
             assert work_response["status"] == "dry_run"
 
-            trash_response = json.loads(mod.personal_gmail_trash_email(message_id="gmail-message-id", account="work"))
+            trash_response = json.loads(
+                mod.personal_gmail_trash_email(
+                    message_id="gmail-message-id", account="work"
+                )
+            )
             assert trash_response["action"] == "gmail_trash_email"
             assert trash_response["status"] == "dry_run"
 
             gmail_search_response = json.loads(
-                mod.personal_gmail_search_messages(query='from:kaelan@vizcom.com newer_than:7d', account="work")
+                mod.personal_gmail_search_messages(
+                    query="from:kaelan@vizcom.com newer_than:7d", account="work"
+                )
             )
             assert gmail_search_response["action"] == "gmail_search_messages"
             assert gmail_search_response["status"] == "dry_run"
 
             gmail_get_response = json.loads(
-                mod.personal_gmail_get_message(message_id="gmail-message-id", account="work")
+                mod.personal_gmail_get_message(
+                    message_id="gmail-message-id", account="work"
+                )
             )
             assert gmail_get_response["action"] == "gmail_get_message"
             assert gmail_get_response["status"] == "dry_run"
@@ -95,36 +104,19 @@ def main() -> None:
             assert calendar_response["action"] == "calendar_list_events"
             assert calendar_response["status"] == "dry_run"
 
-            slack_search_response = json.loads(mod.personal_slack_search_messages(query="from:me"))
+            slack_search_response = json.loads(
+                mod.personal_slack_search_messages(query="from:me")
+            )
             assert slack_search_response["action"] == "slack_search_messages"
             assert slack_search_response["status"] == "dry_run"
 
             drive_response = json.loads(
-                mod.personal_drive_search_files(query="name contains 'roadmap' and trashed = false", account="work")
+                mod.personal_drive_search_files(
+                    query="name contains 'roadmap' and trashed = false", account="work"
+                )
             )
             assert drive_response["action"] == "drive_search_files"
             assert drive_response["status"] == "dry_run"
-
-            os.environ["PERSONAL_ACTIONS_DRY_RUN"] = "0"
-            os.environ["PERSONAL_ACTIONS_WEBHOOK_URL"] = "https://example.invalid/webhook"
-            os.environ["PERSONAL_ACTIONS_REQUIRE_APPROVAL"] = "1"
-            os.environ["AGENTS_HOME"] = str(ROOT)
-            os.environ["AGENTS_STATE"] = td
-            approval_response = json.loads(
-                mod.personal_slack_send_message(channel="#ops", text="approval smoke")
-            )
-            assert approval_response["status"] == "approval_required"
-            approval_id = approval_response["result"]["approval_id"]
-            assert approval_id
-            pending = subprocess.run(
-                ["agent-approve", "list", "--status", "pending"],
-                env=os.environ,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            assert pending.returncode == 0
-            assert approval_id in pending.stdout
 
             print("personal-actions smoke OK")
         finally:

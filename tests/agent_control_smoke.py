@@ -35,13 +35,6 @@ def main() -> None:
 
         run(["agent-profile", "validate"], env)
 
-        approval_id = run(
-            ["agent-approve", "request", "--kind", "smoke", "--summary", "smoke"], env
-        )
-        assert approval_id
-        run(["agent-approve", "approve", approval_id, "--note", "test"], env)
-        assert "approved" in run(["agent-approve", "list", "--status", "all"], env)
-
         control = load_control()
         slack = control.broker_authorize(
             "personal-assistant",

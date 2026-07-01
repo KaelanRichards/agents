@@ -239,22 +239,15 @@ def main() -> None:
     control = read(ROOT / "scripts" / "agent_control.py")
     for phrase in [
         "cmd_profile",
-        "cmd_ledger",
-        "cmd_queue",
-        "cmd_approve",
-        "cmd_eval",
         "broker_authorize",
         "classify_effect",
-        "verify_ledger",
-        "expire_approvals",
         "compile_claude_settings",
         "broker_hook_decision",
         "compile_sandbox",
         "codex_sandbox_args",
     ]:
         assert_contains(control, phrase, "agent control script")
-    # broker enforces the provenance (tainted-context) rule and a fail-closed effect default.
-    assert_contains(control, "context_tainted", "broker provenance rule")
+    # broker classifies unknown tools on write-capable servers as a fail-closed effect default.
     assert_contains(control, "fail closed", "broker fail-closed classification")
     # policy is enforced natively: a PreToolUse hook (not just the advisory MCP) and OS sandbox.
     assert (ROOT / "hooks" / "profile-broker.sh").exists()

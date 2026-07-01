@@ -4,7 +4,7 @@
 # stay supported for backwards compatibility and PATH discoverability.
 #
 # Usage:
-#   agent approve|ledger|profile <args...>
+#   agent profile <args...>
 #   agent help
 set -euo pipefail
 AH="${AGENTS_HOME:-$HOME/.config/agents}"
@@ -14,7 +14,7 @@ case "${1:-}" in
 	sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
 	exit 0
 	;;
-approve | ledger | profile)
+profile)
 	verb="$1"
 	shift
 	exec python3 "$AH/scripts/agent_control.py" "$verb" "$@"

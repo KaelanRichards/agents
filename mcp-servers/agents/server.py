@@ -153,43 +153,6 @@ def list_agent_profiles() -> str:
 
 
 @mcp.tool()
-def list_agent_runs(limit: int = 20) -> str:
-    """List recent local agent run ledger entries."""
-    entries = agent_control.iter_ledger()[-int(limit) :]
-    if not entries:
-        return "(no runs recorded)"
-    return "\n".join(
-        f"{e.get('ts', '')} {e.get('id', '')} {e.get('kind', '')} {e.get('status', '')} {e.get('profile', '')} {e.get('repo', '')}"
-        for e in entries
-    )
-
-
-@mcp.tool()
-def get_agent_run(run_id: str) -> str:
-    """Return one local agent run ledger entry by id."""
-    for entry in agent_control.iter_ledger():
-        if entry.get("id") == run_id:
-            return json.dumps(entry, indent=2, sort_keys=True)
-    return f"error: run not found: {run_id}"
-
-
-@mcp.tool()
-def list_pending_approvals(limit: int = 20) -> str:
-    """List pending local approval inbox items."""
-    conn = agent_control.approval_db()
-    rows = conn.execute(
-        "SELECT id, created_at, kind, summary, status FROM approvals WHERE status = 'pending' ORDER BY created_at DESC LIMIT ?",
-        (int(limit),),
-    ).fetchall()
-    if not rows:
-        return "(no pending approvals)"
-    return "\n".join(
-        f"{r['created_at']} {r['id']} {r['status']} {r['kind']} {r['summary']}"
-        for r in rows
-    )
-
-
-@mcp.tool()
 def get_profile(name: str) -> str:
     """Return one canonical agent permission profile."""
     return json.dumps(agent_control.load_profile(name), indent=2, sort_keys=True)
@@ -201,28 +164,10 @@ def authorize_tool_call(
     server: str,
     tool: str,
     mutation: bool = False,
-    context_tainted: bool = False,
 ) -> str:
-    """Check whether a profile allows an MCP/tool call; records the decision in the run ledger.
-
-    Set context_tainted=True when the call would act on data drawn from an untrusted source
-    (a fetched web page, an inbound email/Slack message, a Datadog/Sentry payload). A mutation
-    under taint always requires confirmation, and on high/critical profiles is refused outright.
-    Advisory only — the load-bearing enforcement is the profile-broker PreToolUse hook."""
-    decision = agent_control.broker_authorize(
-        profile, server, tool, mutation, context_tainted
-    )
-    agent_control.append_ledger(
-        {
-            "kind": "broker",
-            "status": "allowed" if decision["allowed"] else "denied",
-            "profile": profile,
-            "agent": "",
-            "repo": "",
-            "prompt": f"{server}.{tool}",
-            "details": decision,
-        }
-    )
+    """Check whether a profile allows an MCP/tool call (read/write/destructive effect + profile
+    allow/deny). Advisory only — the load-bearing enforcement is the profile-broker PreToolUse hook."""
+    decision = agent_control.broker_authorize(profile, server, tool, mutation)
     return json.dumps(decision, indent=2, sort_keys=True)
 
 
