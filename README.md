@@ -56,17 +56,12 @@ at `https://<vm>.<tailnet>.ts.net` (see below), or Claude Code's `/remote-contro
 
 ## Dashboards & control
 
-All surfaces read the same data (machines+cost, health, MCP, CI/PRs, sessions, queue, approvals)
-from one typed backend — **`agentd`** (`web/agentd.py`), which imports `scripts/agent_control.py`
-directly so the ledger + event log fire identically no matter which surface triggers an action.
-Pick a surface by context:
+Two surfaces, pick by context:
 - **`agents-status`** — one-shot text overview (the quick local view).
 - **`dashweb`** — live HTML control center: SSE cards, streamed action logs, control buttons
-  (sync/doctor/provision/teardown/reboot, MCP add/remove), embedded Grafana + terminal — the
-  primary remote/phone surface (tailnet access, mutation controls).
-
-> Maintenance note: before adding a feature, put it in the `agentd` read model / action set first
-> (so every surface inherits it), then wire the UI.
+  (sync/doctor/provision/teardown/reboot, MCP add/remove), embedded terminal — the primary
+  remote/phone surface (tailnet access, mutation controls). It shells out to the same CLIs
+  (`agents-status`, `agents-doctor`, `mcp-sync`, …) so actions and their audit trail stay identical.
 
 ```bash
 dashweb     # local: http://localhost:8787 (read-only without WEBDASH_TOKEN)
