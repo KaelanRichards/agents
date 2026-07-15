@@ -210,6 +210,14 @@ This is the single source of truth for both agents. Canonical file lives at
 - `assistant/memory/projects.md` — Active projects, repos, channels, and operating notes.
 <!-- agents-sync:memory-index:end -->
 
+## Response format
+- Every reply must open with `## TLDR:` followed by 1–3 plain-English sentences stating the
+  outcome or the decision the user needs to make. Keep jargon below the fold.
+- Use only this fixed emoji vocabulary, with one meaning per glyph: 🚧 = blocked on the user,
+  👾 = confirmed bug, ⛳️ = milestone, and 🔹 = must-read line. Do not use other emoji.
+- For dense material such as audits, comparisons, or dashboards, render a standalone HTML page
+  and also state the takeaway in plain text in chat.
+
 ## Context economy
 - Prefer quiet/filtered output so logs don't flood context: `pytest -q`, `ruff check -q`,
   pipe noisy commands through `| tail -n 50` or filter to failures.
