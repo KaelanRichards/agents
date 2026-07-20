@@ -24,6 +24,15 @@ Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
 - Cohesive with a clear aesthetic point-of-view
 - Meticulously refined in every detail
 
+## Landing Page Copy
+
+Apply the shared plain-writing rules to user-facing copy. Write one concrete claim per line, use short
+words and active voice, and preserve necessary product terms.
+
+Run the swap test on every line: if a competitor could paste it unchanged onto its page, rewrite or
+delete it. Remove generic claims such as "powerful," "seamless," "revolutionary," "robust," and
+"built for the future" unless the page proves them with a specific fact.
+
 ## Frontend Aesthetics Guidelines
 
 Focus on:
