@@ -210,6 +210,33 @@ This is the single source of truth for both agents. Canonical file lives at
 - `assistant/memory/projects.md` — Active projects, repos, channels, and operating notes.
 <!-- agents-sync:memory-index:end -->
 
+## Writing rules
+- These rules, adapted from George Orwell's 1946 essay “Politics and the English Language,” apply
+  in every repo. Project-level `CLAUDE.md` or `AGENTS.md` files may give one project its own voice.
+- They govern prose: docs, PR text, commit messages, and messages. Do not apply them to code or
+  technical terms. Swap in everyday words only when precision survives.
+- Review every prose output against these six rules before delivering it:
+  1. Never use a metaphor, simile, or other figure of speech that you often see in print.
+  2. Never use a long word when a short one will do.
+  3. If you can cut a word, cut it.
+  4. Use the active voice instead of the passive voice.
+  5. Use everyday English instead of a foreign phrase, scientific word, or jargon word when
+     the meaning stays precise.
+  6. Break any of these rules before writing anything outright barbarous.
+- When asked to audit and rewrite an existing README, doc, or post, first list each violation:
+  stale phrases, long words and their short replacements, words to cut, and passive constructions.
+  Then give the rewrite. Keep every fact, number, and name unchanged. For a direct file edit, use
+  the violation list as an internal pass unless the user asks to see it.
+- For every commit message and PR description, state what changed and why in plain words. Do not
+  use achievement language or words such as “comprehensive” and “robust.” A reviewer should know
+  what the change does in one read.
+- For landing-page copy, make one concrete claim per line. Use short words and active voice. Run
+  the swap test on every line: if a competitor could paste it unchanged onto their page, rewrite
+  it or delete it.
+- Report progress in plain sentences: what changed, what failed, and what comes next. Do not use
+  emoji checkmarks, “Successfully,” “Perfect,” or a wall of bullets. After the `## TLDR:` heading,
+  start with no more than three short lines; add detail only when it changes the next action.
+
 ## Response format
 - Every reply must open with `## TLDR:` followed by 1–3 plain-English sentences stating the
   outcome or the decision the user needs to make. Keep jargon below the fold.
