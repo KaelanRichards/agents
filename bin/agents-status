@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # agents-status — read-only operational overview of the agent environment.
 # Single pane: machines, health, MCP servers, repo/CI, sessions.
-# Composes hcloud / agents-doctor / mcp-sync / gh / tmux. Run: agents-status
+# Composes hcloud / agents-doctor / mcp-sync / gh / herdr. Run: agents-status
 set -uo pipefail
 REPO="${AGENTS_REPO_SLUG:-KaelanRichards/agents}"
 hr() { printf '\n== %s ==\n' "$1"; }
@@ -98,6 +98,19 @@ else
 	echo "  gh not on PATH"
 fi
 
-hr "sessions (local tmux)"
-tmux ls 2>/dev/null | sed 's/^/  /' || echo "  (none)"
+hr "sessions (local herdr)"
+if ! command -v herdr >/dev/null 2>&1; then
+	echo "  herdr not on PATH"
+elif ! herdr status server 2>/dev/null | grep -q 'status: running'; then
+	echo "  (server not running)"
+else
+	herdr session list 2>/dev/null | sed 's/^/  /' || echo "  (no sessions)"
+	# Per-agent state (working / blocked / done) is the reason for the move off
+	# tmux, which could only report windows.
+	agents=$(herdr agent list 2>/dev/null)
+	if [ -n "$agents" ]; then
+		printf '\n  agents:\n'
+		printf '%s\n' "$agents" | sed 's/^/    /'
+	fi
+fi
 echo

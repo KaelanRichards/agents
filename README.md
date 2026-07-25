@@ -2,8 +2,11 @@
 
 Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md`), MCP servers
 (`mcp.json`), subagents/skills/hooks, helper scripts (`bin/`), shell env (`zsh/agents.env.zsh`
-for all shells plus `zsh/agents.zsh` for interactive extras), a `agents-status` overview, CI,
-and a `bootstrap.sh` that reproduces the whole thing on a fresh box.
+for all shells plus `zsh/agents.zsh` for interactive extras), a `agents-status` overview, and CI.
+
+Two machines, reproduced two ways: **`nix/` declares the Mac** (nix-darwin + home-manager, applied
+with `rebuild`), and **`bootstrap.sh` provisions the Linux VM** from the root `Brewfile`. A tool
+wanted on both has to be added in both places.
 
 The shared MCP set includes official OAuth-backed Linear, Sentry, Notion, Granola, Cloudflare,
 and Slack MCPs bridged through `mcp-remote` or a narrow wrapper, the official Datadog US5 remote
@@ -13,6 +16,23 @@ The Datadog endpoint is pinned to
 `https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery`.
 The active BigQuery project is `vizcom-web`; it needs the BigQuery API enabled and MCP Tool User,
 BigQuery Job User, and BigQuery Data Viewer for the signed-in identity.
+
+## Set up the Mac
+
+```bash
+# 1. Install Determinate Nix, then:
+git clone git@github.com:KaelanRichards/agents.git ~/.config/agents
+ln -sfn ~/.config/agents ~/.dotfiles
+~/.config/agents/bin/rebuild          # asks for your sudo password
+```
+
+That installs every package, applies the macOS settings, and symlinks the config for ghostty,
+zed, mise, herdr, and jj back into this repo. `rebuild --check` builds without changing anything;
+`rebuild --zap-dry` shows what a change would add or remove.
+
+Homebrew cleanup is set to `zap`, so **a package not declared in `nix/darwin.nix` is deleted on the
+next rebuild**. Add packages there, not with `brew install`. Details and the deliberate gaps —
+credential-holding config stays out of this public repo — are in [`nix/README.md`](nix/README.md).
 
 ## Provision an always-on VM (so you can close your laptop)
 
@@ -43,6 +63,14 @@ Run `agents-doctor` to confirm it's healthy.
 
 ## Daily workflow
 
+On the **laptop**, herdr holds the sessions. It shows each agent's state — working, blocked,
+done — in a sidebar, which is why it replaced tmux here.
+```bash
+herdr                # launch or reattach; prefix is ctrl+b, same as tmux
+# detach: ctrl+b q   → agents keep running
+```
+
+On the **VM**, tmux is still the multiplexer:
 ```bash
 mosh you@vm          # or ssh (mosh survives flaky networks)
 tmux new -s work                         (persistent session)
@@ -56,7 +84,7 @@ mosh you@vm; tmux attach -t work   # later, from anywhere — exactly where you 
 ## Status & control
 
 - **`agents-status`** — one-shot text overview: VMs + cost, health, MCP servers, repo/CI + open
-  PRs, and tmux sessions. Run it locally or over SSH on the VM.
+  PRs, and herdr sessions with per-agent state. Run it locally or over SSH on the VM.
 - **`fleet-monitor`** — VM heartbeat / dead-man's-switch (systemd timer).
 
 Remote/phone access is a terminal app (Blink / Termius) over SSH/Mosh, or Claude Code's
@@ -90,7 +118,7 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
   (run anytime, or on a new machine).
 - **`agents-reconcile`** — VM/plain-git self-healing sync: stash drift, reset to `origin/main`,
   regenerate MCP/agent config, and optionally install a periodic user timer.
-- **Agent control plane** — local orchestration primitives layered on top of jj, tmux, MCP, and
+- **Agent control plane** — local orchestration primitives layered on top of jj, herdr, MCP, and
   the shared profile/policy model:
   - `agent-profile list|validate|compile` manages canonical permission profiles in `profiles/`
     and writes disposable generated artifacts under `generated/profiles/`.
@@ -137,5 +165,7 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
   `assistant/personal-actions-webhook.md` for the backend contract, and run `personal-actions-check`
   for a non-mutating reachability test.
 - The PreToolUse guard hook is active here too; destructive commands stay blocked.
-- Tools: see `Brewfile`. Languages via `mise` + `rustup`. VCS is jj-first (colocated on the laptop).
+- Tools: `nix/darwin.nix` on the Mac, `Brewfile` on the VM. Runtimes via `mise` + `rustup` on both —
+  Nix pins one version per machine, `mise` reads `.nvmrc` per repo, so Nix declares mise and mise
+  picks the runtime. VCS is jj-first (colocated on the laptop).
 - New machine / full reference: see `ONBOARDING.md`.

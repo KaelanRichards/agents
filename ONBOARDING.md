@@ -38,7 +38,9 @@ run `mcp-auth plan` for OAuth-backed hosted MCPs you want on the host.
 - **New MCP server:** `mcp-sync add …` (never hand-edit `~/.claude.json` or Codex's managed block).
   If it is an OAuth remote and clients do not all handle native OAuth cleanly, prefer a
   `mcp-remote` stdio bridge and add/maintain its operational auth contract in `mcp.auth.json`.
-- **New tool:** add to `Brewfile`, commit — bootstrap and CI pick it up.
+- **New tool:** on the Mac add it to `nix/darwin.nix` and run `rebuild`; on the VM add it to
+  `Brewfile`, which bootstrap and CI pick up. A tool wanted on both goes in both. Do not
+  `brew install` on the Mac — cleanup is `zap`, so the next rebuild deletes anything undeclared.
 - **New subagent / skill:** drop into `agents/` or `skills/`, run `agents-sync`.
 - **New agent (e.g. Gemini CLI):** add a generator branch to `mcp-sync`/`agents-sync` for its
   config format and symlink its instruction file to `AGENTS.md`.

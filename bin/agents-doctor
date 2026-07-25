@@ -28,7 +28,11 @@ done
 
 echo "== instruction symlinks =="
 for f in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
-	[ "$(readlink "$f" 2>/dev/null)" = "$AH/AGENTS.md" ] && ok "${f/#"$HOME"/~} -> AGENTS.md" || bad "${f/#"$HOME"/~} not linked to canonical AGENTS.md"
+	# Resolve the whole chain, not one hop: home-manager points these at a
+	# /nix/store path that is itself a symlink back to the canonical file.
+	[ "$(readlink -f "$f" 2>/dev/null)" = "$(readlink -f "$AH/AGENTS.md" 2>/dev/null)" ] &&
+		ok "${f/#"$HOME"/~} -> AGENTS.md" ||
+		bad "${f/#"$HOME"/~} not linked to canonical AGENTS.md"
 done
 
 echo "== helper scripts on PATH =="

@@ -1,0 +1,27 @@
+# herdr configuration
+# Symlinked to ~/.config/herdr by nix/home.nix.
+#
+# Most of the old tmux.conf needed no translation: ctrl+b prefix and h/j/k/l
+# pane focus are already herdr defaults. Only the settings that differ from
+# stock are set here.
+
+[theme]
+# "terminal" inherits Ghostty's palette instead of imposing its own, so herdr
+# follows the existing light:Atom One Light / dark:Atom One Dark auto-switch
+# rather than needing a second theme rule kept in sync by hand.
+name = "terminal"
+
+[terminal]
+# Was: bind | split-window -h -c "#{pane_current_path}"
+# New panes open in the current pane's directory, not $HOME.
+new_cwd = "follow"
+
+[ui]
+# Was: set -g mouse on, plus Ghostty's copy-on-select = clipboard.
+mouse_capture = true
+copy_on_select = true
+
+[update]
+# Homebrew owns the version (declared in nix/darwin.nix). Self-update would
+# put herdr out of step with the flake and break reproducibility.
+version_check = false
