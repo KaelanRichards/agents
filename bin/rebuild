@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# rebuild — apply ~/.config/agents/nix to this Mac.
+#
+# Usage:
+#   rebuild            build and switch (needs sudo; you will be prompted)
+#   rebuild --check    evaluate and build only, change nothing (no sudo)
+#   rebuild --zap-dry  show which Homebrew packages cleanup would remove
+set -euo pipefail
+
+NIX_DIR="$HOME/.config/agents/nix"
+# darwin-rebuild resolves a bare "#mac" to darwinConfigurations; nix build and
+# nix eval do not, so they need the full attribute path.
+FLAKE="$NIX_DIR#mac"
+ATTR="$NIX_DIR#darwinConfigurations.mac"
+
+[ -d "$NIX_DIR" ] || {
+	echo "rebuild: $NIX_DIR not found" >&2
+	exit 1
+}
+
+mode="switch"
+while [ $# -gt 0 ]; do
+	case "$1" in
+	--check)
+		mode="check"
+		shift
+		;;
+	--zap-dry)
+		mode="zap-dry"
+		shift
+		;;
+	-h | --help)
+		sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
+		exit 0
+		;;
+	*)
+		echo "rebuild: unknown arg '$1' (try: rebuild --help)" >&2
+		exit 2
+		;;
+	esac
+done
+
+# Nix only sees files git knows about. An untracked new module fails with a
+# confusing "file not found" rather than an obvious error.
+if command -v git >/dev/null 2>&1 && git -C "$HOME/.config/agents" rev-parse --git-dir >/dev/null 2>&1; then
+	git -C "$HOME/.config/agents" add -AN nix >/dev/null 2>&1 || true
+fi
+
+case "$mode" in
+check)
+	echo "==> building $FLAKE (no changes applied)"
+	nix build "$ATTR.system" --no-link
+	echo "ok: configuration evaluates and builds"
+	;;
+zap-dry)
+	# Read the evaluated config rather than grepping the .nix source, so the
+	# answer matches what nix-darwin will actually apply.
+	declared_brews="$(nix eval --raw "$ATTR.config.homebrew.brews" \
+		--apply 'xs: builtins.concatStringsSep "\n" (map (x: if builtins.isString x then x else x.name) xs)')"
+	declared_casks="$(nix eval --raw "$ATTR.config.homebrew.casks" \
+		--apply 'xs: builtins.concatStringsSep "\n" (map (x: if builtins.isString x then x else x.name) xs)')"
+
+	echo "==> installed but NOT declared (zap would remove these)"
+	# brew leaves, not brew list: dependencies of declared formulae are kept by
+	# bundle cleanup and would be false positives here.
+	undeclared_brews="$(comm -23 <(brew leaves | sort) <(printf '%s\n' "$declared_brews" | sort))"
+	undeclared_casks="$(comm -23 <(brew list --cask | sort) <(printf '%s\n' "$declared_casks" | sort))"
+	if [ -z "$undeclared_brews$undeclared_casks" ]; then
+		echo "    (nothing — inventory is fully declared)"
+	else
+		[ -n "$undeclared_brews" ] && printf '%s\n' "$undeclared_brews" | sed 's/^/    brew: /'
+		[ -n "$undeclared_casks" ] && printf '%s\n' "$undeclared_casks" | sed 's/^/    cask: /'
+	fi
+
+	echo "==> declared but NOT installed (rebuild would install these)"
+	# brew list, not brew leaves: a declared formula that is also some other
+	# package's dependency is already installed and must not be reported
+	# missing. Removal above still uses leaves, where dependencies belong.
+	missing="$(comm -13 <(brew list --formula | sort) <(printf '%s\n' "$declared_brews" | sort))"
+	if [ -z "$missing" ]; then
+		echo "    (nothing)"
+	else
+		printf '%s\n' "$missing" | sed 's/^/    brew: /'
+	fi
+	;;
+switch)
+	# darwin-rebuild is installed BY the first switch, so it is not on PATH
+	# until this has run once. Build the system and use its own copy, which
+	# also keeps the pinned flake inputs rather than resolving them again.
+	if command -v darwin-rebuild >/dev/null 2>&1; then
+		rebuild_bin="darwin-rebuild"
+	else
+		echo "==> darwin-rebuild not on PATH; bootstrapping from the built system"
+		system="$(nix build --no-link --print-out-paths "$ATTR.system")"
+		rebuild_bin="$system/sw/bin/darwin-rebuild"
+	fi
+
+	echo "==> switching to $FLAKE"
+	echo "    (sudo will ask for your password)"
+	sudo "$rebuild_bin" switch --flake "$FLAKE"
+	echo "ok: applied"
+	;;
+esac

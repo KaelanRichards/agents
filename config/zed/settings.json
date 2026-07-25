@@ -1,0 +1,58 @@
+{
+  "base_keymap": "VSCode",
+  "theme": {
+    "mode": "system",
+    "light": "One Light",
+    "dark": "One Dark"
+  },
+  "buffer_font_family": "JetBrainsMono Nerd Font",
+  "buffer_font_size": 14,
+  "buffer_font_features": {
+    "calt": true
+  },
+  "ui_font_size": 15,
+  "vim_mode": false,
+  "format_on_save": "on",
+  "ensure_final_newline_on_save": true,
+  "remove_trailing_whitespace_on_save": true,
+  "tab_size": 2,
+  "soft_wrap": "editor_width",
+  "show_whitespaces": "selection",
+  "cursor_blink": false,
+  "scrollbar": {
+    "show": "auto"
+  },
+  "tabs": {
+    "file_icons": true,
+    "git_status": true
+  },
+  "git": {
+    "inline_blame": {
+      "enabled": true
+    }
+  },
+  "inlay_hints": {
+    "enabled": true
+  },
+  "terminal": {
+    "font_family": "JetBrainsMono Nerd Font",
+    "font_size": 13,
+    "copy_on_select": true
+  },
+  "languages": {
+    "Python": {
+      "tab_size": 4
+    },
+    "Rust": {
+      "tab_size": 4
+    },
+    "Go": {
+      "tab_size": 4,
+      "hard_tabs": true
+    }
+  },
+  "telemetry": {
+    "diagnostics": false,
+    "metrics": false
+  }
+}

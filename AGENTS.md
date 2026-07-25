@@ -5,10 +5,9 @@ This is the single source of truth for both agents. Canonical file lives at
 `~/.codex/AGENTS.md`. **Edit this file** to change instructions for both tools.
 
 ## Machine & environment
-- macOS on Apple Silicon (M5). Treat the laptop as **corporate-managed**: Rippling MDM +
-  SentinelOne EDR may be present (current `profiles status -type enrollment` reports none —
-  see `SECURITY_HARDENING.md` — the policy still applies). Never modify, disable, or remove
-  security / MDM software regardless of current enrollment state.
+- macOS on Apple Silicon (M5). The laptop **is corporate-managed**: enrolled via DEP with
+  Rippling MDM (user-approved), and SentinelOne EDR may be present. See
+  `SECURITY_HARDENING.md`. Never modify, disable, or remove security / MDM software.
 - `sudo` requires a password; the user must run elevated commands themselves
   (suggest `! <cmd>`). Don't expect passwordless sudo.
 - Homebrew at `/opt/homebrew`. Editor: **Zed** (`zed`). Terminal: **Ghostty**.
@@ -28,7 +27,9 @@ This is the single source of truth for both agents. Canonical file lives at
   Edit the copy under `config/`, not the one in `~/.config/`.
 - **Excluded on purpose:** this repo is **public**. Config holding credentials — `gh`,
   `gcloud`, `op`, `agents-secrets`, `gdrive-mcp` — stays out and is not reproducible by
-  design. Claude Code manages its own self-updating install and is not declared either.
+  design. Two toolchains also manage their own updates and are not declared: Claude Code
+  (`~/.local/share/claude`) and Rust via rustup (`~/.cargo`). `rebuild --zap-dry` only sees
+  Homebrew, so it will never report these as missing.
 - **Determinate Nix owns the daemon**, so `nix.enable = false` in `darwin.nix`. Do not
   hand-edit `/etc/nix/nix.conf`; it is regenerated.
 - **The Mac and the Linux VM are provisioned separately.** `nix/darwin.nix` is the Mac;
@@ -135,20 +136,10 @@ This is the single source of truth for both agents. Canonical file lives at
   overwrites manual entries.
 - Per-repo: run `agents-link` to symlink `CLAUDE.md → AGENTS.md` so project-level
   instructions are shared by both tools too.
-- **Available MCP servers** (run `mcp-sync list` for the live set) — use when relevant:
-  `context7` (pull up-to-date docs before coding against a library/API), `github`
-  (PRs/issues/repos; complements the `gh` CLI), `linear` (Linear issues/projects/comments via
-  `mcp-remote` OAuth bridge), `datadog` (official Datadog US5 remote MCP server for
-  read-first observability investigation), `sentry` (official Sentry MCP via `mcp-remote`
-  OAuth bridge for read-first app error/performance debugging), `notion` (official hosted Notion MCP via
-  `mcp-remote` OAuth bridge), `granola` (official hosted Granola meeting-notes MCP via
-  `mcp-remote` OAuth bridge), `cloudflare` (official Cloudflare API MCP via `mcp-remote` OAuth
-  bridge), `slack` (official Slack MCP via the `slack-official-mcp` wrapper), `bigquery` (local read-only
-  BigQuery facade using
-  `gcloud`/`bq` auth; use `bigquery_execute_sql_readonly` for SQL), `playwright` (drive a real
-  browser for web testing/scraping), `filesystem` (file access scoped to `~/code`),
-  `sequential-thinking` (structured step-by-step reasoning), and `agents` (this environment's own
-  tools: repo status/log/diff, project task discovery+run, MCP list, config sync).
+- **Available MCP servers**: `mcp-sync list` for the live set. Each server's own tool descriptions
+  say what it does — the two non-obvious ones: `bigquery` is a local read-only facade over your
+  `gcloud`/`bq` auth (use `bigquery_execute_sql_readonly`), and `agents` exposes this
+  environment's own repo/status/config tools.
 
 ## Subagents, skills & hooks (synced across both tools)
 - Canonical sources live in `~/.config/agents/{agents,skills,hooks}`; run **`agents-sync`**
@@ -156,12 +147,9 @@ This is the single source of truth for both agents. Canonical file lives at
 - `~/.config/agents` is versioned with jj; after changing canonical agent config, verify with
   `agents-doctor`, and describe/bookmark the jj change before finishing
   so the repo stays synced. Push only when explicitly asked.
-- **Subagents**: `explorer` (read-only research) and `reviewer` (diff-vs-spec review).
-  Delegate noisy research to `explorer`; verify changes with `reviewer` before committing.
-- **Skill `spec`** — spec-driven development: for non-trivial work, draft a `SPEC.md` from
-  `~/.config/agents/templates/SPEC.md`, confirm it, implement, then verify with `reviewer`.
-- **Skill `qa`** — pre-commit verify loop: tests + lint + `reviewer` vs `SPEC.md`
-  → one gap report. CI counterpart: `templates/eval.yml` (PR eval gate).
+- **Subagents**: delegate noisy research to `explorer`; verify changes with `reviewer` before
+  committing. For non-trivial work the `spec` skill drafts a `SPEC.md` from
+  `templates/SPEC.md` first — `templates/eval.yml` is its CI counterpart.
 - **Parallel work**: `wt new <name>` for one isolated workspace; **`swarm <task>...`** fans out
   N tasks across jj workspaces with parallel headless agents (claude/codex), then review each
   with `jj -R <workspace> log`.
@@ -226,7 +214,7 @@ This is the single source of truth for both agents. Canonical file lives at
 
 ## Memory
 - **Don't use Claude Code's built-in auto-memory** (`~/.claude/projects/<slug>/memory/` + `MEMORY.md`).
-  It's disabled via `autoMemoryEnabled: false` in `~/.claude/settings.json` — don't re-enable it or
+  It's off: `"autoMemoryEnabled": false` in `~/.claude/settings.json`. Don't re-enable it or
   write there.
 - **Durable, cross-session memory lives in `~/.config/agents/assistant/memory/`** — reviewable,
   jj-versioned markdown: `preferences.md` (how the user likes things done), `people.md`
@@ -249,31 +237,11 @@ This is the single source of truth for both agents. Canonical file lives at
 <!-- agents-sync:memory-index:end -->
 
 ## Writing rules
-- These rules, adapted from George Orwell's 1946 essay “Politics and the English Language,” apply
-  in every repo. Project-level `CLAUDE.md` or `AGENTS.md` files may give one project its own voice.
-- They govern prose: docs, PR text, commit messages, and messages. Do not apply them to code or
-  technical terms. Swap in everyday words only when precision survives.
-- Review every prose output against these six rules before delivering it:
-  1. Never use a metaphor, simile, or other figure of speech that you often see in print.
-  2. Never use a long word when a short one will do.
-  3. If you can cut a word, cut it.
-  4. Use the active voice instead of the passive voice.
-  5. Use everyday English instead of a foreign phrase, scientific word, or jargon word when
-     the meaning stays precise.
-  6. Break any of these rules before writing anything outright barbarous.
-- When asked to audit and rewrite an existing README, doc, or post, first list each violation:
-  stale phrases, long words and their short replacements, words to cut, and passive constructions.
-  Then give the rewrite. Keep every fact, number, and name unchanged. For a direct file edit, use
-  the violation list as an internal pass unless the user asks to see it.
-- For every commit message and PR description, state what changed and why in plain words. Do not
-  use achievement language or words such as “comprehensive” and “robust.” A reviewer should know
-  what the change does in one read.
-- For landing-page copy, make one concrete claim per line. Use short words and active voice. Run
-  the swap test on every line: if a competitor could paste it unchanged onto their page, rewrite
-  it or delete it.
-- Report progress in plain sentences: what changed, what failed, and what comes next. Do not use
-  emoji checkmarks, “Successfully,” “Perfect,” or a wall of bullets. After the `## TLDR:` heading,
-  start with no more than three short lines; add detail only when it changes the next action.
+- Prose in every repo — docs, PR text, commit messages, messages — follows the **`plain-writing`
+  skill**: short words, active voice, cut what can be cut, no achievement language. Load it when
+  writing or rewriting prose. A project-level `CLAUDE.md` may give one project its own voice.
+- The rules govern prose only. Do not apply them to code or technical terms, and swap in everyday
+  words only when precision survives.
 
 ## Response format
 - Every reply must open with `## TLDR:` followed by 1–3 plain-English sentences stating the
@@ -282,6 +250,9 @@ This is the single source of truth for both agents. Canonical file lives at
   👾 = confirmed bug, ⛳️ = milestone, and 🔹 = must-read line. Do not use other emoji.
 - For dense material such as audits, comparisons, or dashboards, render a standalone HTML page
   and also state the takeaway in plain text in chat.
+- Report progress in plain sentences: what changed, what failed, what comes next. No emoji
+  checkmarks, no “Successfully,” no wall of bullets. After `## TLDR:`, start with at most three
+  short lines; add detail only when it changes the next action.
 
 ## Context economy
 - Prefer quiet/filtered output so logs don't flood context: `pytest -q`, `ruff check -q`,
