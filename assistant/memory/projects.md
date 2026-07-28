@@ -42,13 +42,13 @@ intro calls via a Google appointment-scheduling link (Zoom).
 
 ## Vizcom — agentic SRE (`~/code/vizcom-sre`, GitHub `KaelanRichards/vizcom-sre` private)
 
-> Read-only, recommend-only SRE agent for Vizcom prod; brain is a git repo; runs as a ~7-min loop on VM `agents`.
+> Read-only, recommend-only SRE agent for Vizcom prod; brain is a git repo; ticks every 2h on VM `agents`.
 
 **Current truth.** Recommend-only SRE agent whose "brain" is the `vizcom-sre` git repo
 (`infra/ code/ baselines/ runbooks/ incidents/` + `LOOP.md`/`policy.md`). Each tick: read brain →
 check Datadog/Sentry → **triage** a firing alert (DM Kaelan `U04E9M9235G`, never acts) or
 **explore** one area + record a baseline → commit. Runs on always-on VM **`agents`** (`ssh agents`,
-Ubuntu 24.04) via `systemd --user` timer `vizcom-sre.{service,timer}` (~7 min). Read-only on Vizcom
+Ubuntu 24.04) via `systemd --user` timer `vizcom-sre.{service,timer}` (`OnUnitActiveSec=2h`). Read-only on Vizcom
 (ops-guard + `.claude/settings.json` deny); Linear read-only; DM-only. As-built runbook:
 `deploy/README.md`.
 
@@ -102,11 +102,16 @@ Ubuntu 24.04) via `systemd --user` timer `vizcom-sre.{service,timer}` (~7 min). 
   `agents`, documented in `deploy/AWS_READONLY.md`, updated `deploy/run-tick.sh` prompt, and verified
   live canaries: STS identity assumes the read-only role, EKS cluster listing works, Secrets Manager
   read is denied, and the base user cannot read EKS directly.
+- 2026-07-28 — Slowed the tick from 30min to 2h at Kaelan's request (`OnUnitActiveSec=2h`), and
+  raised the fleet-monitor `max_age_s` to 10800 to match. Noticed on the way: a tick on 2026-07-27
+  created and committed **1020 empty `deploy/XX*` files** (stray `mktemp`-style template expansion,
+  now on `origin/main`); cleanup is blocked on Kaelan running the bulk delete himself. Also
+  `deploy/tick.log` is 817 MB, unrotated but gitignored — the 4x slower tick buys time.
 
 ## kaelan-pa — agentic personal assistant (`~/code/kaelan-pa`, GitHub `KaelanRichards/kaelan-pa` private)
 
 > Read-only/recommend-only PA mirroring the vizcom-sre pattern. **Runs VM-only** (`agents`, systemd,
-> 25 min), live, committing+pushing its brain each tick; Mac launchd **retired** (single writer). VM
+> twice a day), live, committing+pushing its brain each tick; Mac launchd **retired** (single writer). VM
 > clone is plain **git** (not jj). Cutover done 2026-05-31 — see decisions.md "kaelan-pa VM cutover".
 
 **Current truth.** Recommend/draft-only PA whose brain is the `kaelan-pa` repo (`inbox/ people/
@@ -117,8 +122,9 @@ restricted** (`.claude/settings.json` deny-list): may only write brain files, a 
 a Gmail draft, and Gmail label-add/trash — **never** Gmail send, Slack-channel post, calendar/Linear
 writes.
 - **Single runtime (since 2026-05-31 cutover):** **VM `agents`** only, via `systemd --user`
-  `kaelan-pa.{service,timer}` (`OnUnitActiveSec=25min`, `OnBootSec=15min` offset from sre's tick;
-  `Linger=yes`), **live** (`KAELAN_PA_DRY_RUN=0` + facade live), committing+pushing each tick. The
+  `kaelan-pa.{service,timer}` (`OnCalendar=*-*-* 08:07` and `18:07 America/Los_Angeles` — TZ pinned
+  so the times don't slide across DST; `Linger=yes`), **live** (`KAELAN_PA_DRY_RUN=0` + facade
+  live), committing+pushing each tick. The
   **Mac launchd `com.kaelan.kaelan-pa` is RETIRED** (`launchctl bootout`) — single writer to
   `origin/main`. ⚠ The VM clone is plain **git** (not jj), so the brain push is git, not `jj git
   push`; the push block is gated `KAELAN_PA_MCP_CONFIG set && KAELAN_PA_DRY_RUN!=1`. See decisions.md
@@ -157,3 +163,8 @@ writes.
 - 2026-05-30 — Promoted kaelan-pa to VM `agents`: authored systemd units + scoped `mcp.vm.json`,
   cloned repo, installed `uv`, provisioned `runner.env` + secrets, verified one clean dry-run tick
   via systemd, enabled `kaelan-pa.timer` (25 min, dry-run). Mac launchd kept live in parallel.
+- 2026-07-28 — Cut the cadence to twice a day at Kaelan's request: `OnCalendar` 08:07 + 18:07
+  `America/Los_Angeles` replaces `OnBootSec`/`OnUnitActiveSec`. Retired the VM-local 55min drop-in
+  (`~/.config/systemd/user/kaelan-pa.timer.d` → `.retired-20260728`), which had been added on
+  2026-06-03 to cut Sonnet burn and was never recorded here. Raised the fleet-monitor `max_age_s`
+  to 57600 so the 14h overnight gap doesn't read as STALE (it was already firing at 55min).

@@ -8,7 +8,7 @@ changes; don't silently overwrite.
 ## Co-locating looping agents on VM `agents` (sre + pa)
 
 **Current truth.** VM `agents` (2 vCPU / 3.7 GiB RAM, **no swap**) runs multiple headless `claude`
-loops: `vizcom-sre` (systemd `--user`, 30 min) and now `kaelan-pa` (systemd `--user`, 25 min). To
+loops: `vizcom-sre` (systemd `--user`, every 2h) and `kaelan-pa` (systemd `--user`, twice a day). To
 keep them from OOM-ing each other, **all agent ticks are serialized fleet-wide** by a shared
 `flock`: each `*.service` has a drop-in (`~/.config/systemd/user/<svc>.service.d/10-tick-lock.conf`)
 wrapping `ExecStart` in `flock -w 800 ~/.config/agents/state/agent-tick.lock <run-tick.sh>`. Only one
@@ -20,9 +20,11 @@ agent's heartbeat JSONL.
 - **Tick lock** lives in drop-ins (VM-only, not in either agent's repo) so neither committed unit is
   edited; reversible by deleting the drop-in. Lock file: `state/agent-tick.lock`.
 - **fleet-monitor registration** is per-host via `state/fleet-agents.conf`
-  (`name|repo|max_age_s|max_unpushed`). VM rows: `vizcom-sre|…|4500|3` and
-  `kaelan-pa|…|4500|9999` — PA's unpushed cap is effectively disabled because PA is **push-denied by
-  policy** (DM-only); revisit once a runner-side brain-sync/push exists (PROMOTION.md).
+  (`name|repo|max_age_s|max_unpushed`). VM rows: `vizcom-sre|…|10800|3` and
+  `kaelan-pa|…|57600|9999`. `max_age_s` must stay above the tick gap or every check reports STALE —
+  re-tune it whenever a cadence changes (sre 2h → 10800s; PA's long gap is 14h → 57600s). PA's
+  unpushed cap is effectively disabled because PA is **push-denied by policy** (DM-only); revisit
+  once a runner-side brain-sync/push exists (PROMOTION.md).
 - **Shared Slack bot (caveat):** sre and pa authenticate as the **same** Slack app
   (`user_id U0B6KMXJ402`, bot "windmill") → they DM Kaelan in the **same** channel. PA classifies
   `U0B6KMXJ402` msgs as bot-self (skips them) and folds reactions only against its own audit
@@ -114,8 +116,8 @@ round-trip test for agents-sync/hermes-sync first so the refactor is regression-
 
 ## Never do VCS history surgery on a live agent-loop repo without pausing the loop
 
-**Current truth.** An agent brain repo with a running loop (`kaelan-pa` on the Mac launchd every
-25 min; `vizcom-sre` on the VM systemd every 30 min) is a **live `jj` mutator**: each tick runs
+**Current truth.** An agent brain repo with a running loop (`kaelan-pa` and `vizcom-sre` on the VM
+systemd timers — cadences change, so check `list-timers`) is a **live `jj` mutator**: each tick runs
 `jj new main` / `jj describe` / commits. Any `git` *or* `jj` history operation (push, branch delete,
 bookmark move, rebase) performed concurrently races those ticks and corrupts state — diverged
 change-ids and conflicted bookmarks. **Before any history work on such a repo, stop its loop first**
@@ -146,7 +148,7 @@ is active (or that takes the same `flock` the VM ticks use).
 
 ## kaelan-pa VM cutover DONE (2026-05-31) — single live runtime, git push, like vizcom-sre
 
-**Current truth.** kaelan-pa now runs **only on VM `agents`** (systemd `--user`, 25 min), **live**
+**Current truth.** kaelan-pa now runs **only on VM `agents`** (systemd `--user`, twice a day), **live**
 (`KAELAN_PA_DRY_RUN=0` + facade live), committing AND pushing its brain to `origin/main` every tick —
 functionally identical to vizcom-sre. The **Mac launchd job is retired** (`launchctl bootout
 com.kaelan.kaelan-pa`), so there is exactly ONE writer to `origin/main`. Send-restriction unchanged

@@ -58,8 +58,12 @@ def _read_message() -> dict | None:
 
 
 def _write_message(message: dict) -> None:
+    # MCP stdio transport is newline-delimited JSON-RPC, NOT the LSP `Content-Length` framing
+    # this used to emit. A client reading line-by-line got the literal header line, failed to
+    # parse it, and dropped the server — which is why the SRE agent reported "slack-dm MCP
+    # unavailable" for 137+ consecutive ticks. `_read_message` still accepts both framings.
     body = json.dumps(message, separators=(",", ":")).encode("utf-8")
-    sys.stdout.buffer.write(b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body)
+    sys.stdout.buffer.write(body + b"\n")
     sys.stdout.buffer.flush()
 
 
