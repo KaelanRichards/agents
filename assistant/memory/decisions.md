@@ -62,6 +62,20 @@ agent's heartbeat JSONL.
 - 2026-05-30 — Reconciled `vizcom-sre`'s conflicted `main` (rebased the live tick commit onto the
   actively-advancing `origin/main`); `jj new main` works again. Flagged the two-writer root cause
   (Phase-B dev pushing to the same `main` the VM ticks on).
+- 2026-07-28 — Full VM + repo audit, then fixes. **The dominant OOM cause was not tick overlap**: the
+  sre `sanitize_log` ran `perl -0777` (slurp mode) over an unrotated 817 MB `deploy/tick.log`, so the
+  OOM killer took perl out **81 times in two days**. Dropped `-0777` (every pattern is single-line →
+  constant memory) and added `rotate_log` at 50 MiB. Also found `webdash.service` restart-looping
+  **2216×/hour since 2026-06-30** and `agentq-worker` failing **1415×/day**, both `203/EXEC` against
+  dangling symlinks left when `decomplexify` deleted their targets — the *same* `agentq` symlink bug
+  as 2026-05-30, so `relink_helpers` now calls `prune_dead_links` instead of only ever adding links.
+  17 dead links removed in total. Added `MemoryHigh=1400M` / `MemoryMax=2000M` drop-ins and raised
+  `TimeoutStartSec` to 2400 (it was 900 against a `flock -w 800`, so a queued tick could never
+  finish). `jj util gc` on both brain repos reclaimed **1.84 GB** of loose objects — jj-colocated
+  repos never trigger git's auto-gc, so it had never once run.
+- 2026-07-28 — Secret-scanned all four repos: **no real credentials**. The scary numbers (545 in
+  vizcom-sre) are all `generic-api-key` false positives — the agent writes "KEY FINDING:" in prose
+  and k8s replicaset hashes look like keys. Removed stale `runner.env.bak`/`.save` credential copies.
 
 ## Agent memory lives in the control plane, not Claude auto-memory
 
@@ -155,14 +169,20 @@ com.kaelan.kaelan-pa`), so there is exactly ONE writer to `origin/main`. Send-re
 (deny-list: DM-to-Kaelan + Gmail draft/label only; never email send / channel post / calendar / Linear).
 
 **Details — the setup, and the four things that bit us (don't repeat):**
-1. **Per-repo VCS differs — never assume jj.** The VM `~/kaelan-pa` clone is **plain git** (NOT
-   jj-colocated); vizcom-sre's VM repo IS jj-colocated; the Mac `~/code/kaelan-pa` is jj-colocated. The
-   agent commits via git on the VM. So the shell-level brain push in `deploy/run-tick.sh` must be
-   **git** (`git push origin HEAD:refs/heads/main`), not `jj git push`. A jj-based block (what I first
-   wrote, copied from vizcom-sre) silently no-ops on the git-only VM.
+1. **Per-repo VCS differs — never assume, always check for `.jj`.** This entry used to state the VM
+   `~/kaelan-pa` clone was plain git; **as of the 2026-07-28 audit it is jj-colocated** (someone
+   colocated it, plausibly during the `vm-line-rescue-2026-07-02` work — the remote branch is still
+   there). All four working copies are now jj-colocated. The original lesson stands in general form:
+   the shell-level brain push in `deploy/run-tick.sh` has to match whatever the clone actually is, and
+   a jj-based block silently no-ops on a git-only clone. Run `ls -d .jj` before reasoning about either.
 2. **Single writer, always.** Pre-cutover BOTH Mac (live) and VM (live) were ticking + committing → the
    brains diverged 23/8 commits with real work on both sides (a created Gmail draft on the VM, Morita
    P1 grounding on the Mac). Promote = **retire the other runtime**; never run two live instances.
+   ⚠ **This invariant is currently broken again.** The 2026-07-28 audit found Mac-authored ticks
+   (`tick ... (Mac)`) landing on `origin/main` through the evening while the VM timer was also live;
+   the VM sat 1 ahead / 3 behind. Rebased and pushed clean that day, but nothing prevents a repeat —
+   the Mac ticks come from interactive/`/loop` sessions, not a daemon, so `launchctl bootout` does
+   not cover it. **Open decision: pick one owner, or add a fetch-rebase to the tick and accept both.**
 3. **Config drift — trust the box, not the notes.** Docs said "VM in week-1 dry-run" but the VM had
    already been flipped live (`KAELAN_PA_DRY_RUN=0`, "facade live after ~20 blocked ticks"). Verify
    live/dry-run state from the runner.env on the host before acting.

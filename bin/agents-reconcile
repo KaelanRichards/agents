@@ -75,6 +75,21 @@ relink_helpers() {
     [ -x "$s" ] || continue
     ln -sfn "$s" "$HOME/.local/bin/$(basename "$s")"
   done
+  prune_dead_links
+}
+
+# Relinking alone leaves a link behind when its target is deleted upstream, and systemd units
+# that still call it then fail 203/EXEC on every fire. That is not hypothetical: removing the
+# dashweb dashboard on 2026-06-30 left webdash.service restarting every 3s for 28 days, and
+# agentq-worker.timer failing 1415 times a day, through a month of reconciles.
+prune_dead_links() {
+  for l in "$HOME"/.local/bin/*; do
+    [ -L "$l" ] || continue
+    [ -e "$l" ] && continue
+    case "$(readlink "$l")" in
+      "$AH"/*) rm -f "$l" ;;  # only ours — never touch links owned by other tools
+    esac
+  done
 }
 
 sync_generated() {
