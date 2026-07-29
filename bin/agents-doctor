@@ -27,12 +27,23 @@ for t in claude codex; do
 done
 
 echo "== instruction symlinks =="
+# Resolve the FULL chain, not one hop: home-manager points these at the Nix store, which
+# then out-of-store-symlinks back to canonical. Single-hop readlink made this check fail
+# permanently on this host — a check that always fails cannot warn about a real break.
+canon_agents=$(realpath "$AH/AGENTS.md" 2>/dev/null || echo "$AH/AGENTS.md")
 for f in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
-	[ "$(readlink "$f" 2>/dev/null)" = "$AH/AGENTS.md" ] && ok "${f/#"$HOME"/~} -> AGENTS.md" || bad "${f/#"$HOME"/~} not linked to canonical AGENTS.md"
+	if [ "$(realpath "$f" 2>/dev/null)" = "$canon_agents" ]; then
+		ok "${f/#"$HOME"/~} -> AGENTS.md"
+	else
+		bad "${f/#"$HOME"/~} not linked to canonical AGENTS.md"
+	fi
 done
 
 echo "== helper scripts on PATH =="
 for s in "$AH"/bin/*; do
+	# Only real executables are helpers. The bare glob also matched build cruft such as
+	# bin/__pycache__, producing a permanent bogus warn.
+	[ -f "$s" ] && [ -x "$s" ] || continue
 	n=$(basename "$s")
 	[ -x "$HOME/.local/bin/$n" ] && ok "$n" || warn "$n not on ~/.local/bin (run bootstrap or re-link)"
 done
@@ -134,10 +145,19 @@ echo "== skill sync =="
 canonical_skills=$(find "$AH/skills" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
 claude_skills=$(find "$HOME/.claude/skills" -mindepth 1 -maxdepth 1 -type l 2>/dev/null | wc -l | tr -d ' ')
 codex_skills=$(find "$HOME/.codex/skills" -mindepth 1 -maxdepth 1 -type l 2>/dev/null | wc -l | tr -d ' ')
-if [ "$canonical_skills" = "$claude_skills" ] && [ "$canonical_skills" = "$codex_skills" ]; then
-	ok "canonical skills linked to Claude + Codex ($canonical_skills)"
+# skills.disabled is deliberately unlinked in BOTH tools, so the target is canonical minus
+# disabled. What actually matters is Claude/Codex PARITY — a per-tool disable list is what
+# let Codex keep running skills Claude had switched off.
+disabled_skills=0
+[ -f "$AH/skills.disabled" ] &&
+	disabled_skills=$(grep -cvE '^[[:space:]]*(#|$)' "$AH/skills.disabled" 2>/dev/null || echo 0)
+expected_skills=$((canonical_skills - disabled_skills))
+if [ "$expected_skills" = "$claude_skills" ] && [ "$expected_skills" = "$codex_skills" ]; then
+	ok "canonical skills linked to Claude + Codex ($expected_skills enabled, $disabled_skills disabled)"
+elif [ "$claude_skills" != "$codex_skills" ]; then
+	bad "skill PARITY broken: claude=$claude_skills codex=$codex_skills (run agents-sync)"
 else
-	bad "skill count mismatch: canonical=$canonical_skills claude=$claude_skills codex=$codex_skills (run agents-sync)"
+	bad "skill count mismatch: expected=$expected_skills (canonical=$canonical_skills - disabled=$disabled_skills) claude=$claude_skills codex=$codex_skills (run agents-sync)"
 fi
 broken_skills=$(find "$HOME/.claude/skills" "$HOME/.codex/skills" -mindepth 1 -maxdepth 1 -type l ! -exec test -e {} \; -print 2>/dev/null | wc -l | tr -d ' ')
 [ "$broken_skills" = "0" ] && ok "no broken skill links" || bad "broken skill symlinks: $broken_skills"

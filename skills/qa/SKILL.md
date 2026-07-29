@@ -9,7 +9,10 @@ Run all of these against the current change, then produce ONE consolidated gap r
 
 1. **Tests** — detect and run the suite (`just test` if a `justfile` defines it, else
    `pnpm test` / `pytest -q` / `cargo test`). Keep only failures.
-2. **Secrets** — `gitleaks detect --no-banner`.
+2. **Secrets** — `gitleaks git --staged --no-banner --redact` (staged changes), or
+   `gitleaks dir . --no-banner --redact` (working tree) when nothing is staged yet.
+   **Never** the unbounded `gitleaks detect` / `gitleaks git .` — those replay every diff
+   of every commit on every branch and take hours on a large repo.
 3. **Lint/format** — for touched files: `ruff check` (Python), `biome check` (JS/TS),
    `shellcheck` (shell).
 4. **Spec & diff review** — delegate to the `reviewer` subagent with `SPEC.md` (if present)

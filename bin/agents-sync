@@ -85,10 +85,20 @@ KEEP_AGENTS=$(mktemp)
 trap 'rm -f "$KEEP_SKILLS" "$KEEP_AGENTS"' EXIT
 
 # 1) SKILLS — symlink each canonical skill dir into Claude's and Codex's skills dirs.
+# skills.disabled is the ONE source of truth for what is off. Claude's settings.json
+# skillOverrides only suppressed skills on the Claude side, so Codex kept seeing every
+# skill — including disabled ones. Skipping the KEEP_SKILLS entry here lets the GC loop
+# below drop the links from BOTH tools.
 sc=0
+skipped=0
 for d in "$AH"/skills/*/; do
 	[ -d "$d" ] || continue
 	bn=$(basename "$d")
+	if [ -f "$AH/skills.disabled" ] &&
+		grep -v '^[[:space:]]*#' "$AH/skills.disabled" | grep -Fxq -- "$bn"; then
+		skipped=$((skipped + 1))
+		continue
+	fi
 	echo "$bn" >>"$KEEP_SKILLS"
 	ln -sfn "${d%/}" "$HOME/.claude/skills/$bn"
 	sc=$((sc + 1))
@@ -103,14 +113,14 @@ for tdir in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
 		case "$tgt" in
 		"$AH"/skills/*)
 			if ! grep -Fxq -- "$bn" "$KEEP_SKILLS"; then
-				echo "  gc skill: $link (canonical removed)"
+				echo "  gc skill: $link (disabled, or canonical removed)"
 				rm -f -- "$link"
 			fi
 			;;
 		esac
 	done
 done
-echo "skills: $sc linked into ~/.claude/skills + ~/.codex/skills"
+echo "skills: $sc linked into ~/.claude/skills + ~/.codex/skills ($skipped disabled via skills.disabled)"
 
 # 2) SUBAGENTS — generate Claude .md + Codex .toml from canonical JSON.
 ac=0
@@ -212,7 +222,11 @@ t=$(mktemp); awk -v b="$HB" -v e="$HE" '$0==b{s=1;next} $0==e{s=0;next} s!=1{pri
 {
   echo "$HB"
   echo '[[hooks.PreToolUse]]'
-  echo 'matcher = "^Bash$"'
+  # Codex names its shell tools exec_command/run — never "Bash" (that is Claude's name).
+  # This matcher previously read "^Bash$", so the guard matched NOTHING under Codex and
+  # every destructive-command rule was unenforced there. Cf. PostToolUse below, which
+  # correctly uses Codex's own apply_patch name.
+  echo 'matcher = "^(exec_command|run|shell)$"'
   echo '[[hooks.PreToolUse.hooks]]'
   echo 'type = "command"'
   printf 'command = %s\n' "$(printf '%s' "$guard" | jq -R .)"

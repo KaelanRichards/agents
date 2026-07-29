@@ -86,4 +86,22 @@ printf '%s' "$c" | grep -Eiq '\b(bash|sh|zsh|ksh|dash|eval)\b[^|]*[<$]\( *(sudo 
 printf '%s' "$c" | grep -Eiq '[<$]\( *(sudo +)?(curl|wget|xh|aria2c)\b' &&
 	deny "Blocked: fetch-and-exec via process/command substitution. Download, review, then run."
 
+# --- resource footguns (not destructive, but pathological) ---
+# An unbounded gitleaks history scan replays every diff of every commit on every branch
+# (`git log -p -U0 --full-history --all`). On the 38k-commit vizcom monorepo that ran 13h
+# across 6 pegged cores and never finished; the bounded forms take <1s. Match the subcommand
+# as the token right after `gitleaks` so `--no-git` isn't mistaken for the `git` subcommand.
+# Exempt anything already bounded by --staged/--pre-commit/--log-opts/--pipe/--no-git, plus --help.
+# Anchor at a COMMAND position (start, after a separator, or after a `--` passthrough such as
+# `mise exec gitleaks@8.30.1 -- gitleaks ...`) so that merely *searching* for the string —
+# `rg "gitleaks detect" …`, where the token is preceded by a quote — is not blocked.
+gl_pos='(^|[;&|(]|&&|\|\||[[:space:]]--[[:space:]])[[:space:]]*((sudo|env|time|nohup|command)[[:space:]]+)*gitleaks[[:space:]]+'
+gl_bounded='(--staged|--pre-commit|--log-opts|--pipe|--help| -h( |$))'
+printf '%s' "$c" | grep -Eq "$gl_pos(detect|protect)\b" &&
+	! printf '%s' "$c" | grep -Eq "(--no-git|$gl_bounded)" &&
+	deny "Blocked: unbounded 'gitleaks detect/protect' scans all git history (~13h on vizcom, 6 cores). Use 'gitleaks git --staged --no-banner --redact' (pre-commit) or 'gitleaks dir . --no-banner --redact' (working tree). Note detect/protect are deprecated in gitleaks 8.30."
+printf '%s' "$c" | grep -Eq "${gl_pos}git\b" &&
+	! printf '%s' "$c" | grep -Eq "$gl_bounded" &&
+	deny "Blocked: unbounded 'gitleaks git' scans all git history (~13h on vizcom, 6 cores). Use 'gitleaks git --staged --no-banner --redact', 'gitleaks dir . --no-banner --redact', or bound it explicitly with --log-opts (e.g. --log-opts='-n 50')."
+
 exit 0
