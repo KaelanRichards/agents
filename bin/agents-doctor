@@ -149,8 +149,11 @@ codex_skills=$(find "$HOME/.codex/skills" -mindepth 1 -maxdepth 1 -type l 2>/dev
 # disabled. What actually matters is Claude/Codex PARITY — a per-tool disable list is what
 # let Codex keep running skills Claude had switched off.
 disabled_skills=0
+# grep -c prints the count even when it exits 1 (zero matches), so don't `|| echo 0` —
+# that emits a second line and breaks the arithmetic below.
 [ -f "$AH/skills.disabled" ] &&
-	disabled_skills=$(grep -cvE '^[[:space:]]*(#|$)' "$AH/skills.disabled" 2>/dev/null || echo 0)
+	disabled_skills=$(grep -cvE '^[[:space:]]*(#|$)' "$AH/skills.disabled" 2>/dev/null) || true
+disabled_skills=${disabled_skills:-0}
 expected_skills=$((canonical_skills - disabled_skills))
 if [ "$expected_skills" = "$claude_skills" ] && [ "$expected_skills" = "$codex_skills" ]; then
 	ok "canonical skills linked to Claude + Codex ($expected_skills enabled, $disabled_skills disabled)"

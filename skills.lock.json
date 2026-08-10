@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated_at": "2026-05-24",
+  "updated_at": "2026-08-10T00:00:00Z",
   "policy": {
     "allowed_sources": [
       "openai/skills",
@@ -13,29 +13,26 @@
     "notes": "Vendored skills should come from this allowlist unless explicitly approved. Update by reviewing upstream diffs, running gitleaks, and opening a PR."
   },
   "skills": {
-    "docx": {"source": "anthropics/skills", "path": "skills/docx", "ref": "main", "commit": "690f15cac7f7b4c055c5ab109c79ed9259934081", "trust": "official"},
-    "frontend-design": {"source": "anthropics/skills", "path": "skills/frontend-design", "ref": "main", "commit": "690f15cac7f7b4c055c5ab109c79ed9259934081", "trust": "official"},
-    "gh-address-comments": {"source": "openai/skills", "path": "skills/.curated/gh-address-comments", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
-    "gh-fix-ci": {"source": "openai/skills", "path": "skills/.curated/gh-fix-ci", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
-    "jupyter-notebook": {"source": "openai/skills", "path": "skills/.curated/jupyter-notebook", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
-    "mcp-builder": {"source": "anthropics/skills", "path": "skills/mcp-builder", "ref": "main", "commit": "690f15cac7f7b4c055c5ab109c79ed9259934081", "trust": "official"},
-    "notion-knowledge-capture": {"source": "makenotion/claude-code-notion-plugin", "path": "skills/notion/knowledge-capture", "ref": "main", "commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651", "trust": "official"},
-    "notion-meeting-intelligence": {"source": "makenotion/claude-code-notion-plugin", "path": "skills/notion/meeting-intelligence", "ref": "main", "commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651", "trust": "official"},
-    "notion-research-documentation": {"source": "makenotion/claude-code-notion-plugin", "path": "skills/notion/research-documentation", "ref": "main", "commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651", "trust": "official"},
-    "notion-spec-to-implementation": {"source": "makenotion/claude-code-notion-plugin", "path": "skills/notion/spec-to-implementation", "ref": "main", "commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651", "trust": "official"},
-    "pdf": {"source": "openai/skills", "path": "skills/.curated/pdf", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
-    "playwright": {"source": "openai/skills", "path": "skills/.curated/playwright", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
-    "pptx": {"source": "anthropics/skills", "path": "skills/pptx", "ref": "main", "commit": "690f15cac7f7b4c055c5ab109c79ed9259934081", "trust": "official"},
-    "qa": {"source": "local", "path": "skills/qa", "ref": "main", "commit": null, "trust": "local"},
-    "react-best-practices": {"source": "vercel-labs/agent-skills", "path": "skills/react-best-practices", "ref": "main", "commit": "18a24346600009dc3fcb99e4b2cd83b301601775", "trust": "official"},
-    "screenshot": {"source": "openai/skills", "path": "skills/.curated/screenshot", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
-    "security-best-practices": {"source": "openai/skills", "path": "skills/.curated/security-best-practices", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
-    "security-ownership-map": {"source": "openai/skills", "path": "skills/.curated/security-ownership-map", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
-    "security-threat-model": {"source": "openai/skills", "path": "skills/.curated/security-threat-model", "ref": "main", "commit": "b0401f07213a66414d84a65cb50c1d226f99485a", "trust": "official"},
-    "spec": {"source": "local", "path": "skills/spec", "ref": "main", "commit": null, "trust": "local"},
-    "supabase-postgres-best-practices": {"source": "supabase/agent-skills", "path": "skills/supabase-postgres-best-practices", "ref": "main", "commit": "4e69c80e213f315c02c9ebef9c28dd6e43a4707e", "trust": "official"},
-    "web-design-guidelines": {"source": "vercel-labs/agent-skills", "path": "skills/web-design-guidelines", "ref": "main", "commit": "18a24346600009dc3fcb99e4b2cd83b301601775", "trust": "official"},
-    "webapp-testing": {"source": "anthropics/skills", "path": "skills/webapp-testing", "ref": "main", "commit": "690f15cac7f7b4c055c5ab109c79ed9259934081", "trust": "official"},
-    "xlsx": {"source": "anthropics/skills", "path": "skills/xlsx", "ref": "main", "commit": "690f15cac7f7b4c055c5ab109c79ed9259934081", "trust": "official"}
+    "notion-knowledge-capture": {
+      "source": "makenotion/claude-code-notion-plugin",
+      "path": "skills/notion/knowledge-capture",
+      "ref": "main",
+      "commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651",
+      "trust": "official"
+    },
+    "react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "path": "skills/react-best-practices",
+      "ref": "main",
+      "commit": "18a24346600009dc3fcb99e4b2cd83b301601775",
+      "trust": "official"
+    },
+    "spec": {
+      "source": "local",
+      "path": "skills/spec",
+      "ref": "main",
+      "commit": null,
+      "trust": "local"
+    }
   }
 }
