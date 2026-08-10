@@ -52,14 +52,14 @@ check_control_plane_links() {
 		printf '  FAIL convention: %s/AGENTS.md must be a real source file\n' "$cp"
 		return 1
 	fi
-	# Match agents-doctor: the global links must read back to "$cp/AGENTS.md" verbatim
-	# (mcp/agents-sync write that absolute target), so a raw readlink compare is exact.
+	# nix-darwin/home-manager may own the first hop (link -> /nix/store/...), so compare
+	# the fully-resolved target, not the raw readlink value.
 	for link in "$HOME/.claude/CLAUDE.md" "$HOME/.codex/AGENTS.md"; do
 		if [ ! -L "$link" ]; then
 			printf '  FAIL convention: %s is not a symlink to the canonical AGENTS.md\n' "$link"
 			ok=1
-		elif [ "$(readlink "$link")" != "$cp/AGENTS.md" ]; then
-			printf '  FAIL convention: %s -> %s, expected %s/AGENTS.md\n' "$link" "$(readlink "$link")" "$cp"
+		elif [ "$(readlink -f "$link")" != "$(readlink -f "$cp/AGENTS.md")" ]; then
+			printf '  FAIL convention: %s resolves to %s, expected %s/AGENTS.md\n' "$link" "$(readlink -f "$link")" "$cp"
 			ok=1
 		fi
 	done
