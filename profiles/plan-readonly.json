@@ -1,7 +1,7 @@
 {
 	"name": "plan-readonly",
 	"description": "Read-only exploration, planning, and codebase analysis.",
-	"mcp_servers": ["context7", "filesystem", "github", "linear", "agents"],
+	"mcp_servers": ["context7", "github", "linear", "agents"],
 	"allowed_tools": [
 		"read",
 		"grep",

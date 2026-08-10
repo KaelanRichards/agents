@@ -64,8 +64,7 @@ Edit this file to change both tools.
 - **Servers** (`mcp-sync list` for the live set): `context7` (current library/API docs — pull
   before coding against one) · `github` · `linear` · `datadog` (US5, read-first) · `sentry`
   (read-first) · `notion` · `granola` · `cloudflare` · `slack` · `bigquery` (read-only facade;
-  use `bigquery_execute_sql_readonly`) · `playwright` · `filesystem` (scoped to `~/code`) ·
-  `sequential-thinking` · `agents` (this environment's own repo/status/task tools).
+  use `bigquery_execute_sql_readonly`) · `agents` (this environment's own repo/status/task tools).
 
 ## Subagents, skills & hooks
 - Canonical sources in `~/.config/agents/{agents,skills,hooks}`; run **`agents-sync`** after
@@ -140,9 +139,3 @@ Edit this file to change both tools.
 ## Context economy
 - Keep output quiet: `pytest -q`, `ruff check -q`, `| tail -n 50`, filter to failures.
 - Delegate noisy research to `explorer` (its output stays out of main context).
-- Per-area guidance via `.claude/rules/*.md` (`paths:` filter).
-
-## Templates
-`templates/`: `SPEC.md` · `eval.yml` (PR eval gate) · `rules.example.md` · `claude-github.yml`
-(@claude PR review) · `scheduled-maintenance.yml`. The GitHub workflows need `ANTHROPIC_API_KEY`
-in Actions secrets; for cloud routines use Claude's `/schedule`.

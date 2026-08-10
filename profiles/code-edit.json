@@ -1,7 +1,7 @@
 {
 	"name": "code-edit",
 	"description": "Normal coding work in a repository with tests and local file edits.",
-	"mcp_servers": ["context7", "filesystem", "github", "agents"],
+	"mcp_servers": ["context7", "github", "agents"],
 	"allowed_tools": [
 		"read",
 		"grep",
