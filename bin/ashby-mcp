@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ashby-mcp — launch the Ashby MCP server with ASHBY_API_KEY resolved at runtime from a host-local
 # secret file (chmod 600), so the live key is NEVER inlined into ~/.claude.json or
-# ~/.codex/config.toml (which mcp-sync would otherwise write in cleartext, invisible to gitleaks).
+# ~/.codex/config.toml (which mcp-sync would otherwise write in cleartext).
 set -euo pipefail
 
 secret_file="${ASHBY_ENV_FILE:-$HOME/.config/agents-secrets/ashby.env}"

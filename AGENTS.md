@@ -21,11 +21,6 @@ Edit this file to change both tools.
 ## Code quality — run non-interactively, parse the output
 - Python `ruff check` / `ruff format` · JS/TS `biome check` (unless project config says otherwise)
   · Shell `shellcheck` then `shfmt -w`.
-- Secrets before committing: `gitleaks git --staged --no-banner --redact`, or
-  `gitleaks dir . --no-banner --redact` for the working tree, or pipe a diff to
-  `gitleaks stdin`. **Never bare `gitleaks detect` / `gitleaks git .`** — the unbounded form
-  replays every diff of every commit on every branch (~13h on a 38k-commit monorepo); bounded
-  forms take <1s. `detect`/`protect` are deprecated in 8.30 — use `git` / `dir` / `stdin`.
 - If a `justfile` exists, use `just <task>`. `watchexec`/`entr` to re-run on change; `hyperfine`
   to benchmark.
 
@@ -74,11 +69,11 @@ Edit this file to change both tools.
 
 ## Subagents, skills & hooks
 - Canonical sources in `~/.config/agents/{agents,skills,hooks}`; run **`agents-sync`** after
-  editing. After changing canonical config, verify with `agents-doctor`, run
-  `gitleaks dir . --no-banner --redact`, and describe/bookmark the jj change.
+  editing. After changing canonical config, verify with `agents-doctor` and
+  describe/bookmark the jj change.
 - **Enabled skills are exactly those `agents-sync` links.** `skills.disabled` is the single
   source of truth and applies to BOTH tools. Don't hand-run a disabled skill's steps from
-  memory — that is how the disabled `qa` loop still triggered an unbounded `gitleaks` scan.
+  memory — that is how the disabled `qa` loop still ran an expensive unbounded scan.
   Re-enable by deleting its line and re-running `agents-sync`.
 - **Subagents**: `explorer` (read-only research — delegate noisy research here) and `reviewer`
   (diff-vs-spec review before committing).

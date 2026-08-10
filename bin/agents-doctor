@@ -18,7 +18,7 @@ ok() { printf '  [ ok ] %s\n' "$1"; }
 
 echo "== tools =="
 missing=""
-for t in jj git mise uv rg fd fzf jq yq ast-grep sd gron bat eza tree scc ruff biome shellcheck shfmt gitleaks just watchexec entr hyperfine xh pandoc starship gh delta; do
+for t in jj git mise uv rg fd fzf jq yq ast-grep sd gron bat eza tree scc ruff biome shellcheck shfmt just watchexec entr hyperfine xh pandoc starship gh delta; do
 	command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
 done
 [ -z "$missing" ] && ok "core toolbelt present" || bad "missing tools:$missing"

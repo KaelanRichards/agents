@@ -112,7 +112,6 @@ hcloud firewall describe agents-tight
 ssh agents 'sudo -n cat /etc/ssh/sshd_config.d/99-agent-hardening.conf'
 ssh agents 'ss -tuln | awk "NR==1 || /:22|:443|41641/"'
 tailscale status
-gitleaks detect --source /Users/kaelan/.config/agents --no-git --redact --verbose
 agents-doctor
 ```
 

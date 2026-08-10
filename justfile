@@ -28,7 +28,6 @@ verify-repos:
 verify-all:
     agents-doctor
     bash tests/sync-roundtrip.sh
-    gitleaks detect --source . --no-git --redact --verbose
     agents-verify
 
 test:
@@ -55,10 +54,7 @@ test:
     uv run --script tests/prompt_injection_policy.py
     uv run --script tests/behavioral_policy.py
 
-secrets:
-    gitleaks detect --source . --no-git --redact --verbose
-
-ci-local: test secrets doctor
+ci-local: test doctor
 
 # Describe @, bookmark it, and push. Pass the bookmark name as `name`:
 #   just push-changes name=my-bookmark

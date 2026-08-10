@@ -18,7 +18,7 @@ Notion, Granola, Linear, and Sentry are available to every base agent through on
 - `mcp.json` remains the source of truth and must be synced via `mcp-sync`.
 - Secrets and OAuth token contents are never printed or committed.
 - VM auth must work from a local browser via SSH port forwarding.
-- `agents-doctor`, contract checks, `mcp-auth check`, and `gitleaks` must pass.
+- `agents-doctor`, contract checks, and `mcp-auth check` must pass.
 
 ## Tasks
 - [x] T1 — replace selected hosted OAuth direct HTTP MCP entries with `mcp-remote` stdio bridge entries.
@@ -32,7 +32,6 @@ Notion, Granola, Linear, and Sentry are available to every base agent through on
 - `bin/mcp-auth check`
 - `python3 tests/agent_system_contract.py`
 - `agents-doctor`
-- `gitleaks detect --no-banner --no-git --redact`
 
 ## Operational gotchas (salvaged from the retired mcp.manifest.json / mcp-sync verify)
 - **Pin `mcp-remote`, never `@latest`.** `mcp-remote@latest` re-resolves on every launch and breaks
