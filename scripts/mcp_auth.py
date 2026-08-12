@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """MCP auth control-plane helper.
 
-This intentionally does not export/import OAuth tokens. OAuth-backed remote MCPs use mcp-remote
-as a stdio bridge, so auth state is host-local in ~/.mcp-auth and shared by every
-stdio-compatible client that launches the same bridge.
+This intentionally does not export/import OAuth tokens. Status and health inspection never launch
+an MCP process or client; explicit login commands are the only operations that start a bridge.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import json
 import os
 import pathlib
@@ -17,13 +18,16 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
-
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 ROOT = pathlib.Path(
     os.environ.get("AGENTS_HOME", pathlib.Path.home() / ".config" / "agents")
 )
 AUTH = ROOT / "mcp.auth.json"
 MCP = ROOT / "mcp.json"
+MCP_LOCAL = ROOT / "mcp.local.json"
 AUTH_STORE = pathlib.Path(
     os.environ.get("MCP_REMOTE_CONFIG_DIR", "~/.mcp-auth")
 ).expanduser()
@@ -31,23 +35,6 @@ AUTH_STORE = pathlib.Path(
 
 def load_json(path: pathlib.Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def run_quiet(cmd: Sequence[str], timeout: int = 8) -> tuple[int, str]:
-    if not shutil.which(cmd[0]):
-        return 127, f"{cmd[0]} not on PATH"
-    try:
-        proc = subprocess.run(
-            list(cmd),
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return 124, f"{' '.join(cmd)} timed out"
-    return proc.returncode, proc.stdout.strip()
 
 
 def auth_servers() -> dict:
@@ -64,6 +51,69 @@ def canonical_servers() -> dict:
     if not isinstance(servers, dict):
         raise SystemExit("mcp.json: mcpServers must be an object")
     return servers
+
+
+def deep_merge(base: object, override: object) -> object:
+    """Recursively merge objects while replacing arrays and scalar values."""
+    if not isinstance(base, dict) or not isinstance(override, dict):
+        return copy.deepcopy(override)
+    merged = copy.deepcopy(base)
+    for key, value in override.items():
+        merged[key] = deep_merge(merged.get(key), value)
+    return merged
+
+
+def expand_paths(value: object) -> object:
+    if isinstance(value, str):
+        return value.replace("$AGENTS_HOME", str(ROOT)).replace(
+            "$HOME", str(pathlib.Path.home())
+        )
+    if isinstance(value, list):
+        return [expand_paths(item) for item in value]
+    if isinstance(value, dict):
+        return {key: expand_paths(item) for key, item in value.items()}
+    return value
+
+
+def merged_servers() -> dict:
+    data = load_json(MCP)
+    if MCP_LOCAL.exists():
+        data = deep_merge(data, load_json(MCP_LOCAL))
+    if not isinstance(data, dict):
+        raise SystemExit("effective MCP config must be an object")
+    servers = data.get("mcpServers", {})
+    if not isinstance(servers, dict):
+        raise SystemExit("effective MCP config: mcpServers must be an object")
+    return expand_paths(servers)
+
+
+def effective_servers(client: str) -> dict:
+    if client not in {"claude", "codex"}:
+        raise SystemExit(f"unknown MCP client {client!r}")
+    resolved: dict[str, dict] = {}
+    for name, raw in merged_servers().items():
+        if not isinstance(raw, dict):
+            raise SystemExit(f"effective MCP config: {name} must be an object")
+        shared = {
+            key: copy.deepcopy(value) for key, value in raw.items() if key != "clients"
+        }
+        clients = raw.get("clients", {})
+        override = clients.get(client) if isinstance(clients, dict) else None
+        if override is None:
+            entry = shared
+        elif not isinstance(override, dict):
+            raise SystemExit(
+                f"effective MCP config: {name}.clients.{client} must be an object"
+            )
+        elif "type" in override:
+            entry = copy.deepcopy(override)
+            entry.pop("clients", None)
+        else:
+            entry = deep_merge(shared, override)
+        if not isinstance(entry, dict):
+            raise SystemExit(f"effective MCP config: {name} resolved to a non-object")
+        resolved[name] = entry
+    return resolved
 
 
 def require_server(name: str) -> dict:
@@ -155,6 +205,24 @@ def check_contract() -> int:
         for required in ("claude", "codex"):
             if required not in clients:
                 errors.append(f"{name}: missing client auth metadata for {required}")
+                continue
+            client_entry = effective_servers(required).get(name, {})
+            support = clients[required].get("support", "")
+            if (
+                "stdio-bridge" in support
+                and client_entry.get("type", "stdio") != "stdio"
+            ):
+                errors.append(
+                    f"{name}: {required} auth metadata expects a stdio bridge"
+                )
+            if "native-http-oauth" in support and client_entry.get("type") != "http":
+                errors.append(f"{name}: {required} auth metadata expects native HTTP")
+            client_url = clients[required].get("url")
+            if client_url and client_entry.get("url") != client_url:
+                errors.append(
+                    f"{name}: {required} URL mismatch auth={client_url!r} "
+                    f"mcp={client_entry.get('url')!r}"
+                )
     # Pinned mcp-remote versions must have a populated OAuth store, or unattended startup re-auths
     # (the failure mode that hangs Codex on Slack). A bump without `mcp-auth migrate` orphans these.
     for version in sorted(pinned_remote_versions()):
@@ -182,7 +250,17 @@ def list_servers() -> int:
     return 0
 
 
-def status_one(name: str) -> None:
+def transport_description(entry: dict) -> str:
+    transport = entry.get("type", "stdio")
+    if transport == "http":
+        return f"http {entry.get('url', '(missing URL)')}"
+    command = entry.get("command", "(missing command)")
+    args = entry.get("args", [])
+    rendered_args = " ".join(shlex.quote(str(arg)) for arg in args)
+    return f"stdio {command}{(' ' + rendered_args) if rendered_args else ''}"
+
+
+def status_one(name: str, clients: Sequence[str]) -> None:
     meta = require_server(name)
     print(f"== {name} ==")
     print(f"url: {meta.get('url')}")
@@ -204,30 +282,170 @@ def status_one(name: str) -> None:
     print(f"boundary: {meta.get('account_boundary')}")
     if meta.get("host_requirements"):
         print(f"host_requirements: {meta.get('host_requirements')}")
-    print()
-    for client in ("claude", "codex"):
+    for client in clients:
         cfg = meta.get("clients", {}).get(client, {})
         support = cfg.get("support", "unknown")
-        verify = cfg.get("verify_command", "")
+        entry = effective_servers(client).get(name)
+        print()
         print(f"{client}: {support}")
-        if verify:
-            rc, out = run_quiet(verify.split())
-            first = out.splitlines()[0] if out else "(no output)"
-            print(f"  verify: {verify}")
-            print(f"  result: rc={rc} {first}")
+        if entry is None:
+            print("  configured: no")
+        else:
+            print(f"  enabled: {str(entry.get('enabled', True)).lower()}")
+            print(f"  transport: {transport_description(entry)}")
         setup = cfg.get("setup")
         if setup:
             print(f"  setup: {setup}")
-        print()
 
 
 def status(args: argparse.Namespace) -> int:
     names = args.servers or sorted(auth_servers())
+    clients = args.client or ["claude", "codex"]
     for idx, name in enumerate(names):
         if idx:
             print()
-        status_one(name)
+        status_one(name, clients)
     return 0
+
+
+def executable_available(command: str) -> bool:
+    if "/" in command:
+        path = pathlib.Path(command)
+        return path.is_file() and os.access(path, os.X_OK)
+    return shutil.which(command) is not None
+
+
+def remote_token_file(name: str, meta: dict) -> pathlib.Path:
+    digest = hashlib.md5(
+        str(meta.get("url", "")).encode(), usedforsecurity=False
+    ).hexdigest()
+    pin = remote_pin(name)
+    version = pin.split("@", 1)[1] if "@" in pin else "latest"
+    return version_store(version) / f"{digest}_tokens.json"
+
+
+def probe_http(url: str, timeout: float) -> tuple[bool, str]:
+    request = Request(url, method="HEAD", headers={"User-Agent": "mcp-auth-health/1"})
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return True, f"HTTP {response.status}"
+    except HTTPError as exc:
+        # Auth-required and method-not-allowed responses still prove the endpoint is reachable.
+        if exc.code < 500:
+            return True, f"HTTP {exc.code}"
+        return False, f"HTTP {exc.code}"
+    except (URLError, TimeoutError, OSError) as exc:
+        return False, type(exc).__name__
+
+
+def health_result(
+    name: str, entry: dict | None, client: str, offline: bool, timeout: float
+) -> dict[str, str]:
+    result = {"name": name, "client": client}
+    if entry is None:
+        return result | {
+            "status": "broken",
+            "transport": "missing",
+            "detail": "not configured",
+        }
+    transport = entry.get("type", "stdio")
+    result["transport"] = transport
+    if entry.get("enabled") is False:
+        return result | {"status": "disabled", "detail": "disabled for this client"}
+
+    meta = auth_servers().get(name, {})
+    support = meta.get("clients", {}).get(client, {}).get("support", "")
+    if transport == "stdio":
+        command = entry.get("command")
+        if not isinstance(command, str) or not command:
+            return result | {"status": "broken", "detail": "stdio command is missing"}
+        if not executable_available(command):
+            return result | {
+                "status": "broken",
+                "detail": f"stdio executable unavailable: {command}",
+            }
+        if meta.get("strategy") in {"mcp-remote-stdio", "mcp-remote-wrapper"}:
+            if remote_token_file(name, meta).is_file():
+                return result | {
+                    "status": "ready",
+                    "detail": "OAuth cache present; validity was not probed",
+                }
+            return result | {
+                "status": "auth-required",
+                "detail": f"OAuth cache missing; run: {meta.get('login_command', f'mcp-auth login {name}')}",
+            }
+        return result | {"status": "ready", "detail": "stdio executable available"}
+
+    if transport != "http":
+        return result | {
+            "status": "broken",
+            "detail": f"unsupported transport: {transport}",
+        }
+    url = entry.get("url")
+    parsed = urlparse(url) if isinstance(url, str) else None
+    if parsed is None or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return result | {"status": "broken", "detail": "HTTP URL is missing or invalid"}
+    bearer_env = entry.get("bearer_token_env_var")
+    if bearer_env and not os.environ.get(str(bearer_env)):
+        return result | {
+            "status": "auth-required",
+            "detail": f"required bearer environment variable is unset: {bearer_env}",
+        }
+
+    client_oauth = (
+        meta.get("strategy") == "client-native-http-oauth"
+        or "native-http-oauth" in support
+    )
+    if client_oauth:
+        detail = "client-managed OAuth state is intentionally not inspected"
+        status_name = "unverified"
+    else:
+        detail = "HTTP configuration is valid"
+        status_name = "ready"
+    if offline:
+        return result | {"status": status_name, "detail": f"{detail}; offline mode"}
+    reachable, probe_detail = probe_http(url, timeout)
+    if reachable:
+        return result | {"status": status_name, "detail": f"{detail}; {probe_detail}"}
+    return result | {
+        "status": "unverified",
+        "detail": f"endpoint reachability not established: {probe_detail}",
+    }
+
+
+def health(args: argparse.Namespace) -> int:
+    servers = effective_servers(args.client)
+    names = args.servers or sorted(servers)
+    results = [
+        health_result(name, servers.get(name), args.client, args.offline, args.timeout)
+        for name in names
+    ]
+    statuses = ("ready", "auth-required", "disabled", "unverified", "broken")
+    summary = {status_name: 0 for status_name in statuses}
+    for result in results:
+        summary[result["status"]] += 1
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "client": args.client,
+                    "offline": args.offline,
+                    "results": results,
+                    "summary": summary,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+    else:
+        for result in results:
+            print(
+                f"{result['status']:<13} {result['name']:<20} "
+                f"{result['transport']}: {result['detail']}"
+            )
+        counts = ", ".join(f"{key}={value}" for key, value in summary.items())
+        print(f"summary ({args.client}): {counts}")
+    return 1 if summary["broken"] else 0
 
 
 def plan(args: argparse.Namespace) -> int:
@@ -256,9 +474,7 @@ def plan(args: argparse.Namespace) -> int:
         print(
             f"  tunnel:      ssh -L {port}:127.0.0.1:{port} <vm-host> mcp-auth login {name}"
         )
-        print(
-            "  clients:     Claude, Codex, and OpenCode all reuse the same stdio bridge on that host"
-        )
+        print("  clients:     run `mcp-auth status --client <client> " + name + "`")
         print()
     return 0
 
@@ -408,9 +624,35 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     p_status = sub.add_parser(
-        "status", help="show local client auth status and setup commands"
+        "status",
+        help="show effective client configuration and auth setup without probing",
+    )
+    p_status.add_argument(
+        "--client",
+        action="append",
+        choices=("claude", "codex"),
+        help="show only this client (repeatable; default: both)",
     )
     p_status.add_argument("servers", nargs="*")
+
+    p_health = sub.add_parser(
+        "health",
+        help="classify effective MCP readiness without launching clients or bridges",
+    )
+    p_health.add_argument("servers", nargs="*")
+    p_health.add_argument("--client", choices=("claude", "codex"), default="codex")
+    p_health.add_argument(
+        "--offline", action="store_true", help="skip bounded HTTP reachability checks"
+    )
+    p_health.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
+    p_health.add_argument(
+        "--timeout",
+        type=float,
+        default=3.0,
+        help="per-endpoint HTTP timeout in seconds",
+    )
 
     p_plan = sub.add_parser("plan", help="print clean VM setup plan")
     p_plan.add_argument("servers", nargs="*")
@@ -441,6 +683,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return migrate(args)
     if args.cmd == "status":
         return status(args)
+    if args.cmd == "health":
+        return health(args)
     if args.cmd == "plan":
         return plan(args)
     if args.cmd == "login":

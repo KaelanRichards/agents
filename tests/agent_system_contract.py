@@ -111,6 +111,10 @@ def main() -> None:
         auth_servers["datadog"]["clients"]["codex"]["support"]
         == "supported-via-client-native-http-oauth"
     )
+    assert (
+        auth_servers["datadog"]["clients"]["codex"]["url"]
+        == CODEX_NATIVE_HTTP["datadog"]
+    )
     for name, (url, _port) in MCP_REMOTE_BRIDGES.items():
         assert auth_servers[name]["url"] == url
         assert auth_servers[name]["strategy"] == "mcp-remote-stdio"
@@ -120,10 +124,20 @@ def main() -> None:
             auth_servers[name]["clients"]["claude"]["support"]
             == "supported-via-stdio-bridge"
         )
-        assert (
-            auth_servers[name]["clients"]["codex"]["support"]
-            == "supported-via-stdio-bridge"
-        )
+        if name == "cloudflare":
+            assert (
+                auth_servers[name]["clients"]["codex"]["support"]
+                == "supported-via-client-native-http-oauth"
+            )
+            assert (
+                auth_servers[name]["clients"]["codex"]["url"]
+                == CODEX_NATIVE_HTTP[name]
+            )
+        else:
+            assert (
+                auth_servers[name]["clients"]["codex"]["support"]
+                == "supported-via-stdio-bridge"
+            )
     for name, command in MCP_REMOTE_WRAPPERS.items():
         assert auth_servers[name]["url"] == "https://mcp.slack.com/mcp"
         assert auth_servers[name]["strategy"] == "mcp-remote-wrapper"

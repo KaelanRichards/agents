@@ -43,10 +43,10 @@ a browser.
   causing stale reports and roughly 38 seconds of timeouts in the observed environment.
 
 ## Tasks
-- [ ] T1 — Resolve per-client MCP definitions and Codex `enabled` output; add sync round-trip tests
+- [x] T1 — Resolve per-client MCP definitions and Codex `enabled` output; add sync round-trip tests
   and canonical Datadog/Cloudflare client overrides — files: `bin/mcp-sync`, `mcp.json`,
   `tests/sync-roundtrip.sh`, `tests/agent_system_contract.py`.
-- [ ] T2 — Make auth status effective-config-aware and side-effect-free; add bounded health output
+- [x] T2 — Make auth status effective-config-aware and side-effect-free; add bounded health output
   and focused tests — files: `scripts/mcp_auth.py`, `mcp.auth.json`, `tests/mcp_auth_health.py`,
   `tests/agent_system_contract.py`.
 - [ ] T3 — Surface static health in the main doctor and document the schema/runbook — files:

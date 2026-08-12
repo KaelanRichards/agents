@@ -1,10 +1,10 @@
 {
   "_doc": "Operational auth contract for OAuth-backed remote MCP servers. Server definitions live in mcp.json; this file says how to authenticate them on a host without copying opaque token stores between machines.",
   "version": 1,
-  "updated_at": "2026-06-01",
+  "updated_at": "2026-08-12",
   "policy": {
     "token_copying": "forbidden-by-default",
-    "host_model": "authenticate once per host through mcp-remote; stdio-compatible clients on that host reuse ~/.mcp-auth",
+    "host_model": "mcp-remote stdio bridges authenticate once per host and reuse ~/.mcp-auth; native HTTP clients keep their own OAuth state",
     "headless_model": "remote OAuth servers are optional in unattended strict configs unless the host already has a valid ~/.mcp-auth cache",
     "preferred_long_term": "use official hosted MCPs through mcp-remote first; graduate to a narrow local facade only if hosted MCP behavior is insufficient"
   },
@@ -22,8 +22,9 @@
           "verify_command": "claude mcp get datadog"
         },
         "codex": {
+          "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp",
           "support": "supported-via-client-native-http-oauth",
-          "setup": "Run `codex mcp login datadog` once on the host after `mcp-sync`. If Codex remote auth is unreliable, install Datadog's local `datadog_mcp_cli`, run `datadog_mcp_cli login`, and override Datadog in untracked `mcp.local.json`.",
+          "setup": "Run `codex mcp login datadog` once on the host after `mcp-sync`. Codex receives the base resource URL required by Datadog's protected-resource metadata validation.",
           "verify_command": "codex mcp list"
         }
       },
@@ -137,8 +138,9 @@
           "verify_command": "claude mcp get cloudflare"
         },
         "codex": {
-          "support": "supported-via-stdio-bridge",
-          "setup": "Use the synced stdio MCP entry; Codex does not need native remote OAuth support for this server.",
+          "url": "https://mcp.cloudflare.com/mcp",
+          "support": "supported-via-client-native-http-oauth",
+          "setup": "Use the synced native HTTP entry and complete OAuth in Codex. This bypasses the stdio bridge's unsupported OIDC-scope browser loop.",
           "verify_command": "codex mcp list"
         }
       },
