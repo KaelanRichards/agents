@@ -223,14 +223,6 @@ def check_contract() -> int:
                     f"{name}: {required} URL mismatch auth={client_url!r} "
                     f"mcp={client_entry.get('url')!r}"
                 )
-    # Pinned mcp-remote versions must have a populated OAuth store, or unattended startup re-auths
-    # (the failure mode that hangs Codex on Slack). A bump without `mcp-auth migrate` orphans these.
-    for version in sorted(pinned_remote_versions()):
-        if not version_store(version).exists():
-            errors.append(
-                f"mcp-remote {version}: no {version_store(version).name}/ OAuth store "
-                f"(version bump orphaned auth — run: mcp-auth migrate)"
-            )
     if errors:
         for err in errors:
             print(f"FAIL: {err}", file=sys.stderr)
@@ -245,34 +237,51 @@ def list_servers() -> int:
         for client, cfg in sorted(meta.get("clients", {}).items()):
             client_bits.append(f"{client}:{cfg.get('support', 'unknown')}")
         print(
-            f"{name}\t{meta.get('strategy')}\t{meta.get('url')}\t{', '.join(client_bits)}"
+            f"{name}\t{meta.get('strategy')}\t{safe_url(meta.get('url'))}\t{', '.join(client_bits)}"
         )
     return 0
+
+
+def safe_url(value: object) -> str:
+    """Show an endpoint resource without query values or URL userinfo."""
+    if not isinstance(value, str):
+        return "(missing URL)"
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return "(invalid URL)"
+    hostname = parsed.hostname or "(missing host)"
+    if parsed.port is not None:
+        hostname = f"{hostname}:{parsed.port}"
+    authority = f"<redacted>@{hostname}" if parsed.username else hostname
+    if parsed.path in {"", "/"}:
+        path = parsed.path
+    else:
+        path = "/<redacted-path>"
+    query = "?<redacted-query>" if parsed.query else ""
+    fragment = "#<redacted-fragment>" if parsed.fragment else ""
+    return f"{parsed.scheme}://{authority}{path}{query}{fragment}"
 
 
 def transport_description(entry: dict) -> str:
     transport = entry.get("type", "stdio")
     if transport == "http":
-        return f"http {entry.get('url', '(missing URL)')}"
+        return f"http {safe_url(entry.get('url'))}"
     command = entry.get("command", "(missing command)")
     args = entry.get("args", [])
-    rendered_args = " ".join(shlex.quote(str(arg)) for arg in args)
-    return f"stdio {command}{(' ' + rendered_args) if rendered_args else ''}"
+    count = len(args) if isinstance(args, list) else 0
+    suffix = f" ({count} argument value(s) hidden)" if count else ""
+    endpoint = bridge_url(entry, {}) if isinstance(args, list) else ""
+    endpoint_suffix = f" -> {safe_url(endpoint)}" if endpoint else ""
+    return f"stdio {command}{suffix}{endpoint_suffix}"
 
 
 def status_one(name: str, clients: Sequence[str]) -> None:
     meta = require_server(name)
     print(f"== {name} ==")
-    print(f"url: {meta.get('url')}")
+    print(f"auth_contract_url: {safe_url(meta.get('url'))}")
     print(f"strategy: {meta.get('strategy')}")
-    if meta.get("strategy") == "client-native-http-oauth":
+    if meta.get("login_command"):
         print(f"login: {meta.get('login_command')}")
-    elif meta.get("strategy") == "mcp-remote-wrapper":
-        print(f"bridge: {meta.get('command')}")
-    else:
-        print(
-            f"bridge: npx -y {remote_pin(name)} {meta.get('url')} {meta.get('callback_port')} --host {meta.get('callback_host')}"
-        )
     if meta.get("token_store") == "client-managed":
         print("token_store: client-managed")
     else:
@@ -315,11 +324,19 @@ def executable_available(command: str) -> bool:
     return shutil.which(command) is not None
 
 
-def remote_token_file(name: str, meta: dict) -> pathlib.Path:
+def bridge_url(entry: dict, meta: dict) -> str:
+    for arg in entry.get("args", []):
+        if isinstance(arg, str) and arg.startswith(("https://", "http://")):
+            return arg
+    url = entry.get("url") or meta.get("url") or ""
+    return str(url)
+
+
+def remote_token_file(entry: dict, meta: dict) -> pathlib.Path:
     digest = hashlib.md5(
-        str(meta.get("url", "")).encode(), usedforsecurity=False
+        bridge_url(entry, meta).encode(), usedforsecurity=False
     ).hexdigest()
-    pin = remote_pin(name)
+    pin = remote_pin_from_entry(entry)
     version = pin.split("@", 1)[1] if "@" in pin else "latest"
     return version_store(version) / f"{digest}_tokens.json"
 
@@ -365,7 +382,7 @@ def health_result(
                 "detail": f"stdio executable unavailable: {command}",
             }
         if meta.get("strategy") in {"mcp-remote-stdio", "mcp-remote-wrapper"}:
-            if remote_token_file(name, meta).is_file():
+            if remote_token_file(entry, meta).is_file():
                 return result | {
                     "status": "ready",
                     "detail": "OAuth cache present; validity was not probed",
@@ -468,7 +485,7 @@ def plan(args: argparse.Namespace) -> int:
         meta = require_server(name)
         port = meta.get("callback_port")
         print(f"{name}:")
-        print(f"  url: {meta.get('url')}")
+        print(f"  url: {safe_url(meta.get('url'))}")
         print(f"  local login: mcp-auth login {name}")
         print(f"  VM login:    mcp-auth vm-login {name} <vm-host>")
         print(
@@ -485,11 +502,7 @@ def expand_host_path(value: str) -> str:
     )
 
 
-def remote_pin(name: str) -> str:
-    """The pinned mcp-remote@<version> token for a server, read from mcp.json (the single source of
-    the version). Login must use the SAME version as the runtime bridge so the ~/.mcp-auth token it
-    writes is read back by the identical client version (a mismatch triggers re-auth)."""
-    entry = canonical_servers().get(name, {})
+def remote_pin_from_entry(entry: dict) -> str:
     for a in entry.get("args", []):
         if isinstance(a, str) and a.startswith("mcp-remote@"):
             return a
@@ -506,6 +519,11 @@ def remote_pin(name: str) -> str:
         except OSError:
             pass
     return "mcp-remote@latest"
+
+
+def remote_pin(name: str) -> str:
+    """Read the canonical mcp-remote pin used by explicit login/version checks."""
+    return remote_pin_from_entry(canonical_servers().get(name, {}))
 
 
 def pinned_remote_versions() -> set[str]:
@@ -525,41 +543,24 @@ def version_store(version: str) -> pathlib.Path:
     return AUTH_STORE / f"mcp-remote-{version}"
 
 
-def existing_stores() -> list[pathlib.Path]:
-    """Existing ~/.mcp-auth/mcp-remote-* dirs, newest first (by mtime)."""
-    if not AUTH_STORE.exists():
-        return []
-    dirs = [p for p in AUTH_STORE.glob("mcp-remote-*") if p.is_dir()]
-    return sorted(dirs, key=lambda p: p.stat().st_mtime, reverse=True)
-
-
 def migrate(args: argparse.Namespace) -> int:
-    """Ensure every pinned mcp-remote version has a populated OAuth store, copying from the newest
-    existing store when a version dir is missing. Idempotent; safe to run on every sync."""
+    """Legacy compatibility check: report missing stores without copying OAuth credentials."""
+    del args
     wanted = pinned_remote_versions()
     if not wanted:
         print("no pinned mcp-remote bridges — nothing to migrate")
         return 0
-    stores = existing_stores()
     rc = 0
     for version in sorted(wanted):
         dst = version_store(version)
         if dst.exists():
             print(f"ok: {dst.name} present")
             continue
-        src = next((s for s in stores if s != dst), None)
-        if src is None:
-            print(
-                f"MISSING: {dst.name} and no prior store to migrate from — run: mcp-auth login <server>",
-                file=sys.stderr,
-            )
-            rc = 1
-            continue
-        if args.dry_run:
-            print(f"would copy {src.name} -> {dst.name}")
-            continue
-        shutil.copytree(src, dst)
-        print(f"migrated {src.name} -> {dst.name} ({len(list(dst.iterdir()))} entries)")
+        print(
+            f"MISSING: {dst.name}; OAuth stores are never copied — run: mcp-auth login <server>",
+            file=sys.stderr,
+        )
+        rc = 1
     return rc
 
 
@@ -617,10 +618,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     p_migrate = sub.add_parser(
         "migrate",
-        help="ensure each pinned mcp-remote version has a populated ~/.mcp-auth store",
+        help="report missing pinned mcp-remote stores without copying credentials",
     )
     p_migrate.add_argument(
-        "--dry-run", action="store_true", help="report actions without copying"
+        "--dry-run",
+        action="store_true",
+        help="compatibility flag; migrate is always report-only",
     )
 
     p_status = sub.add_parser(

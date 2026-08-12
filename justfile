@@ -49,6 +49,7 @@ test:
     for f in agents/*.json; do jq -e . "$f" >/dev/null; done
     ruff check .
     bash tests/sync-roundtrip.sh
+    uv run --script tests/mcp_auth_health.py
     bash tests/enforcement_e2e.sh
     uv run --script tests/agent_system_contract.py
     uv run --script tests/agent_control_smoke.py

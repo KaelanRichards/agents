@@ -109,6 +109,45 @@ build_effective() {
   rm -f "$merged"
 }
 
+print_safe_effective() {
+  # Diagnostics must never echo literal environment/header/argument values. Keep enough structure
+  # to distinguish client transports and URL resources while redacting query values and userinfo.
+  jq '
+    def safe_url:
+      if type == "string" then
+        capture("^(?<scheme>https?)://(?<authority>[^/?#]+)(?<rest>.*)$") as $url
+        | ($url.authority | sub("^.*@"; "<redacted>@")) as $authority
+        | ($url.rest | split("?")[0] | split("#")[0]) as $path
+        | ($url.scheme + "://" + $authority
+          + (if $path == "" then "" elif $path == "/" then "/" else "/<redacted-path>" end)
+          + (if ($url.rest | contains("?")) then "?<redacted-query>" else "" end)
+          + (if ($url.rest | contains("#")) then "#<redacted-fragment>" else "" end))
+      else . end;
+    .mcpServers |= with_entries(.value |= (
+      {
+        type: (.type // "stdio"),
+        enabled,
+        command,
+        args_count: (if (.args | type) == "array" then (.args | length) else null end),
+        url: (.url | safe_url),
+        bearer_token_env_var,
+        env_keys: (if (.env | type) == "object" then (.env | keys) else null end),
+        header_names: (if ((.http_headers // .headers) | type) == "object" then
+          ((.http_headers // .headers) | keys) else null end),
+        env_http_header_names: (if (.env_http_headers | type) == "object" then
+          (.env_http_headers | keys) else null end),
+        startup_timeout_sec,
+        tool_timeout_sec,
+        required,
+        enabled_tools,
+        disabled_tools,
+        default_tools_approval_mode
+      }
+      | with_entries(select(.value != null))
+    ))
+  ' "$1"
+}
+
 cmd="${1:-sync}"
 if [ $# -gt 0 ]; then shift; fi
 
@@ -158,10 +197,10 @@ case "$cmd" in
     build_effective "$codex_eff" codex
     echo "canonical: $CANON"
     [ -f "$LOCAL_OVERLAY" ] && echo "overlay:   $LOCAL_OVERLAY (applied)"
-    echo "effective Claude config that would be written:"
-    jq . "$claude_eff"
-    echo "effective Codex config that would be written:"
-    jq . "$codex_eff"
+    echo "effective Claude config summary (credential values redacted):"
+    print_safe_effective "$claude_eff"
+    echo "effective Codex config summary (credential values redacted):"
+    print_safe_effective "$codex_eff"
     exit 0 ;;
   drift)
     exec "$AGENTS_HOME/bin/mcp-update" ;;
@@ -202,7 +241,13 @@ jq --slurpfile c "$CLAUDE_EFFECTIVE" '.mcpServers = (($c[0].mcpServers // {}) | 
     else . end)
     # startup_timeout_sec / tool_timeout_sec are Codex-only reliability knobs — strip them from the
     # Claude config (Claude has its own MCP timeout handling and would not understand these keys).
-    | del(.enabled, .startup_timeout_sec, .tool_timeout_sec, .clients)))' "$CLAUDE_JSON" > "$t"
+    | del(
+        .enabled, .required, .startup_timeout_sec, .tool_timeout_sec,
+        .env_vars, .cwd, .experimental_environment, .auth,
+        .http_headers, .env_http_headers,
+        .enabled_tools, .disabled_tools, .default_tools_approval_mode, .tools,
+        .clients
+      )))' "$CLAUDE_JSON" > "$t"
 if jq -e . "$t" >/dev/null 2>&1; then
   mv "$t" "$CLAUDE_JSON"
 else
@@ -221,11 +266,17 @@ fi
 [ -f "$CODEX_TOML" ] || touch "$CODEX_TOML"
 cp "$CODEX_TOML" "$CODEX_TOML.mcp-sync.bak"
 # Shape each server for Codex: drop "type", rename headers->http_headers, keep command/args/url/
-# bearer_token_env_var/env, enabled, and the Codex-only reliability knobs;
+# all currently documented Codex transport, auth, policy, and reliability fields;
 # drop null fields so absent keys are omitted. yq turns this JSON into faithfully-quoted TOML.
 codex_block=$(jq '{
     mcp_servers: ((.mcpServers // {}) | with_entries(.value |= (
-      { command, args, url, bearer_token_env_var, enabled, startup_timeout_sec, tool_timeout_sec, env, http_headers: .headers }
+      {
+        command, args, env, env_vars, cwd, experimental_environment,
+        url, auth, bearer_token_env_var,
+        http_headers: (.http_headers // .headers), env_http_headers,
+        enabled, required, startup_timeout_sec, tool_timeout_sec,
+        enabled_tools, disabled_tools, default_tools_approval_mode, tools
+      }
       | with_entries(select(.value != null))
     )))
   }' "$CODEX_EFFECTIVE" | yq -p json -o toml)
@@ -291,15 +342,6 @@ if ! codex_toml_valid "$CODEX_TOML"; then
   fi
   mv "$CODEX_TOML.mcp-sync.bak" "$CODEX_TOML"
   exit 1
-fi
-
-# Self-heal the mcp-remote OAuth store. mcp-remote namespaces its token cache by its own version
-# (~/.mcp-auth/mcp-remote-<version>/), so bumping a pinned mcp-remote@<ver> in mcp.json orphans every
-# cached login — the next unattended launch then re-runs browser OAuth and HANGS (esp. Codex, which
-# eagerly blocks startup on each server). Migrating the store to the new version dir here keeps a
-# pin bump from silently breaking auth. Best-effort: never fail the sync on this.
-if [ -x "$AGENTS_HOME/bin/mcp-auth" ]; then
-  "$AGENTS_HOME/bin/mcp-auth" migrate >/dev/null || echo "mcp-sync: note — mcp-auth migrate reported a gap (run: mcp-auth login <server>)" >&2
 fi
 
 n=$(jq '.mcpServers // {} | length' "$MERGED")

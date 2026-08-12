@@ -6,11 +6,12 @@ import json
 import os
 import pathlib
 import re
+import subprocess
+import tempfile
 
 import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-HOME = pathlib.Path(os.environ.get("HOME", str(pathlib.Path.home())))
 
 REQUIRED_MCP = {
     "context7",
@@ -89,6 +90,29 @@ def assert_mcp_remote_bridge(server: dict, name: str) -> None:
     assert args[2:] == [url, port, "--host", "127.0.0.1"]
 
 
+def render_client_configs() -> tuple[dict, dict]:
+    """Render both clients in isolation so config assertions never depend on live user state."""
+    with tempfile.TemporaryDirectory() as raw_tmp:
+        home = pathlib.Path(raw_tmp) / "home"
+        home.mkdir()
+        proc = subprocess.run(
+            [str(ROOT / "bin" / "mcp-sync")],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=os.environ
+            | {
+                "HOME": str(home),
+                "AGENTS_HOME": str(ROOT),
+                "PATH": f"{ROOT / 'bin'}:{os.environ.get('PATH', '')}",
+            },
+        )
+        assert proc.returncode == 0, proc.stderr
+        claude = load_json(home / ".claude.json")
+        codex = tomllib.loads(read(home / ".codex" / "config.toml"))
+    return claude, codex
+
+
 def main() -> None:
     mcp = load_json(ROOT / "mcp.json")
     assert isinstance(mcp, dict)
@@ -131,8 +155,7 @@ def main() -> None:
                 == "supported-via-client-native-http-oauth"
             )
             assert (
-                auth_servers[name]["clients"]["codex"]["url"]
-                == CODEX_NATIVE_HTTP[name]
+                auth_servers[name]["clients"]["codex"]["url"] == CODEX_NATIVE_HTTP[name]
             )
         else:
             assert (
@@ -217,48 +240,41 @@ def main() -> None:
         assert isinstance(profile["confirm"], list)
         assert profile["risk"] in {"low", "medium", "high", "critical"}
 
-    codex_toml = HOME / ".codex" / "config.toml"
-    if codex_toml.exists():
-        codex = tomllib.loads(read(codex_toml))
-        codex_servers = codex.get("mcp_servers", {})
-        assert REQUIRED_MCP.issubset(set(codex_servers)), (
-            "Codex config missing required MCP servers"
-        )
-        assert codex_servers["datadog"]["url"] == CODEX_NATIVE_HTTP["datadog"]
-        assert "http_headers" not in codex_servers["datadog"]
-        assert "bearer_token_env_var" not in codex_servers["datadog"]
-        assert codex_servers["cloudflare"] == {
-            "url": CODEX_NATIVE_HTTP["cloudflare"]
-        }
-        for name in MCP_REMOTE_BRIDGES.keys() - {"cloudflare"}:
-            assert_mcp_remote_bridge(codex_servers[name], name)
-        assert codex_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
-        # yq omits an empty args array in TOML; Codex treats a missing args as [] (standard for
-        # arg-less stdio servers), so accept either form.
-        assert codex_servers["slack"].get("args", []) == []
-        assert codex_servers["slack"]["startup_timeout_sec"] >= 60
-        assert codex_servers["slack-dm"]["startup_timeout_sec"] >= 60
-        assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
-        assert codex_servers["bigquery"].get("args", []) == []
-        assert codex.get("features", {}).get("experimental_use_rmcp_client") is True
+    claude, codex = render_client_configs()
+    codex_servers = codex.get("mcp_servers", {})
+    assert REQUIRED_MCP.issubset(set(codex_servers)), (
+        "Codex config missing required MCP servers"
+    )
+    assert codex_servers["datadog"]["url"] == CODEX_NATIVE_HTTP["datadog"]
+    assert "http_headers" not in codex_servers["datadog"]
+    assert "bearer_token_env_var" not in codex_servers["datadog"]
+    assert codex_servers["cloudflare"] == {"url": CODEX_NATIVE_HTTP["cloudflare"]}
+    for name in MCP_REMOTE_BRIDGES.keys() - {"cloudflare"}:
+        assert_mcp_remote_bridge(codex_servers[name], name)
+    assert codex_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
+    # yq omits an empty args array in TOML; Codex treats a missing args as [] (standard for
+    # arg-less stdio servers), so accept either form.
+    assert codex_servers["slack"].get("args", []) == []
+    assert codex_servers["slack"]["startup_timeout_sec"] >= 60
+    assert codex_servers["slack-dm"]["startup_timeout_sec"] >= 60
+    assert codex_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
+    assert codex_servers["bigquery"].get("args", []) == []
+    assert codex.get("features", {}).get("experimental_use_rmcp_client") is True
 
-    claude_json = HOME / ".claude.json"
-    if claude_json.exists():
-        claude = load_json(claude_json)
-        assert isinstance(claude, dict)
-        claude_servers = claude.get("mcpServers", {})
-        assert REQUIRED_MCP.issubset(set(claude_servers)), (
-            "Claude config missing required MCP servers"
-        )
-        assert (
-            claude_servers["datadog"]["url"]
-            == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
-        )
-        assert "headers" not in claude_servers["datadog"]
-        for name in MCP_REMOTE_BRIDGES:
-            assert_mcp_remote_bridge(claude_servers[name], name)
-        assert claude_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
-        assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
+    assert isinstance(claude, dict)
+    claude_servers = claude.get("mcpServers", {})
+    assert REQUIRED_MCP.issubset(set(claude_servers)), (
+        "Claude config missing required MCP servers"
+    )
+    assert (
+        claude_servers["datadog"]["url"]
+        == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+    )
+    assert "headers" not in claude_servers["datadog"]
+    for name in MCP_REMOTE_BRIDGES:
+        assert_mcp_remote_bridge(claude_servers[name], name)
+    assert claude_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
+    assert claude_servers["bigquery"]["command"].endswith("/bin/bigquery-mcp")
 
     server = read(ROOT / "mcp-servers" / "personal-actions" / "server.py")
     for tool in PERSONAL_ACTION_TOOLS:
@@ -295,6 +311,10 @@ def main() -> None:
     assert_contains(
         syncsrc, "profile-broker.sh", "agents-sync wires the PreToolUse broker hook"
     )
+    mcp_sync = read(ROOT / "bin" / "mcp-sync")
+    mcp_auth = read(ROOT / "scripts" / "mcp_auth.py")
+    assert 'mcp-auth" migrate' not in mcp_sync
+    assert "shutil.copytree" not in mcp_auth
 
     spec = read(ROOT / "specs" / "agent-control-plane.md")
     for phrase in [

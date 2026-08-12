@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import pathlib
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -29,13 +30,16 @@ def main() -> None:
         fake_bin.mkdir()
         auth_store.mkdir()
 
-        fake_program = f"#!/bin/sh\ntouch {marker}\nexit 97\n"
+        fake_program = (
+            f"#!/bin/sh\nprintf launched > {shlex.quote(str(marker))}\nexit 97\n"
+        )
         for name in ("npx", "codex", "claude", "open"):
             path = fake_bin / name
             path.write_text(fake_program, encoding="utf-8")
             path.chmod(0o755)
 
-        bridge_url = "https://bridge.example.invalid/mcp"
+        bridge_url = "https://bridge.example.invalid/mcp?token=fixture-secret"
+        overlay_bridge_url = "https://overlay.example.invalid/mcp?token=overlay-secret"
         native_url = "https://native.example.invalid/mcp"
         write_json(
             agents_home / "mcp.json",
@@ -44,7 +48,14 @@ def main() -> None:
                     "bridge": {
                         "type": "stdio",
                         "command": "npx",
-                        "args": ["-y", "mcp-remote@0.1.38", bridge_url],
+                        "args": [
+                            "-y",
+                            "mcp-remote@0.1.38",
+                            bridge_url,
+                            "3333",
+                            "--host",
+                            "127.0.0.1",
+                        ],
                         "clients": {
                             "codex": {
                                 "type": "http",
@@ -73,12 +84,20 @@ def main() -> None:
             {
                 "mcpServers": {
                     "bridge": {
+                        "args": [
+                            "-y",
+                            "mcp-remote@0.1.39",
+                            overlay_bridge_url,
+                            "3333",
+                            "--host",
+                            "127.0.0.1",
+                        ],
                         "clients": {
                             "codex": {
                                 "url": "https://host.example.invalid/mcp",
                             }
-                        }
-                    }
+                        },
+                    },
                 }
             },
         )
@@ -89,12 +108,15 @@ def main() -> None:
                     "bridge": {
                         "url": bridge_url,
                         "strategy": "mcp-remote-stdio",
+                        "callback_port": 3333,
+                        "callback_host": "127.0.0.1",
                         "token_store": "~/.mcp-auth",
                         "login_command": "mcp-auth login bridge",
                         "clients": {
                             "claude": {"support": "supported-via-stdio-bridge"},
                             "codex": {
-                                "support": "supported-via-client-native-http-oauth"
+                                "support": "supported-via-client-native-http-oauth",
+                                "url": "https://host.example.invalid/mcp",
                             },
                         },
                     },
@@ -135,12 +157,24 @@ def main() -> None:
                 env=env,
             )
 
+        contract = run("check")
+        assert contract.returncode == 0, contract.stderr
+        assert not marker.exists(), (
+            "contract check launched a client, bridge, or browser"
+        )
+
         status = run("status", "bridge", "native")
         assert status.returncode == 0, status.stderr
         assert "claude: supported-via-stdio-bridge" in status.stdout
         assert "stdio npx" in status.stdout
-        assert "http https://host.example.invalid/mcp" in status.stdout
+        assert (
+            "https://overlay.example.invalid/<redacted-path>?<redacted-query>"
+            in status.stdout
+        )
+        assert "http https://host.example.invalid/<redacted-path>" in status.stdout
         assert "result:" not in status.stdout
+        assert "fixture-secret" not in status.stdout
+        assert "overlay-secret" not in status.stdout
         assert not marker.exists(), "status launched a client, bridge, or browser"
 
         healthy = run(
@@ -175,8 +209,10 @@ def main() -> None:
 
         uncached = run("health", "--client", "claude", "--offline", "--json", "bridge")
         assert json.loads(uncached.stdout)["results"][0]["status"] == "auth-required"
-        digest = hashlib.md5(bridge_url.encode(), usedforsecurity=False).hexdigest()
-        version_store = auth_store / "mcp-remote-0.1.38"
+        digest = hashlib.md5(
+            overlay_bridge_url.encode(), usedforsecurity=False
+        ).hexdigest()
+        version_store = auth_store / "mcp-remote-0.1.39"
         version_store.mkdir()
         (version_store / f"{digest}_tokens.json").touch()
         cached = run("health", "--client", "claude", "--offline", "--json", "bridge")

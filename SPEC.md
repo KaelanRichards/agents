@@ -51,7 +51,7 @@ a browser.
   `tests/agent_system_contract.py`.
 - [x] T3 — Surface static health in the main doctor and document the schema/runbook — files:
   `bin/agents-doctor`, `README.md`, `justfile`.
-- [ ] T4 — Run formatting, focused tests, full local verification, reviewer diff-vs-spec review,
+- [x] T4 — Run formatting, focused tests, full local verification, reviewer diff-vs-spec review,
   and commit the verified change — files: verification-only plus any task-owned gap fixes.
 
 ## Verification
