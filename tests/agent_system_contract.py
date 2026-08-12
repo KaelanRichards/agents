@@ -13,9 +13,6 @@ HOME = pathlib.Path(os.environ.get("HOME", str(pathlib.Path.home())))
 
 REQUIRED_MCP = {
     "context7",
-    "playwright",
-    "filesystem",
-    "sequential-thinking",
     "github",
     "datadog",
     "sentry",
@@ -50,6 +47,11 @@ MCP_REMOTE_BRIDGES = {
     "linear": ("https://mcp.linear.app/mcp", "3336"),
     "sentry": ("https://mcp.sentry.dev/mcp", "3337"),
     "cloudflare": ("https://mcp.cloudflare.com/mcp", "3338"),
+}
+
+CODEX_NATIVE_HTTP = {
+    "datadog": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp",
+    "cloudflare": "https://mcp.cloudflare.com/mcp",
 }
 
 MCP_REMOTE_WRAPPERS = {
@@ -144,6 +146,14 @@ def main() -> None:
     )
     assert "headers" not in servers["datadog"]
     assert "bearer_token_env_var" not in servers["datadog"]
+    assert servers["datadog"]["clients"]["codex"] == {
+        "type": "http",
+        "url": CODEX_NATIVE_HTTP["datadog"],
+    }
+    assert servers["cloudflare"]["clients"]["codex"] == {
+        "type": "http",
+        "url": CODEX_NATIVE_HTTP["cloudflare"],
+    }
     for name in MCP_REMOTE_BRIDGES:
         assert_mcp_remote_bridge(servers[name], name)
     for name, command in MCP_REMOTE_WRAPPERS.items():
@@ -189,13 +199,13 @@ def main() -> None:
         assert REQUIRED_MCP.issubset(set(codex_servers)), (
             "Codex config missing required MCP servers"
         )
-        assert (
-            codex_servers["datadog"]["url"]
-            == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
-        )
+        assert codex_servers["datadog"]["url"] == CODEX_NATIVE_HTTP["datadog"]
         assert "http_headers" not in codex_servers["datadog"]
         assert "bearer_token_env_var" not in codex_servers["datadog"]
-        for name in MCP_REMOTE_BRIDGES:
+        assert codex_servers["cloudflare"] == {
+            "url": CODEX_NATIVE_HTTP["cloudflare"]
+        }
+        for name in MCP_REMOTE_BRIDGES.keys() - {"cloudflare"}:
             assert_mcp_remote_bridge(codex_servers[name], name)
         assert codex_servers["slack"]["command"].endswith("/bin/slack-official-mcp")
         # yq omits an empty args array in TOML; Codex treats a missing args as [] (standard for
