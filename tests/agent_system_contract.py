@@ -6,6 +6,7 @@ import json
 import os
 import pathlib
 import re
+
 import tomllib
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -183,6 +184,16 @@ def main() -> None:
     assert servers["personal-actions"]["command"].endswith("/bin/personal-actions-mcp")
     assert (ROOT / "bin" / "mcp-auth").exists()
     assert (ROOT / "scripts" / "mcp_auth.py").exists()
+    assert (ROOT / "tests" / "mcp_auth_health.py").exists()
+    assert_contains(
+        read(ROOT / "bin" / "agents-doctor"),
+        "health --client codex --offline --json",
+        "agents-doctor static MCP health",
+    )
+    assert_contains(
+        read(ROOT / "README.md"), "clients.codex", "MCP client override documentation"
+    )
+    assert_contains(read(ROOT / "justfile"), "mcp-health:", "MCP health just task")
     slack_wrapper = read(ROOT / "bin" / "slack-official-mcp")
     assert PINNED_MCP_REMOTE in slack_wrapper
     assert "mcp-remote@latest" not in slack_wrapper

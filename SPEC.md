@@ -49,7 +49,7 @@ a browser.
 - [x] T2 — Make auth status effective-config-aware and side-effect-free; add bounded health output
   and focused tests — files: `scripts/mcp_auth.py`, `mcp.auth.json`, `tests/mcp_auth_health.py`,
   `tests/agent_system_contract.py`.
-- [ ] T3 — Surface static health in the main doctor and document the schema/runbook — files:
+- [x] T3 — Surface static health in the main doctor and document the schema/runbook — files:
   `bin/agents-doctor`, `README.md`, `justfile`.
 - [ ] T4 — Run formatting, focused tests, full local verification, reviewer diff-vs-spec review,
   and commit the verified change — files: verification-only plus any task-owned gap fixes.

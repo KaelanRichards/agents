@@ -19,6 +19,10 @@ skills-update:
 mcp-update:
     mcp-update
 
+# Side-effect-free static readiness check: no network, client, bridge, or browser launch.
+mcp-health:
+    mcp-auth health --client codex --offline
+
 # Verify the per-repo agent-config convention across all project repos (read-only).
 verify-repos:
     agents-verify
@@ -28,6 +32,7 @@ verify-repos:
 verify-all:
     agents-doctor
     bash tests/sync-roundtrip.sh
+    uv run --script tests/mcp_auth_health.py
     agents-verify
 
 test:
