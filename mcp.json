@@ -3,10 +3,7 @@
     "context7": {
       "type": "stdio",
       "command": "npx",
-      "args": [
-        "-y",
-        "@upstash/context7-mcp@3.0.0"
-      ]
+      "args": ["-y", "@upstash/context7-mcp@3.0.0"]
     },
     "github": {
       "type": "http",
@@ -123,6 +120,12 @@
           "url": "https://mcp.cloudflare.com/mcp"
         }
       }
+    },
+    "hubspot": {
+      "type": "stdio",
+      "command": "$AGENTS_HOME/bin/hubspot-mcp",
+      "args": [],
+      "startup_timeout_sec": 60
     }
   }
 }

@@ -171,6 +171,32 @@
       },
       "vm_setup": "Install host-local Slack MCP app credentials on the VM, then run `mcp-auth vm-login slack <vm-host>` from the laptop. It opens an SSH local-forward for the OAuth callback and runs the VM-side login command.",
       "rollback": "Use the client's disconnect/logout flow; remove the server with mcp-sync only if the connector should disappear from all clients."
+    },
+    "hubspot": {
+      "url": "https://mcp.hubspot.com",
+      "strategy": "mcp-remote-wrapper",
+      "command": "$AGENTS_HOME/bin/hubspot-mcp",
+      "args": [],
+      "callback_port": 3340,
+      "callback_host": "127.0.0.1",
+      "token_store": "~/.mcp-auth",
+      "login_command": "mcp-auth login hubspot",
+      "account_boundary": "acts with the connected HubSpot user's permissions in the authorized portal, further limited by the MCP Auth App's configured scopes",
+      "host_requirements": "Set HUBSPOT_MCP_CLIENT_ID and HUBSPOT_MCP_CLIENT_SECRET, or HUBSPOT_MCP_CLIENT_INFO_FILE, on each host (HubSpot has no dynamic client registration — create an app under Development > MCP Auth Apps). The MCP Auth App must include http://127.0.0.1:3340/oauth/callback as an OAuth redirect URL unless HUBSPOT_MCP_CALLBACK_PORT is overridden.",
+      "clients": {
+        "claude": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Configure the host-local HubSpot MCP Auth App credentials, run `mcp-auth login hubspot` once on the target host, then use the synced HubSpot MCP entry normally.",
+          "verify_command": "claude mcp get hubspot"
+        },
+        "codex": {
+          "support": "supported-via-stdio-bridge",
+          "setup": "Use the synced wrapper MCP entry; Codex does not need native remote OAuth support for this server.",
+          "verify_command": "codex mcp list"
+        }
+      },
+      "vm_setup": "Install host-local HubSpot MCP Auth App credentials on the VM, then run `mcp-auth vm-login hubspot <vm-host>` from the laptop. It opens an SSH local-forward for the OAuth callback and runs the VM-side login command.",
+      "rollback": "Use the client's disconnect/logout flow; remove the server with mcp-sync only if the connector should disappear from all clients."
     }
   }
 }
