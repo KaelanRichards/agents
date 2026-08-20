@@ -66,18 +66,11 @@ Edit this file to change both tools.
   (read-first) · `notion` · `granola` · `cloudflare` · `slack` · `bigquery` (read-only facade;
   use `bigquery_execute_sql_readonly`) · `agents` (this environment's own repo/status/task tools).
 
-## Subagents, skills & hooks
-- Canonical sources in `~/.config/agents/{agents,skills,hooks}`; run **`agents-sync`** after
+## Subagents & hooks
+- Canonical sources in `~/.config/agents/{agents,hooks}`; run **`agents-sync`** after
   editing. After changing canonical config, verify with `agents-doctor` and
   describe/bookmark the jj change.
-- **Enabled skills are exactly those `agents-sync` links.** `skills.disabled` is the single
-  source of truth and applies to BOTH tools. Don't hand-run a disabled skill's steps from
-  memory — that is how the disabled `qa` loop still ran an expensive unbounded scan.
-  Re-enable by deleting its line and re-running `agents-sync`.
-- **Subagents**: `explorer` (read-only research — delegate noisy research here) and `reviewer`
-  (diff-vs-spec review before committing).
-- **Skill `spec`** — for non-trivial work draft a `SPEC.md` from `templates/SPEC.md`, confirm,
-  implement, verify with `reviewer`.
+- **Subagents**: `explorer` (read-only research) and `reviewer` (focused change review).
 - **Parallel work**: `wt new <name>` for one isolated workspace; `swarm <task>...` fans out across
   jj workspaces with headless agents.
 - **`agentp <profile>`** launches an agent under a canonical profile as a real boundary (Claude:

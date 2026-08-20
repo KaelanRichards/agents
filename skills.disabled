@@ -1,5 +1,1 @@
-# Skills linked into NEITHER Claude nor Codex. One name per line; '#' comments.
-# Single source of truth — agents-sync skips these and GCs their links in both tools.
-# 2026-08-10: the 21 previously-disabled skills were deleted from skills/ entirely
-# (slim-down). To bring one back, restore it from jj history (revert of change
-# "chore(agents): slim down"), re-add its skills.lock.json entry, and run agents-sync.
+# No personal skills are installed.
