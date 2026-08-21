@@ -1,180 +1,88 @@
-# agents — portable agent environment (laptop + always-on VM)
+# agents
 
-Single source of truth for **Claude Code + Codex CLI**: instructions (`AGENTS.md`), MCP servers
-(`mcp.json`), subagents/skills/hooks, helper scripts (`bin/`), shell env (`zsh/agents.env.zsh`
-for all shells plus `zsh/agents.zsh` for interactive extras), a `agents-status` overview, and CI.
+A small, portable development environment for macOS, Linux, Windows, and WSL.
 
-Two machines, reproduced two ways: **`nix/` declares the Mac** (nix-darwin + home-manager, applied
-with `rebuild`), and **`bootstrap.sh` provisions the Linux VM** from the root `Brewfile`. A tool
-wanted on both has to be added in both places.
+The repository deliberately does not implement an agent runtime. Claude Code, Codex, and future clients keep responsibility for reasoning, sandboxing, approvals, OAuth, MCP, plugins, and session state.
 
-The shared MCP set includes official OAuth-backed Linear, Sentry, Notion, Granola, Cloudflare,
-Slack, and HubSpot MCPs, the official Datadog US5 remote MCP server, and a local read-only BigQuery
-facade (`bigquery-mcp`) that uses the machine's existing `gcloud`/`bq` auth. Claude uses the pinned
-`mcp-remote` bridge for Cloudflare; Codex uses native HTTP so the bridge cannot reopen an invalid
-OIDC-scope browser flow. Codex also receives Datadog's base resource URL, while Claude retains the
-toolset query URL.
-The Datadog endpoint is pinned to
-`https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery`.
-The active BigQuery project is `vizcom-web`; it needs the BigQuery API enabled and MCP Tool User,
-BigQuery Job User, and BigQuery Data Viewer for the signed-in identity.
+## What is here
 
-## Set up the Mac
+- [chezmoi](https://www.chezmoi.io/) deploys the same dotfiles on every host.
+- [mise](https://mise.jdx.dev/) installs pinned runtimes, agent CLIs, and developer tools from a cross-platform checksum lockfile.
+- Native Codex and Claude instruction files contain a small shared policy.
+- A standard [Development Container](https://containers.dev/) provides an optional isolated Linux environment.
+- nix/ is an optional macOS host layer for system settings and GUI applications. Nix is not required on Linux, Windows, or WSL.
 
-```bash
-# 1. Install Determinate Nix, then:
-git clone git@github.com:KaelanRichards/agents.git ~/.config/agents
-ln -sfn ~/.config/agents ~/.dotfiles
-~/.config/agents/bin/rebuild          # asks for your sudo password
-```
+There are no custom MCP servers, permission brokers, shell guards, OAuth bridges, workflow engines, VM controllers, or memory services.
 
-That installs every package, applies the macOS settings, and symlinks the config for ghostty,
-zed, mise, herdr, and jj back into this repo. `rebuild --check` builds without changing anything;
-`rebuild --zap-dry` shows what a change would add or remove.
+## Install
 
-Homebrew cleanup is set to `zap`, so **a package not declared in `nix/darwin.nix` is deleted on the
-next rebuild**. Add packages there, not with `brew install`. Details and the deliberate gaps —
-credential-holding config stays out of this public repo — are in [`nix/README.md`](nix/README.md).
+Install mise first using its [official platform instructions](https://mise.jdx.dev/installing-mise.html):
 
-## Provision an always-on VM (so you can close your laptop)
+~~~sh
+# macOS
+brew install mise
 
-**Option A — one command (Hetzner):**
-```bash
-brew install hcloud
-export HCLOUD_TOKEN=...                 # console.hetzner.cloud -> API Tokens
-bash ~/.config/agents/provision.sh     # creates the VM and bootstraps it
-```
-Defaults: `VM_TYPE=cax11` (ARM, EU-only) at `VM_LOCATION=fsn1`. Other tunables: `VM_USER`,
-`AGENTS_REPO`. For US/x86 export `VM_TYPE=cpx21 VM_LOCATION=ash` before running. The script
-prints the planned `(type / image / location)` before it calls `hcloud server create`.
+# Ubuntu 26.04+
+sudo add-apt-repository -y ppa:jdxcode/mise
+sudo apt update && sudo apt install -y mise
+~~~
 
-**Option B — any provider, by hand:**
-1. Provision Ubuntu 24.04, ≥ 2 GB RAM (Hetzner / DigitalOcean / Fly); add your SSH key.
-2. On the VM: `git clone <repo-url> ~/.config/agents && bash ~/.config/agents/bootstrap.sh`
+~~~powershell
+# Windows
+winget install jdx.mise
+~~~
 
-**Then authenticate** on the VM: `claude` -> `/login`, `codex login`, `gh auth login`,
-and set `GITHUB_PAT` (GitHub MCP). Run `mcp-auth status` to see each client's effective transport.
-For stdio bridges, run `mcp-auth login <server>` once per host; they reuse `~/.mcp-auth`. Native
-Codex HTTP servers use `codex mcp login <server>` and keep client-managed OAuth state. For a VM,
-run `mcp-auth vm-login <server> <vm-host>` for stdio bridges so your local browser can complete the
-VM-side callback.
-Slack's official MCP additionally needs host-local `SLACK_MCP_CLIENT_ID` and
-`SLACK_MCP_CLIENT_SECRET`, or `SLACK_MCP_CLIENT_INFO_FILE`, because Slack does not support Dynamic
-Client Registration. The Slack app must allow the local callback URL
-`http://127.0.0.1:3339/oauth/callback`.
-Run `agents-doctor` to confirm it's healthy.
+Then install chezmoi through mise and apply this repository:
 
-## Daily workflow
+~~~sh
+mise use --global chezmoi@2.70.5
+chezmoi init --apply KaelanRichards/agents
+mise install
+~~~
 
-On the **laptop**, herdr holds the sessions. It shows each agent's state — working, blocked,
-done — in a sidebar, which is why it replaced tmux here.
-```bash
-herdr                # launch or reattach; prefix is ctrl+b, same as tmux
-# detach: ctrl+b q   → agents keep running
-```
+The same three commands work in PowerShell. Restart the shell after the first apply so mise activation is loaded.
 
-On the **VM**, tmux is still the multiplexer:
-```bash
-mosh you@vm          # or ssh (mosh survives flaky networks)
-tmux new -s work                         (persistent session)
-yc                   # Claude, hands-off   (yx for Codex; or plain claude/codex)
-# ...work...
-# detach: Ctrl-b d   → close your laptop. The VM keeps running.
-mosh you@vm; tmux attach -t work   # later, from anywhere — exactly where you left it
-```
-**From your phone:** a terminal app (Blink / Termius) over SSH/Mosh, or Claude Code's `/remote-control`.
+Authenticate clients separately with their native login commands. Add MCP servers or connectors directly in the client that uses them; only enable integrations needed for the current workflow.
 
-## Status & control
+## Daily use
 
-- **`agents-status`** — one-shot text overview: VMs + cost, health, MCP servers, repo/CI + open
-  PRs, and herdr sessions with per-agent state. Run it locally or over SSH on the VM.
-- **`fleet-monitor`** — VM heartbeat / dead-man's-switch (systemd timer).
+~~~sh
+chezmoi diff       # preview dotfile changes
+chezmoi apply      # apply them
+chezmoi update     # pull this repo and apply
+mise install       # install pinned tools
+mise outdated      # inspect available updates
+mise doctor        # diagnose environment problems
+~~~
 
-Remote/phone access is a terminal app (Blink / Termius) over SSH/Mosh, or Claude Code's
-`/remote-control`.
+## Platform model
 
-## Keep laptop and VM in sync
+| Layer | macOS | Linux | Windows | WSL |
+|---|---|---|---|---|
+| Dotfiles | chezmoi | chezmoi | chezmoi | chezmoi |
+| CLI tools | mise | mise | mise | mise |
+| Shell | zsh | zsh | PowerShell | zsh |
+| Agent isolation | native client sandbox | native client sandbox/container | native Windows sandbox | Linux sandbox/container |
+| Host configuration | optional nix-darwin | system package manager | winget/system settings | Linux adapter |
 
-The **laptop** repo is a colocated jj repo; the **VM** is a plain git clone.
-```bash
-# laptop — commit & push (jj):
-jj -R ~/.config/agents describe -m "update config"
-jj -R ~/.config/agents bookmark set main -r @ && jj -R ~/.config/agents git push
-# VM — pull & regenerate (run on the VM):
-git -C ~/.config/agents pull && mcp-sync && agents-sync
-```
+The home/ directory is the chezmoi source root. Platform-specific files are selected in home/.chezmoiignore; no installation script edits files imperatively.
 
-If the VM has local drift, use `agents-reconcile --apply` instead. It stashes tracked and
-untracked changes, resets the clone to `origin/main`, relinks helpers, and regenerates MCP/agent
-configs. On an always-on VM, `agents-reconcile install-user-timer` installs the self-healing user
-timer.
+## macOS host configuration
 
-## Teardown (stop billing)
+The Nix layer only owns macOS settings, Homebrew itself, the two bootstrap tools (mise and chezmoi), and GUI applications. Command-line tools come from mise on every platform.
 
-```bash
-bash ~/.config/agents/teardown.sh                # snapshot, then delete (confirms)
-bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
-```
+~~~sh
+nix build ./nix#darwinConfigurations.mac.system --no-link
+sudo darwin-rebuild switch --flake ./nix#mac
+~~~
 
-## Maintenance & health
-- **`agents-doctor`** — verify tools, symlinks, MCP parity, configs, and agent-CLI version drift
-  (run anytime, or on a new machine).
-- **`agents-reconcile`** — VM/plain-git self-healing sync: stash drift, reset to `origin/main`,
-  regenerate MCP/agent config, and optionally install a periodic user timer.
-- **Agent control plane** — local orchestration primitives layered on top of jj, herdr, MCP, and
-  the shared profile/policy model:
-  - `agent-profile list|validate|compile` manages canonical permission profiles in `profiles/`
-    and writes disposable generated artifacts under `generated/profiles/`.
-  - `agentp <profile>` / `agentp --codex <profile>` launches a coding agent **under** a profile as
-    a real boundary, composing each harness's *native* enforcement (it does not reimplement it):
-    - **Claude**: the profile's MCP subset via `--strict-mcp-config` (only those servers load), a
-      compiled `--settings` file with deny/ask rules **and a native OS Bash sandbox**
-      (`sandbox.*`: writable roots + `denyRead` of `~/.ssh`/`~/.aws`/secrets), and `AGENTS_PROFILE`
-      so the `profile-broker` PreToolUse hook enforces per-tool read/write policy that settings
-      alone can't express (e.g. allow Datadog reads, deny Datadog writes on the same server).
-    - **Codex**: native `--sandbox` + `--ask-for-approval` derived from the profile's risk/mode.
-    - `agentp list` shows the profiles.
-  - The broker policy (effect classification from an authoritative registry, fail-closed for
-    unknown tools) lives in `scripts/agent_control.py` and runs in **two** places: the
-    `authorize_tool_call` tool on the `agents` MCP (advisory, for interactive queries) and —
-    load-bearing — the `profile-broker` PreToolUse **hook** (`hooks/profile-broker.sh`), which the
-    model cannot route around. Same code, both paths.
-- **`just ci-local`** — local verification loop: shell scripts, JSON locks, sync round-trip,
-  agent-system contract checks, dashboard smoke test, and `agents-doctor`.
-- **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,
-  then report upstream drift without modifying files. `skills.lock.json` is the source of truth.
-- **`mcp-update`** — report npm drift for pinned stdio MCP packages without modifying `mcp.json`.
-- **`mcp-auth`** — auth/setup helper for remote MCPs. `status` reports the overlay-aware effective
-  transports without launching clients; `health --client codex --offline` classifies static
-  readiness without network, client, bridge, or browser launches. Only explicit `login` commands
-  start OAuth, and credential values are never printed.
-- **`windmill-up` / `windmill-status` / `windmill-down`** — manage the local open-source Windmill
-  backend for live personal actions. See `assistant/windmill/README.md`.
-- **CI** (`.github/workflows/ci.yml`): lints + validates on every push; weekly it runs the
-  bootstrap smoke test, `agents-doctor`, and the sync round-trip test.
-- **Auto-updates:** Dependabot (Actions) opens CI-validated PRs.
+Apply chezmoi and run mise install before the first Nix switch; Homebrew cleanup removes undeclared command-line packages.
 
-## Notes
-- MCP definitions may include `clients.claude` or `clients.codex`. An override containing `type`
-  replaces the shared server definition for that client; one without `type` is a recursive partial
-  override, such as `{ "enabled": false }`. The optional gitignored `mcp.local.json` overlay merges
-  recursively before client resolution; arrays replace rather than append. Run `mcp-sync check` to
-  inspect both resolved configurations before writing them.
-- Secrets are **never** committed — only `bearer_token_env_var` *names* live in `mcp.json`;
-  tokens live in the macOS keychain (laptop) or gitignored `~/.config/agents-secrets/*.env` (VM).
-- MCP stdio package versions are pinned in `mcp.json`; use `mcp-update` before intentionally
-  bumping them.
-- The custom `agents` MCP server is read-only by default for task/config mutation. Set
-  `AGENTS_MCP_ALLOW_MUTATION=1` only in sessions where MCP-triggered task runs or config syncs
-  are intentionally allowed.
-- Personal-assistant writes are controlled by `assistant/policy.md` and the shared
-  `personal-actions-mcp` facade. It defaults to dry-run unless `PERSONAL_ACTIONS_DRY_RUN=0`,
-  `PERSONAL_ACTIONS_PROVIDER`, and the provider credentials are configured. Use
-  `personal-actions-configure` to write the local gitignored env file, see
-  `assistant/personal-actions-webhook.md` for the backend contract, and run `personal-actions-check`
-  for a non-mutating reachability test.
-- The PreToolUse guard hook is active here too; destructive commands stay blocked.
-- Tools: `nix/darwin.nix` on the Mac, `Brewfile` on the VM. Runtimes via `mise` + `rustup` on both —
-  Nix pins one version per machine, `mise` reads `.nvmrc` per repo, so Nix declares mise and mise
-  picks the runtime. VCS is jj-first (colocated on the laptop).
-- New machine / full reference: see `ONBOARDING.md`.
+## Updating the environment
+
+- Change tool versions in home/dot_config/mise/config.toml and refresh the adjacent mise.lock for all supported platforms.
+- Change portable dotfiles under home/.
+- Change macOS settings or GUI applications under nix/.
+- Keep service credentials, OAuth tokens, client caches, and machine-local integration config outside the repository.
+
+CI renders the chezmoi source on macOS, Linux, and Windows and validates the mise tool manifest without installing the full toolchain.

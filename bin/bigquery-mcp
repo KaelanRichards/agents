@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# bigquery-mcp — local read-only BigQuery MCP facade using gcloud/bq auth.
-set -euo pipefail
-# --quiet keeps uv's resolver/progress chatter off the wire so it can't corrupt MCP stdio framing
-# (matches agents-mcp / personal-actions-mcp).
-exec uv run --quiet --script "$HOME/.config/agents/mcp-servers/bigquery/server.py" "$@"

@@ -1,0 +1,15 @@
+{
+  "name": "agents portable environment",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers-extra/features/mise:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hverlin.mise-vscode"
+      ]
+    }
+  },
+  "postCreateCommand": "MISE_CONFIG_FILE=home/dot_config/mise/config.toml mise install"
+}

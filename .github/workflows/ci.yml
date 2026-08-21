@@ -4,105 +4,65 @@ on:
   push:
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: "0 9 * * 1" # weekly bootstrap smoke test (Mon 09:00 UTC)
+
+permissions:
+  contents: read
 
 jobs:
-  lint:
-    name: lint + validate
+  validate:
+    name: validate manifests
     runs-on: ubuntu-latest
-    # The repo is checked out outside ~/.config/agents on the runner; point AGENTS_HOME at the
-    # checkout so every step (toolbelt-diff, smoke tests, shims) resolves files from here.
-    env:
-      AGENTS_HOME: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install linters
-        run: sudo apt-get update -y && sudo apt-get install -y shellcheck jq
+      - uses: jdx/mise-action@v3
+        with:
+          install: false
 
-      - name: bash -n (syntax) + shellcheck (errors)
+      - name: Validate mise tool resolution
+        env:
+          MISE_CONFIG_FILE: ${{ github.workspace }}/home/dot_config/mise/config.toml
+        run: mise install --dry-run --locked
+
+      - name: Validate JSON
         run: |
-          set -e
-          fail=0
-          for f in bin/* hooks/*.sh tests/*.sh bootstrap.sh provision.sh teardown.sh; do
-            [ -f "$f" ] || continue
-            # bin/ also holds Python CLIs — only bash/sh-check actual shell scripts.
-            head -1 "$f" | grep -Eq '(/|env )(ba)?sh( |$)' || continue
-            echo "::group::$f"
-            bash -n "$f" || fail=1
-            shellcheck -S error -x "$f" || fail=1
-            echo "::endgroup::"
-          done
-          exit $fail
+          mise exec jq@1.8.2 -- jq -e . home/dot_config/zed/settings.json
+          mise exec jq@1.8.2 -- jq -e . .devcontainer/devcontainer.json
 
-      - name: actionlint
-        run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-          gobin="$(go env GOPATH)/bin"
-          export PATH="$gobin:$PATH"
-          actionlint -color
+      - name: Validate workflow
+        run: mise exec actionlint@1.7.12 -- actionlint
 
-      - name: Validate JSON config
-        run: |
-          set -e
-          jq -e . mcp.json >/dev/null && echo "mcp.json ok"
-          jq -e . skills.lock.json >/dev/null && echo "skills.lock.json ok"
-          for f in agents/*.json; do jq -e . "$f" >/dev/null && echo "$f ok"; done
-
-      - name: Lint Python (ruff)
-        run: pipx run ruff check .
-
-      - name: Install uv (for smoke tests)
-        uses: astral-sh/setup-uv@v7
-
-      - name: Sync round-trip + smoke tests
-        run: |
-          set -e
-          # The repo is checked out outside ~/.config/agents on the runner. Put the bin shims on
-          # PATH and point AGENTS_HOME at the checkout so smoke tests that shell out to
-          # agent-profile resolves scripts from here. (Tests that need
-          # isolation set their own AGENTS_HOME/AGENTS_STATE tempdir and override these.)
-          export PATH="$PWD/bin:$PATH"
-          export AGENTS_HOME="$PWD"
-          bash tests/sync-roundtrip.sh
-          bash tests/enforcement_e2e.sh
-          for t in tests/agent_system_contract.py tests/agent_control_smoke.py \
-                   tests/bigquery_mcp_smoke.py tests/personal_actions_smoke.py \
-                   tests/personal_actions_webhook_live.py \
-                   tests/windmill_stack_smoke.py \
-                   tests/prompt_injection_policy.py \
-                   tests/behavioral_policy.py; do
-            [ -f "$t" ] || { echo "::warning::missing $t"; continue; }
-            echo "::group::$t"
-            uv run --script "$t"
-            echo "::endgroup::"
-          done
-
-  bootstrap-smoke:
-    name: bootstrap on fresh Ubuntu
-    # Heavy (installs Homebrew + the toolbelt). Only weekly or on demand.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+  render:
+    name: render dotfiles (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Place repo at ~/.config/agents
-        run: |
-          mkdir -p "$HOME/.config"
-          ln -s "$GITHUB_WORKSPACE" "$HOME/.config/agents"
+      - uses: jdx/mise-action@v3
+        with:
+          install: false
 
-      - name: Run bootstrap (non-auth steps)
-        run: bash "$HOME/.config/agents/bootstrap.sh"
+      - name: Install chezmoi
+        run: mise install chezmoi@2.70.5
 
-      - name: Verify the setup synced
+      - name: Resolve platform toolchain
+        env:
+          MISE_CONFIG_FILE: ${{ github.workspace }}/home/dot_config/mise/config.toml
+        run: mise install --dry-run --locked
+
+      - name: Dry-run apply
+        shell: bash
         run: |
-          export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          command -v jj && command -v mise && command -v rg
-          mcp-sync list
-          test -L "$HOME/.claude/CLAUDE.md" && echo "instruction symlink ok"
-          test -f "$HOME/.codex/config.toml" && echo "codex config ok"
-          agents-doctor
-          bash "$HOME/.config/agents/tests/sync-roundtrip.sh"
+          destination="$RUNNER_TEMP/chezmoi-home"
+          mkdir -p "$destination"
+          mise exec chezmoi@2.70.5 -- chezmoi \
+            --source "$GITHUB_WORKSPACE" \
+            --destination "$destination" \
+            apply --dry-run --no-tty

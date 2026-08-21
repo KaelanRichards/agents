@@ -1,9 +1,0 @@
-{
-	"schema": 1,
-	"updated_at": "2026-08-20T00:00:00Z",
-	"policy": {
-		"allowed_sources": [],
-		"notes": "No personal skills are installed."
-	},
-	"skills": {}
-}
