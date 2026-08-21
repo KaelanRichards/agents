@@ -1,38 +1,9 @@
 {
 	"schema": 1,
-	"updated_at": "2026-08-10T00:00:00Z",
+	"updated_at": "2026-08-20T00:00:00Z",
 	"policy": {
-		"allowed_sources": [
-			"openai/skills",
-			"anthropics/skills",
-			"makenotion/claude-code-notion-plugin",
-			"vercel-labs/agent-skills",
-			"supabase/agent-skills",
-			"local"
-		],
-		"notes": "Vendored skills should come from this allowlist unless explicitly approved. Update by reviewing upstream diffs and opening a PR."
+		"allowed_sources": [],
+		"notes": "No personal skills are installed."
 	},
-	"skills": {
-		"notion-knowledge-capture": {
-			"source": "makenotion/claude-code-notion-plugin",
-			"path": "skills/notion/knowledge-capture",
-			"ref": "main",
-			"commit": "9847f2aa1a15f25df35ed1fb7b4557dbb60cd651",
-			"trust": "official"
-		},
-		"react-best-practices": {
-			"source": "vercel-labs/agent-skills",
-			"path": "skills/react-best-practices",
-			"ref": "main",
-			"commit": "18a24346600009dc3fcb99e4b2cd83b301601775",
-			"trust": "official"
-		},
-		"spec": {
-			"source": "local",
-			"path": "skills/spec",
-			"ref": "main",
-			"commit": null,
-			"trust": "local"
-		}
-	}
+	"skills": {}
 }
