@@ -1,0 +1,7 @@
+[tools]
+node = "24.13.1"
+pnpm = "9.0.4"
+python = "3.12"
+
+[settings]
+idiomatic_version_file_enable_tools = ["node", "python"]

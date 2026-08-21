@@ -21,3 +21,6 @@ __pycache__/
 
 # fleet-monitor runtime heartbeats (rebuildable; README tracked)
 state/heartbeats/*.jsonl
+
+# Tool state that must never reach this public repo.
+config/zed/prompts/

@@ -8,9 +8,14 @@ Edit this file to change both tools.
   present). **Never modify, disable, or remove security / MDM software**, whatever the current
   enrollment state reports.
 - `sudo` needs a password — the user runs elevated commands themselves (suggest `! <cmd>`).
-- Homebrew `/opt/homebrew`. Editor Zed, terminal Ghostty, containers OrbStack (`orb`).
+- Homebrew `/opt/homebrew`. Editor Zed, terminal Ghostty, multiplexer herdr, containers
+  OrbStack (`orb`).
 
 ## Toolchain
+- **The Mac is declared in `nix/`** with nix-darwin + home-manager and applied via
+  `bin/rebuild`; Determinate Nix owns the daemon. Declare Mac packages in `nix/darwin.nix`,
+  run `rebuild --zap-dry`, then ask the user to run `rebuild` because it needs sudo. Homebrew
+  cleanup is `zap`, so never `brew install` ad hoc. The root `Brewfile` is for the Linux VM.
 - **mise** manages Node/TS, Python, pnpm (`~/.config/mise/config.toml`); pin with
   `mise use [-g] <tool>@<ver>`. Never `brew install` global node/python. Shims are on PATH.
 - Python packaging: **uv**. Rust: **rustup**. JS/TS deps: **pnpm** (not npm/yarn).
