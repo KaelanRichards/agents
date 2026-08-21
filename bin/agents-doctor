@@ -50,29 +50,39 @@ done
 
 echo "== MCP parity =="
 if command -v jq >/dev/null 2>&1; then
-	# Count the EFFECTIVE canonical set (mcp.json ⊕ optional mcp.local.json overlay) — that's what
-	# mcp-sync actually writes into the Claude/Codex configs. Counting raw mcp.json against the
-	# overlay-inclusive client configs produced a permanent spurious FAIL on any host with an overlay.
-	if [ -f "$AH/mcp.local.json" ]; then
-		c=$(jq -s '((.[0].mcpServers // {}) + (.[1].mcpServers // {})) | length' "$AH/mcp.json" "$AH/mcp.local.json" 2>/dev/null || echo -1)
+	# Render into an isolated HOME, then compare the exact generated server objects. This catches
+	# equal-count drift in names, transports, URLs, policy, and enabled state without printing values.
+	sync_tmp=$(mktemp -d)
+	mkdir -p "$sync_tmp/home"
+	if HOME="$sync_tmp/home" AGENTS_HOME="$AH" "$AH/bin/mcp-sync" >/dev/null 2>&1; then
+		if cmp -s <(jq -S '.mcpServers // {}' "$sync_tmp/home/.claude.json") <(jq -S '.mcpServers // {}' "$HOME/.claude.json"); then
+			ok "Claude MCP config exactly matches generated source"
+		else
+			bad "Claude MCP config drift (run: mcp-sync)"
+		fi
+		if cmp -s <(yq -p toml -o json "$sync_tmp/home/.codex/config.toml" | jq -S '.mcp_servers // {}') <(yq -p toml -o json "$HOME/.codex/config.toml" | jq -S '.mcp_servers // {}'); then
+			ok "Codex MCP config exactly matches generated source"
+		else
+			bad "Codex MCP config drift (run: mcp-sync)"
+		fi
 	else
-		c=$(jq '.mcpServers // {} | length' "$AH/mcp.json" 2>/dev/null || echo -1)
+		bad "could not render MCP configs for parity check"
 	fi
-	cl=$(jq '.mcpServers // {} | length' "$HOME/.claude.json" 2>/dev/null || echo -1)
-	cx=$(grep -cE '^\[mcp_servers\.[^.]+\]$' "$HOME/.codex/config.toml" 2>/dev/null || echo -1)
-	[ "$c" = "$cl" ] && [ "$c" = "$cx" ] && ok "MCP servers in sync ($c)" || bad "MCP parity mismatch: canonical=$c claude=$cl codex=$cx (run mcp-sync)"
-	required_mcp="context7 github datadog sentry bigquery agents personal-actions linear notion granola cloudflare slack"
+	rm -r "$sync_tmp"
+	required_mcp="context7 github datadog sentry bigquery agents personal-actions linear notion granola cloudflare slack hubspot"
 	for s in $required_mcp; do
 		jq -e --arg s "$s" '.mcpServers[$s]' "$AH/mcp.json" >/dev/null 2>&1 && ok "MCP required server present: $s" || bad "missing required MCP server: $s"
 	done
 	jq -e '.mcpServers.datadog.url == "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"' "$AH/mcp.json" >/dev/null 2>&1 && ok "Datadog MCP US5 URL pinned" || bad "Datadog MCP URL mismatch"
 	jq -e '(.mcpServers.datadog.headers // {}) == {} and (.mcpServers.datadog.bearer_token_env_var // "") == ""' "$AH/mcp.json" >/dev/null 2>&1 && ok "Datadog MCP uses client-native remote auth" || bad "Datadog MCP shared config should not force static header auth"
+	jq -e '.mcpServers.datadog.clients.codex == {"type":"http","url":"https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp"}' "$AH/mcp.json" >/dev/null 2>&1 && ok "Datadog MCP Codex resource URL pinned" || bad "Datadog MCP Codex override mismatch"
 	jq -e '.mcpServers.github.url == "https://api.githubcopilot.com/mcp/" and .mcpServers.github.bearer_token_env_var == "GITHUB_PAT"' "$AH/mcp.json" >/dev/null 2>&1 && ok "GitHub MCP endpoint + bearer (GITHUB_PAT) pinned" || bad "GitHub MCP endpoint/bearer mismatch"
 	jq -e '.mcpServers.linear.type == "stdio" and .mcpServers.linear.command == "npx" and .mcpServers.linear.args == ["-y","mcp-remote@0.1.38","https://mcp.linear.app/mcp","3336","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Linear MCP mcp-remote bridge pinned" || bad "Linear MCP bridge mismatch"
 	jq -e '.mcpServers.sentry.type == "stdio" and .mcpServers.sentry.command == "npx" and .mcpServers.sentry.args == ["-y","mcp-remote@0.1.38","https://mcp.sentry.dev/mcp","3337","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Sentry MCP mcp-remote bridge pinned" || bad "Sentry MCP bridge mismatch"
 	jq -e '.mcpServers.notion.type == "stdio" and .mcpServers.notion.command == "npx" and .mcpServers.notion.args == ["-y","mcp-remote@0.1.38","https://mcp.notion.com/mcp","3334","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Notion MCP mcp-remote bridge pinned" || bad "Notion MCP bridge mismatch"
 	jq -e '.mcpServers.granola.type == "stdio" and .mcpServers.granola.command == "npx" and .mcpServers.granola.args == ["-y","mcp-remote@0.1.38","https://mcp.granola.ai/mcp","3335","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Granola MCP mcp-remote bridge pinned" || bad "Granola MCP bridge mismatch"
 	jq -e '.mcpServers.cloudflare.type == "stdio" and .mcpServers.cloudflare.command == "npx" and .mcpServers.cloudflare.args == ["-y","mcp-remote@0.1.38","https://mcp.cloudflare.com/mcp","3338","--host","127.0.0.1"]' "$AH/mcp.json" >/dev/null 2>&1 && ok "Cloudflare MCP mcp-remote bridge pinned" || bad "Cloudflare MCP bridge mismatch"
+	jq -e '.mcpServers.cloudflare.clients.codex == {"type":"http","url":"https://mcp.cloudflare.com/mcp"}' "$AH/mcp.json" >/dev/null 2>&1 && ok "Cloudflare MCP Codex native HTTP override pinned" || bad "Cloudflare MCP Codex override mismatch"
 	jq -e '.mcpServers.slack.type == "stdio" and .mcpServers.slack.command == "$AGENTS_HOME/bin/slack-official-mcp" and .mcpServers.slack.args == []' "$AH/mcp.json" >/dev/null 2>&1 && ok "Slack MCP wrapper pinned" || bad "Slack MCP wrapper mismatch"
 	# Accept either an $AGENTS_HOME placeholder (portable canonical) or an absolute path to $AH/bin/bigquery-mcp.
 	bq_cmd=$(jq -r '.mcpServers.bigquery.command // ""' "$AH/mcp.json" 2>/dev/null)
@@ -87,7 +97,15 @@ echo "== config validity =="
 jq -e . "$AH/mcp.json" >/dev/null 2>&1 && ok "mcp.json" || bad "mcp.json invalid JSON"
 jq -e . "$AH/mcp.auth.json" >/dev/null 2>&1 && ok "mcp.auth.json" || bad "mcp.auth.json invalid JSON"
 if [ -x "$AH/bin/mcp-auth" ]; then
-	"$AH/bin/mcp-auth" check >/dev/null 2>&1 && ok "MCP auth contract" || bad "MCP auth contract mismatch"
+	AGENTS_HOME="$AH" "$AH/bin/mcp-auth" check >/dev/null 2>&1 && ok "MCP auth contract" || bad "MCP auth contract mismatch"
+	health_json=$(AGENTS_HOME="$AH" "$AH/bin/mcp-auth" health --client codex --offline --json 2>/dev/null)
+	health_rc=$?
+	if [ "$health_rc" -eq 0 ] && jq -e '.summary.broken == 0' <<<"$health_json" >/dev/null 2>&1; then
+		health_summary=$(jq -r '.summary | "ready=\(.ready) auth-required=\(."auth-required") disabled=\(.disabled) unverified=\(.unverified)"' <<<"$health_json")
+		ok "MCP static health, Codex ($health_summary)"
+	else
+		bad "MCP static health found broken Codex entries (run: mcp-auth health --client codex --offline)"
+	fi
 else
 	bad "mcp-auth helper missing"
 fi

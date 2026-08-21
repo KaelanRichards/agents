@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 # mcp-auth - operational helper for OAuth-backed remote MCP auth.
 set -euo pipefail
-exec python3 "$HOME/.config/agents/scripts/mcp_auth.py" "$@"
+agents_home="${AGENTS_HOME:-$HOME/.config/agents}"
+exec python3 "$agents_home/scripts/mcp_auth.py" "$@"

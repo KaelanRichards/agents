@@ -9,9 +9,11 @@ with `rebuild`), and **`bootstrap.sh` provisions the Linux VM** from the root `B
 wanted on both has to be added in both places.
 
 The shared MCP set includes official OAuth-backed Linear, Sentry, Notion, Granola, Cloudflare,
-and Slack MCPs bridged through `mcp-remote` or a narrow wrapper, the official Datadog US5 remote
-MCP server, and a local read-only BigQuery facade (`bigquery-mcp`) that uses the machine's
-existing `gcloud`/`bq` auth.
+Slack, and HubSpot MCPs, the official Datadog US5 remote MCP server, and a local read-only BigQuery
+facade (`bigquery-mcp`) that uses the machine's existing `gcloud`/`bq` auth. Claude uses the pinned
+`mcp-remote` bridge for Cloudflare; Codex uses native HTTP so the bridge cannot reopen an invalid
+OIDC-scope browser flow. Codex also receives Datadog's base resource URL, while Claude retains the
+toolset query URL.
 The Datadog endpoint is pinned to
 `https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery`.
 The active BigQuery project is `vizcom-web`; it needs the BigQuery API enabled and MCP Tool User,
@@ -51,10 +53,11 @@ prints the planned `(type / image / location)` before it calls `hcloud server cr
 2. On the VM: `git clone <repo-url> ~/.config/agents && bash ~/.config/agents/bootstrap.sh`
 
 **Then authenticate** on the VM: `claude` -> `/login`, `codex login`, `gh auth login`,
-and set `GITHUB_PAT` (GitHub MCP). For OAuth-backed hosted MCPs, run `mcp-auth plan`, then
-`mcp-auth login <server>` once per host; every synced stdio client on that host reuses
-`~/.mcp-auth`. For a VM, run `mcp-auth vm-login <server> <vm-host>` from the laptop so your
-local browser can complete the VM-side OAuth callback.
+and set `GITHUB_PAT` (GitHub MCP). Run `mcp-auth status` to see each client's effective transport.
+For stdio bridges, run `mcp-auth login <server>` once per host; they reuse `~/.mcp-auth`. Native
+Codex HTTP servers use `codex mcp login <server>` and keep client-managed OAuth state. For a VM,
+run `mcp-auth vm-login <server> <vm-host>` for stdio bridges so your local browser can complete the
+VM-side callback.
 Slack's official MCP additionally needs host-local `SLACK_MCP_CLIENT_ID` and
 `SLACK_MCP_CLIENT_SECRET`, or `SLACK_MCP_CLIENT_INFO_FILE`, because Slack does not support Dynamic
 Client Registration. The Slack app must allow the local callback URL
@@ -141,9 +144,10 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - **`skills-audit` / `skills-update`** — review vendored skill provenance and executable surface,
   then report upstream drift without modifying files. `skills.lock.json` is the source of truth.
 - **`mcp-update`** — report npm drift for pinned stdio MCP packages without modifying `mcp.json`.
-- **`mcp-auth`** — status/setup helper for OAuth-backed remote MCPs. It validates
-  `mcp.auth.json`, runs `mcp-remote` login probes, prints the clean VM auth plan, and checks
-  local client status without exporting tokens.
+- **`mcp-auth`** — auth/setup helper for remote MCPs. `status` reports the overlay-aware effective
+  transports without launching clients; `health --client codex --offline` classifies static
+  readiness without network, client, bridge, or browser launches. Only explicit `login` commands
+  start OAuth, and credential values are never printed.
 - **`windmill-up` / `windmill-status` / `windmill-down`** — manage the local open-source Windmill
   backend for live personal actions. See `assistant/windmill/README.md`.
 - **CI** (`.github/workflows/ci.yml`): lints + validates on every push; weekly it runs the
@@ -151,6 +155,11 @@ bash ~/.config/agents/teardown.sh --no-snapshot -y   # full delete, no prompt
 - **Auto-updates:** Dependabot (Actions) opens CI-validated PRs.
 
 ## Notes
+- MCP definitions may include `clients.claude` or `clients.codex`. An override containing `type`
+  replaces the shared server definition for that client; one without `type` is a recursive partial
+  override, such as `{ "enabled": false }`. The optional gitignored `mcp.local.json` overlay merges
+  recursively before client resolution; arrays replace rather than append. Run `mcp-sync check` to
+  inspect both resolved configurations before writing them.
 - Secrets are **never** committed — only `bearer_token_env_var` *names* live in `mcp.json`;
   tokens live in the macOS keychain (laptop) or gitignored `~/.config/agents-secrets/*.env` (VM).
 - MCP stdio package versions are pinned in `mcp.json`; use `mcp-update` before intentionally

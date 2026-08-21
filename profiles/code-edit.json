@@ -17,6 +17,6 @@
 	"filesystem": { "mode": "workspace-write", "roots": ["current_repo"] },
 	"shell": { "mode": "guarded", "mutating": true },
 	"confirm": ["dependency_install", "network_write", "push"],
-	"skills": ["spec", "qa"],
+	"skills": [],
 	"risk": "medium"
 }

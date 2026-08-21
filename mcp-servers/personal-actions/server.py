@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["mcp>=1.2"]
+# dependencies = ["mcp>=1.2,<2"]
 # ///
 """personal-actions — narrow shared MCP facade for Slack/Gmail/Calendar actions."""
 

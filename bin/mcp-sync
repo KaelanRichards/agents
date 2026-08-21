@@ -25,8 +25,10 @@
 # Path placeholders in the canonical JSON (mcp.json) are expanded at write time:
 #   $AGENTS_HOME  -> ~/.config/agents (or $AGENTS_HOME env)
 #   $HOME         -> $HOME
-# Optional per-machine overlay: mcp.local.json (gitignored) is merged into canonical,
-# overriding by server name. Use it for hosts where a server lives at a non-portable path.
+# Optional per-machine overlay: mcp.local.json (gitignored) is recursively merged into canonical;
+# object fields merge while arrays replace. A server may also define `clients.claude` and/or
+# `clients.codex`: an override containing `type` replaces the shared definition for that client,
+# while an override without `type` partially overrides it (for example `{ "enabled": false }`).
 set -euo pipefail
 
 AGENTS_HOME="${AGENTS_HOME:-$HOME/.config/agents}"
@@ -41,28 +43,109 @@ command -v jq >/dev/null || { echo "mcp-sync: jq is required" >&2; exit 1; }
 mkdir -p "$AGENTS_HOME" "$HOME/.codex"
 [ -f "$CANON" ] || echo '{"mcpServers":{}}' > "$CANON"
 
-build_effective() {
-  # Compose the effective config (canonical ⊕ optional local overlay) and expand
-  # $AGENTS_HOME / $HOME placeholders in string fields. Claude/Codex don't shell-expand
-  # the `command` field, so paths must be absolute at write time.
+build_merged() {
+  # Compose canonical ⊕ optional local overlay before resolving client overrides. Object fields
+  # merge recursively; every other value (including arrays) is replaced by the overlay value.
   local out="$1"
   local merged
   merged=$(mktemp)
   if [ -f "$LOCAL_OVERLAY" ]; then
-    jq -s '.[0].mcpServers as $a | (.[1].mcpServers // {}) as $b | {mcpServers: ($a + $b)}' "$CANON" "$LOCAL_OVERLAY" > "$merged"
+    jq -s '
+      def deepmerge($base; $override):
+        if (($base | type) == "object" and ($override | type) == "object") then
+          reduce ($override | keys_unsorted[]) as $key ($base;
+            .[$key] = deepmerge(.[$key]; $override[$key])
+          )
+        else $override
+        end;
+      deepmerge(.[0]; (.[1] // {}))
+    ' "$CANON" "$LOCAL_OVERLAY" > "$merged"
   else
     cp "$CANON" "$merged"
   fi
+  # Expand placeholders recursively so client-specific definitions receive the same treatment as
+  # shared definitions. Claude/Codex do not shell-expand `command` paths.
   jq --arg AH "$AGENTS_HOME" --arg H "$HOME" '
-    def expand: if type=="string" then (gsub("\\$AGENTS_HOME"; $AH) | gsub("\\$HOME"; $H)) else . end;
-    .mcpServers |= with_entries(.value |= (
-        (if has("command") then .command |= expand else . end)
-      | (if has("url")     then .url     |= expand else . end)
-      | (if has("args")    then .args    |= (if type=="array" then map(expand) else . end) else . end)
-      | (if has("env")     then .env     |= (if type=="object" then with_entries(.value |= (expand | if type=="string" then . else tostring end)) else . end) else . end)
-    ))
+    def walk(f):
+      . as $input
+      | if type == "object" then
+          reduce keys_unsorted[] as $key ({}; . + {($key): ($input[$key] | walk(f))})
+        elif type == "array" then map(walk(f))
+        else f
+        end;
+    walk(if type == "string" then
+      (gsub("\\$AGENTS_HOME"; $AH) | gsub("\\$HOME"; $H))
+    else . end)
   ' "$merged" > "$out"
   rm -f "$merged"
+}
+
+build_effective() {
+  # Resolve a merged server for one client. `type` marks a complete replacement; otherwise the
+  # override is a recursive partial merge. Internal `clients` metadata never reaches either tool.
+  local out="$1"
+  local client="$2"
+  local merged
+  merged=$(mktemp)
+  build_merged "$merged"
+  jq --arg client "$client" '
+    def deepmerge($base; $override):
+      if (($base | type) == "object" and ($override | type) == "object") then
+        reduce ($override | keys_unsorted[]) as $key ($base;
+          .[$key] = deepmerge(.[$key]; $override[$key])
+        )
+      else $override
+      end;
+    .mcpServers |= with_entries(
+      .value as $server
+      | ($server | del(.clients)) as $shared
+      | ($server.clients[$client] // null) as $override
+      | .value = if $override == null then $shared
+        elif ($override.type? != null) then ($override | del(.clients))
+        else deepmerge($shared; $override)
+        end
+    )
+  ' "$merged" > "$out"
+  rm -f "$merged"
+}
+
+print_safe_effective() {
+  # Diagnostics must never echo literal environment/header/argument values. Keep enough structure
+  # to distinguish client transports and URL resources while redacting query values and userinfo.
+  jq '
+    def safe_url:
+      if type == "string" then
+        capture("^(?<scheme>https?)://(?<authority>[^/?#]+)(?<rest>.*)$") as $url
+        | ($url.authority | sub("^.*@"; "<redacted>@")) as $authority
+        | ($url.rest | split("?")[0] | split("#")[0]) as $path
+        | ($url.scheme + "://" + $authority
+          + (if $path == "" then "" elif $path == "/" then "/" else "/<redacted-path>" end)
+          + (if ($url.rest | contains("?")) then "?<redacted-query>" else "" end)
+          + (if ($url.rest | contains("#")) then "#<redacted-fragment>" else "" end))
+      else . end;
+    .mcpServers |= with_entries(.value |= (
+      {
+        type: (.type // "stdio"),
+        enabled,
+        command,
+        args_count: (if (.args | type) == "array" then (.args | length) else null end),
+        url: (.url | safe_url),
+        bearer_token_env_var,
+        env_keys: (if (.env | type) == "object" then (.env | keys) else null end),
+        header_names: (if ((.http_headers // .headers) | type) == "object" then
+          ((.http_headers // .headers) | keys) else null end),
+        env_http_header_names: (if (.env_http_headers | type) == "object" then
+          (.env_http_headers | keys) else null end),
+        startup_timeout_sec,
+        tool_timeout_sec,
+        required,
+        enabled_tools,
+        disabled_tools,
+        default_tools_approval_mode
+      }
+      | with_entries(select(.value != null))
+    ))
+  ' "$1"
 }
 
 cmd="${1:-sync}"
@@ -108,12 +191,16 @@ case "$cmd" in
   check)
     jq -e . "$CANON" >/dev/null || { echo "ERROR: invalid JSON in $CANON" >&2; exit 1; }
     [ -f "$LOCAL_OVERLAY" ] && jq -e . "$LOCAL_OVERLAY" >/dev/null
-    eff=$(mktemp); trap 'rm -f "$eff"' EXIT
-    build_effective "$eff"
+    claude_eff=$(mktemp); codex_eff=$(mktemp)
+    trap 'rm -f "$claude_eff" "$codex_eff"' EXIT
+    build_effective "$claude_eff" claude
+    build_effective "$codex_eff" codex
     echo "canonical: $CANON"
     [ -f "$LOCAL_OVERLAY" ] && echo "overlay:   $LOCAL_OVERLAY (applied)"
-    echo "effective config that would be written:"
-    jq . "$eff"
+    echo "effective Claude config summary (credential values redacted):"
+    print_safe_effective "$claude_eff"
+    echo "effective Codex config summary (credential values redacted):"
+    print_safe_effective "$codex_eff"
     exit 0 ;;
   drift)
     exec "$AGENTS_HOME/bin/mcp-update" ;;
@@ -128,9 +215,13 @@ if [ -f "$LOCAL_OVERLAY" ] && ! jq -e . "$LOCAL_OVERLAY" >/dev/null 2>&1; then
   echo "ERROR: invalid JSON in $LOCAL_OVERLAY" >&2; exit 1
 fi
 
-EFFECTIVE=$(mktemp)
-trap 'rm -f "$EFFECTIVE"' EXIT
-build_effective "$EFFECTIVE"
+MERGED=$(mktemp)
+CLAUDE_EFFECTIVE=$(mktemp)
+CODEX_EFFECTIVE=$(mktemp)
+trap 'rm -f "$MERGED" "$CLAUDE_EFFECTIVE" "$CODEX_EFFECTIVE"' EXIT
+build_merged "$MERGED"
+build_effective "$CLAUDE_EFFECTIVE" claude
+build_effective "$CODEX_EFFECTIVE" codex
 
 # 1) Claude Code (JSON, user scope) — preserve everything else in ~/.claude.json.
 #    Map bearer_token_env_var -> Authorization header with ${VAR} expansion.
@@ -141,7 +232,7 @@ else
   echo '{}' > "$CLAUDE_JSON"
 fi
 t=$(mktemp)
-jq --slurpfile c "$EFFECTIVE" '.mcpServers = (($c[0].mcpServers // {}) | map_values(
+jq --slurpfile c "$CLAUDE_EFFECTIVE" '.mcpServers = (($c[0].mcpServers // {}) | map_values(
     (if .bearer_token_env_var then
       (if (.headers.Authorization // null) != null
        then error("mcp-sync: server defines both a literal Authorization header and bearer_token_env_var — pick one")
@@ -150,7 +241,13 @@ jq --slurpfile c "$EFFECTIVE" '.mcpServers = (($c[0].mcpServers // {}) | map_val
     else . end)
     # startup_timeout_sec / tool_timeout_sec are Codex-only reliability knobs — strip them from the
     # Claude config (Claude has its own MCP timeout handling and would not understand these keys).
-    | del(.startup_timeout_sec, .tool_timeout_sec)))' "$CLAUDE_JSON" > "$t"
+    | del(
+        .enabled, .required, .startup_timeout_sec, .tool_timeout_sec,
+        .env_vars, .cwd, .experimental_environment, .auth,
+        .http_headers, .env_http_headers,
+        .enabled_tools, .disabled_tools, .default_tools_approval_mode, .tools,
+        .clients
+      )))' "$CLAUDE_JSON" > "$t"
 if jq -e . "$t" >/dev/null 2>&1; then
   mv "$t" "$CLAUDE_JSON"
 else
@@ -169,14 +266,20 @@ fi
 [ -f "$CODEX_TOML" ] || touch "$CODEX_TOML"
 cp "$CODEX_TOML" "$CODEX_TOML.mcp-sync.bak"
 # Shape each server for Codex: drop "type", rename headers->http_headers, keep command/args/url/
-# bearer_token_env_var/env and the Codex-only reliability knobs (startup_timeout_sec/tool_timeout_sec);
+# all currently documented Codex transport, auth, policy, and reliability fields;
 # drop null fields so absent keys are omitted. yq turns this JSON into faithfully-quoted TOML.
 codex_block=$(jq '{
     mcp_servers: ((.mcpServers // {}) | with_entries(.value |= (
-      { command, args, url, bearer_token_env_var, startup_timeout_sec, tool_timeout_sec, env, http_headers: .headers }
+      {
+        command, args, env, env_vars, cwd, experimental_environment,
+        url, auth, bearer_token_env_var,
+        http_headers: (.http_headers // .headers), env_http_headers,
+        enabled, required, startup_timeout_sec, tool_timeout_sec,
+        enabled_tools, disabled_tools, default_tools_approval_mode, tools
+      }
       | with_entries(select(.value != null))
     )))
-  }' "$EFFECTIVE" | yq -p json -o toml)
+  }' "$CODEX_EFFECTIVE" | yq -p json -o toml)
 t=$(mktemp)
 awk -v b="$BEGIN" -v e="$END" '$0==b{skip=1;next} $0==e{skip=0;next} skip!=1{print}' "$CODEX_TOML" > "$t" && mv "$t" "$CODEX_TOML"
 {
@@ -241,16 +344,7 @@ if ! codex_toml_valid "$CODEX_TOML"; then
   exit 1
 fi
 
-# Self-heal the mcp-remote OAuth store. mcp-remote namespaces its token cache by its own version
-# (~/.mcp-auth/mcp-remote-<version>/), so bumping a pinned mcp-remote@<ver> in mcp.json orphans every
-# cached login — the next unattended launch then re-runs browser OAuth and HANGS (esp. Codex, which
-# eagerly blocks startup on each server). Migrating the store to the new version dir here keeps a
-# pin bump from silently breaking auth. Best-effort: never fail the sync on this.
-if [ -x "$AGENTS_HOME/bin/mcp-auth" ]; then
-  "$AGENTS_HOME/bin/mcp-auth" migrate >/dev/null || echo "mcp-sync: note — mcp-auth migrate reported a gap (run: mcp-auth login <server>)" >&2
-fi
-
-n=$(jq '.mcpServers // {} | length' "$EFFECTIVE")
+n=$(jq '.mcpServers // {} | length' "$MERGED")
 src="$CANON"
 [ -f "$LOCAL_OVERLAY" ] && src="$src + mcp.local.json"
 echo "✓ mcp-sync: $n server(s) ← $src → Claude (~/.claude.json) + Codex (~/.codex/config.toml)"

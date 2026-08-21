@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["mcp>=1.2"]
+# dependencies = ["mcp>=1.2,<2"]
 # ///
 """Smoke test for the local read-only BigQuery MCP facade."""
 
@@ -32,19 +32,32 @@ def main() -> None:
         datasets = json.loads(mod.bigquery_list_datasets())
         assert datasets["status"] == "ok"
         assert datasets["result"]["project_id"] == "vizcom-web"
-        assert datasets["result"]["datasets"]["command"][0:3] == ["bq", "ls", "--format=prettyjson"]
+        assert datasets["result"]["datasets"]["command"][0:3] == [
+            "bq",
+            "ls",
+            "--format=prettyjson",
+        ]
 
         estimate = json.loads(mod.bigquery_estimate_query("SELECT 1 AS ok"))
         assert estimate["status"] == "ok"
         assert "--dry_run" in estimate["result"]["dry_run"]["command"]
 
-        query = json.loads(mod.bigquery_execute_sql_readonly("WITH x AS (SELECT 1 AS ok) SELECT ok FROM x"))
+        query = json.loads(
+            mod.bigquery_execute_sql_readonly(
+                "WITH x AS (SELECT 1 AS ok) SELECT ok FROM x"
+            )
+        )
         assert query["status"] == "ok"
         assert "--maximum_bytes_billed=1000000000" in query["result"]["rows"]["command"]
 
-        rejected = json.loads(mod.bigquery_execute_sql_readonly("DELETE FROM dataset.table WHERE TRUE"))
+        rejected = json.loads(
+            mod.bigquery_execute_sql_readonly("DELETE FROM dataset.table WHERE TRUE")
+        )
         assert rejected["status"] == "error"
-        assert "read-only" in rejected["result"]["error"] or "write-capable" in rejected["result"]["error"]
+        assert (
+            "read-only" in rejected["result"]["error"]
+            or "write-capable" in rejected["result"]["error"]
+        )
 
         multi = json.loads(mod.bigquery_execute_sql_readonly("SELECT 1; SELECT 2"))
         assert multi["status"] == "error"

@@ -3,10 +3,7 @@
     "context7": {
       "type": "stdio",
       "command": "npx",
-      "args": [
-        "-y",
-        "@upstash/context7-mcp@3.0.0"
-      ]
+      "args": ["-y", "@upstash/context7-mcp@3.0.0"]
     },
     "github": {
       "type": "http",
@@ -58,7 +55,13 @@
     },
     "datadog": {
       "type": "http",
-      "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+      "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery",
+      "clients": {
+        "codex": {
+          "type": "http",
+          "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp"
+        }
+      }
     },
     "sentry": {
       "type": "stdio",
@@ -110,6 +113,18 @@
         "--host",
         "127.0.0.1"
       ],
+      "startup_timeout_sec": 60,
+      "clients": {
+        "codex": {
+          "type": "http",
+          "url": "https://mcp.cloudflare.com/mcp"
+        }
+      }
+    },
+    "hubspot": {
+      "type": "stdio",
+      "command": "$AGENTS_HOME/bin/hubspot-mcp",
+      "args": [],
       "startup_timeout_sec": 60
     }
   }

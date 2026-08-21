@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["mcp>=1.2"]
+# dependencies = ["mcp>=1.2,<2"]
 # ///
 """Live webhook-delivery test for the personal-actions facade.
 
@@ -22,12 +22,13 @@ import pathlib
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import ClassVar
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SERVER = ROOT / "mcp-servers" / "personal-actions" / "server.py"
-TOKEN = "secret-test-token"  # noqa: S105 — test fixture, not a real credential
-HMAC_SECRET = "hmac-secret-fixture"  # noqa: S105
-LEAK = "Bearer super-secret-should-be-redacted"  # noqa: S105
+TOKEN = "secret-test-token"
+HMAC_SECRET = "hmac-secret-fixture"
+LEAK = "Bearer super-secret-should-be-redacted"
 
 
 def load_server():
@@ -39,10 +40,10 @@ def load_server():
 
 
 class Handler(BaseHTTPRequestHandler):
-    requests: list[dict] = []
+    requests: ClassVar[list[dict]] = []
     mode = "ok"  # "ok" -> 200 json; "error" -> 500 with a secret in the body
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length)
         Handler.requests.append(
