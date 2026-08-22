@@ -1,10 +1,10 @@
 {{ if eq .chezmoi.os "windows" }}
-.config/ghostty/config
-.config/jj/config.toml
-.config/zed/settings.json
+.config/ghostty
+.config/jj
+.config/zed
 .zshenv
 .zshrc
 {{ else }}
-AppData/Roaming/jj/config.toml
-Documents/PowerShell/Microsoft.PowerShell_profile.ps1
+AppData
+Documents
 {{ end }}
