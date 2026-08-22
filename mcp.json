@@ -3,10 +3,7 @@
     "context7": {
       "type": "stdio",
       "command": "npx",
-      "args": [
-        "-y",
-        "@upstash/context7-mcp@3.0.0"
-      ]
+      "args": ["-y", "@upstash/context7-mcp@3.0.0"]
     },
     "github": {
       "type": "http",
@@ -51,6 +48,22 @@
       ],
       "startup_timeout_sec": 60
     },
+    "linear-personal": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@0.1.38",
+        "https://mcp.linear.app/mcp",
+        "3338",
+        "--host",
+        "127.0.0.1"
+      ],
+      "env": {
+        "MCP_REMOTE_CONFIG_DIR": "/Users/kaelan/.mcp-auth/linear-personal"
+      },
+      "startup_timeout_sec": 60
+    },
     "bigquery": {
       "type": "stdio",
       "command": "$AGENTS_HOME/bin/bigquery-mcp",
@@ -58,7 +71,13 @@
     },
     "datadog": {
       "type": "http",
-      "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery"
+      "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp?toolsets=core,apm,error-tracking,software-delivery",
+      "clients": {
+        "codex": {
+          "type": "http",
+          "url": "https://mcp.us5.datadoghq.com/api/unstable/mcp-server/mcp"
+        }
+      }
     },
     "sentry": {
       "type": "stdio",
@@ -86,6 +105,22 @@
       ],
       "startup_timeout_sec": 60
     },
+    "notion-personal": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote@0.1.38",
+        "https://mcp.notion.com/mcp",
+        "3339",
+        "--host",
+        "127.0.0.1"
+      ],
+      "env": {
+        "MCP_REMOTE_CONFIG_DIR": "/Users/kaelan/.mcp-auth/notion-personal"
+      },
+      "startup_timeout_sec": 60
+    },
     "granola": {
       "type": "stdio",
       "command": "npx",
@@ -110,6 +145,18 @@
         "--host",
         "127.0.0.1"
       ],
+      "startup_timeout_sec": 60,
+      "clients": {
+        "codex": {
+          "type": "http",
+          "url": "https://mcp.cloudflare.com/mcp"
+        }
+      }
+    },
+    "hubspot": {
+      "type": "stdio",
+      "command": "$AGENTS_HOME/bin/hubspot-mcp",
+      "args": [],
       "startup_timeout_sec": 60
     }
   }

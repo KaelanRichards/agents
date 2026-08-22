@@ -24,6 +24,6 @@
 	},
 	"shell": { "mode": "ask", "mutating": false },
 	"confirm": ["network_write", "shell_command"],
-	"skills": ["spec"],
+	"skills": [],
 	"risk": "low"
 }

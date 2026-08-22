@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# GitHub MCP bridge using the active GitHub CLI credential without persisting
+# the bearer token in MCP configuration or command-line arguments.
+set -euo pipefail
+
+export GITHUB_PAT
+GITHUB_PAT="$(gh auth token -h github.com)"
+
+exec npx -y mcp-remote@0.1.38 \
+	"https://api.githubcopilot.com/mcp/" \
+	--header 'Authorization: Bearer ${GITHUB_PAT}' \
+	"$@"
