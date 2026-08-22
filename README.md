@@ -37,10 +37,13 @@ Then install chezmoi through mise and apply this repository:
 ~~~sh
 mise use --global chezmoi@2.70.5
 chezmoi init --apply KaelanRichards/agents
+mise trust ~/.config/mise/config.toml
 mise install
 ~~~
 
-The same three commands work in PowerShell. Restart the shell after the first apply so mise activation is loaded.
+`chezmoi init --apply` deploys the mise manifest to `~/.config/mise/config.toml`; `mise trust` is required once before mise will use that freshly written config.
+
+The same commands work in PowerShell. Restart the shell after the first apply so mise activation is loaded.
 
 Authenticate clients separately with their native login commands. Add MCP servers or connectors directly in the client that uses them; only enable integrations needed for the current workflow.
 
